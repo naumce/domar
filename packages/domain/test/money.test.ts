@@ -62,6 +62,11 @@ describe('mulMinor', () => {
     expect(mulMinor(2_000_000, 0.0000005)).toBe(2); // 2_000_000*0.0000005 = 1.0 → 2
     expect(mulMinor(-333, 1.5)).toBe(-500); // -333*1.5 = -499.5 → -500
   });
+  it('refuses products that would leave exact integer range', () => {
+    expect(() => mulMinor(1e12, 1e6)).toThrow(RangeError);
+    expect(() => mulMinor(1e9, 1000)).toThrow(RangeError); // guards the real product: 1e9 × 1000·1e6 = 1e18 > 2^53
+    expect(mulMinor(1e6, 1000)).toBe(1e9);
+  });
 });
 
 describe('divRoundHalfUp', () => {

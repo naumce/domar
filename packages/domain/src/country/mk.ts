@@ -15,6 +15,10 @@ export const mkPack: CountryPack = {
     { name: 'ДДВ 10%', rateBp: 1000, isDefault: false },
     { name: 'ДДВ 18%', rateBp: 1800, isDefault: true },
   ],
+  labels: {
+    reserveFund: 'Резервен фонд',
+    managementFee: 'Управувачки услуги',
+  },
   invoiceLayout: {
     showBuildingWideAmountPerLine: true,
     showManagementFeeLine: true,

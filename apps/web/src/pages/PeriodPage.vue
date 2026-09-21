@@ -51,17 +51,23 @@ const settingsPrefix = ref('');
 const settingsSuffix = ref('');
 const settingsFee = ref('');
 const settingsFeeTaxRateId = ref<string | null>(null);
+const settingsTaxTouched = ref(false);
+const settingsTaxResolved = ref(false);
 function openSettings() {
   if (!period.value) return;
   settingsPrefix.value = period.value.numberPrefix;
   settingsSuffix.value = period.value.numberSuffix;
   settingsFee.value = (period.value.managementFeeMinor / 100).toFixed(2).replace('.', ',');
   settingsFeeTaxRateId.value = taxRates.value.find((r) => r.isActive && r.rateBp === period.value!.managementFeeTaxRateBp)?.id ?? null;
+  // The period's rate may be inactive or gone: then the select shows "no tax" and we must not save that back.
+  settingsTaxResolved.value = settingsFeeTaxRateId.value !== null;
+  settingsTaxTouched.value = false;
   settingsOpen.value = true;
 }
 async function saveSettings() {
   const managementFeeMinor = toMinor(settingsFee.value) ?? 0;
-  await run(() => api.patch(base, { numberPrefix: settingsPrefix.value, numberSuffix: settingsSuffix.value, managementFeeMinor, managementFeeTaxRateId: settingsFeeTaxRateId.value }));
+  const tax = settingsTaxTouched.value || settingsTaxResolved.value ? { managementFeeTaxRateId: settingsFeeTaxRateId.value } : {};
+  await run(() => api.patch(base, { numberPrefix: settingsPrefix.value, numberSuffix: settingsSuffix.value, managementFeeMinor, ...tax }));
   if (!error.value) settingsOpen.value = false;
 }
 </script>
@@ -109,7 +115,7 @@ async function saveSettings() {
         <AppInput v-model="settingsPrefix" :label="t('periods.prefix')" data-test="period-prefix" />
         <AppInput v-model="settingsSuffix" :label="t('periods.suffix')" data-test="period-suffix" />
         <AppInput v-model="settingsFee" :label="t('periods.managementFee')" data-test="period-fee-edit" class="col-span-2" />
-        <AppSelect v-model="settingsFeeTaxRateId" :label="t('periods.managementFeeTax')" :options="[{ value: null, label: t('services.noTax') }, ...taxRates.filter((r) => r.isActive).map((r) => ({ value: r.id, label: `${r.name} (${percentFromBp(r.rateBp)})` }))]" data-test="period-fee-tax" class="col-span-2" />
+        <AppSelect v-model="settingsFeeTaxRateId" :label="t('periods.managementFeeTax')" :options="[{ value: null, label: t('services.noTax') }, ...taxRates.filter((r) => r.isActive).map((r) => ({ value: r.id, label: `${r.name} (${percentFromBp(r.rateBp)})` }))]" data-test="period-fee-tax" class="col-span-2" @update:model-value="settingsTaxTouched = true" />
         <div class="col-span-2 flex justify-end gap-2">
           <AppButton type="button" variant="secondary" @click="settingsOpen = false">{{ t('app.cancel') }}</AppButton>
           <AppButton type="submit" :loading="busy">{{ t('app.save') }}</AppButton>

@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { conflict, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { claimPeriod } from '../periods/repo.js';
 
 const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.contacts; const B = schema.buildings; const BP = schema.billingPeriods;
 
@@ -41,10 +42,13 @@ export async function deleteDraftInvoice(db: Db, ctx: TenantContext, id: string)
   return db.transaction(async (tx) => {
     const inv = await tx.query.invoices.findFirst({ where: and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, id)) });
     if (!inv) throw notFound('Invoice');
-    if (inv.status !== 'draft') throw conflict('not_draft', 'Only draft invoices can be deleted');
-    await tx.delete(INV).where(eq(INV.id, id));
-    const [left] = await tx.select({ n: count() }).from(INV).where(and(eq(INV.periodId, inv.periodId), eq(INV.status, 'draft')));
-    if (Number(left?.n ?? 0) === 0) await tx.update(BP).set({ status: 'open', generatedAt: null, warnings: [], updatedAt: new Date() }).where(eq(BP.id, inv.periodId));
+    // Claim the period before touching the invoice: a concurrent publish either wins the row lock
+    // (and we see 'published' here) or waits for us and finds no drafts left to number.
+    await claimPeriod(tx, ctx, inv.buildingId, inv.periodId, ['open', 'generated']);
+    const [deleted] = await tx.delete(INV).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, id), eq(INV.status, 'draft'))).returning({ id: INV.id });
+    if (!deleted) throw conflict('not_draft', 'Only draft invoices can be deleted');
+    const [left] = await tx.select({ n: count() }).from(INV).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.periodId, inv.periodId), eq(INV.status, 'draft')));
+    if (Number(left?.n ?? 0) === 0) await tx.update(BP).set({ status: 'open', generatedAt: null, warnings: [], updatedAt: new Date() }).where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.id, inv.periodId)));
     await writeAudit(tx, ctx, { action: 'invoice.delete_draft', entityType: 'invoice', entityId: id, before: inv });
   });
 }

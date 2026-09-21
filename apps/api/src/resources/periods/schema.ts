@@ -26,11 +26,11 @@ export const periodPatch = z.object({
 });
 export const lineCreate = z.object({
   serviceId: z.string().uuid().optional(), description: z.string().min(1).max(300).optional(), pricing: pricingEnum.optional(),
-  quantity: z.number().positive().max(1_000_000).optional(), unitPriceMinor: moneyMinor.optional(), taxRateId: z.string().uuid().nullable().optional(),
+  quantity: z.number().positive().max(10_000).optional(), unitPriceMinor: moneyMinor.optional(), taxRateId: z.string().uuid().nullable().optional(),
   appliesTo: z.array(unitKindEnum).max(5).transform(dedupe).optional(), fund: fundEnum.optional(), note: nullableStr(500),
 }).refine((v) => v.serviceId || (v.description && v.pricing && v.unitPriceMinor !== undefined), { message: 'description, pricing and unitPriceMinor are required without serviceId' });
 export const linePatch = z.object({
-  description: z.string().min(1).max(300).optional(), pricing: pricingEnum.optional(), quantity: z.number().positive().max(1_000_000).optional(),
+  description: z.string().min(1).max(300).optional(), pricing: pricingEnum.optional(), quantity: z.number().positive().max(10_000).optional(),
   unitPriceMinor: moneyMinor.optional(), taxRateId: z.string().uuid().nullable().optional(), appliesTo: z.array(unitKindEnum).max(5).transform(dedupe).optional(),
   fund: fundEnum.optional(), note: z.string().max(500).optional(),
 });

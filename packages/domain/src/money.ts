@@ -21,6 +21,7 @@ export function roundHalfUp(value: number): number {
  */
 export function mulMinor(priceMinor: number, quantity: number): number {
   const q = Math.round(quantity * 1_000_000);
+  if (Math.abs(priceMinor) * Math.abs(q) > Number.MAX_SAFE_INTEGER) throw new RangeError('mulMinor overflow');
   return divRoundHalfUp(priceMinor * q, 1_000_000);
 }
 

@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { writeAudit } from '../../audit.js';
 import { badRequest, conflict, isUniqueViolation, notFound } from '../../errors.js';
@@ -17,6 +17,37 @@ type UnitKind = z.infer<typeof unitKindEnum>;
 
 export function assertPeriodEditable(p: { status: string }) {
   if (p.status === 'published') throw conflict('period_locked', 'A published period cannot be changed');
+}
+
+type PeriodStatus = PeriodRow['status'];
+
+/**
+ * Claims the period row for the rest of the transaction: the conditional UPDATE takes a row lock,
+ * so a concurrent writer serializes behind us and then re-reads the status it was allowed to see.
+ */
+export async function claimPeriod(tx: Db, ctx: TenantContext, buildingId: string, id: string, allowed: PeriodStatus[]): Promise<PeriodRow> {
+  const [row] = await tx.update(BP).set({ updatedAt: new Date() })
+    .where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.buildingId, buildingId), eq(BP.id, id), inArray(BP.status, allowed)))
+    .returning();
+  if (!row) {
+    await getPeriodRow(tx, ctx, buildingId, id); // 404 if the period doesn't exist for this tenant/building
+    throw conflict('period_locked', 'A published period cannot be changed');
+  }
+  return row;
+}
+
+/** Deletes the period's draft invoices (invoice_lines cascade). Returns how many were removed. */
+export async function deleteDraftInvoices(tx: Db, ctx: TenantContext, periodId: string): Promise<number> {
+  const drafts = await tx.select({ id: INV.id }).from(INV).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.periodId, periodId), eq(INV.status, 'draft')));
+  if (drafts.length) await tx.delete(INV).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.status, 'draft'), inArray(INV.id, drafts.map((d) => d.id))));
+  return drafts.length;
+}
+
+/** Drops the drafts of a generated period and puts the period back to 'open'. Call on a claimed period. */
+export async function resetDrafts(tx: Db, ctx: TenantContext, periodId: string): Promise<number> {
+  const n = await deleteDraftInvoices(tx, ctx, periodId);
+  await tx.update(BP).set({ status: 'open', generatedAt: null, warnings: [], updatedAt: new Date() }).where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.id, periodId)));
+  return n;
 }
 
 function toLine(l: typeof PL.$inferSelect) {
@@ -82,8 +113,8 @@ export async function createPeriod(db: Db, ctx: TenantContext, buildingId: strin
 
 export async function updatePeriod(db: Db, ctx: TenantContext, buildingId: string, id: string, patch: PeriodPatch) {
   return db.transaction(async (tx) => {
-    const before = await getPeriodRow(tx, ctx, buildingId, id);
-    assertPeriodEditable(before);
+    const before = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);
+    if (before.status === 'generated') await resetDrafts(tx, ctx, id);
     const { managementFeeTaxRateId, ...rest } = patch;
     const set: Partial<typeof BP.$inferInsert> = { ...stripUndefined(rest), updatedAt: new Date() };
     if (managementFeeTaxRateId !== undefined) set.managementFeeTaxRateBp = (await resolveTaxRateBp(tx, ctx, managementFeeTaxRateId)) ?? 0;
@@ -95,10 +126,14 @@ export async function updatePeriod(db: Db, ctx: TenantContext, buildingId: strin
 
 export async function refreshAutoLines(db: Db, ctx: TenantContext, buildingId: string, id: string) {
   return db.transaction(async (tx) => {
-    const period = await getPeriodRow(tx, ctx, buildingId, id);
-    assertPeriodEditable(period);
+    const period = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);
+    if (period.status === 'generated') await resetDrafts(tx, ctx, id);
     await tx.delete(PL).where(and(eq(PL.tenantId, ctx.tenantId), eq(PL.periodId, id), eq(PL.source, 'auto')));
-    await insertLines(tx, ctx, id, await buildAutoLines(tx, ctx, buildingId, period.period));
+    // A manual copy of a service (an edited auto line) wins: don't hand the period a second line for it.
+    const kept = await tx.select({ serviceId: PL.serviceId }).from(PL).where(and(eq(PL.tenantId, ctx.tenantId), eq(PL.periodId, id)));
+    const keptServiceIds = new Set(kept.map((l) => l.serviceId).filter((s): s is string => s !== null));
+    const rebuilt = (await buildAutoLines(tx, ctx, buildingId, period.period)).filter((l) => l.serviceId === null || !keptServiceIds.has(l.serviceId));
+    await insertLines(tx, ctx, id, rebuilt);
     await writeAudit(tx, ctx, { action: 'period.refresh_lines', entityType: 'billing_period', entityId: id });
     return getPeriod(tx, ctx, buildingId, id);
   });
@@ -106,8 +141,8 @@ export async function refreshAutoLines(db: Db, ctx: TenantContext, buildingId: s
 
 export async function addLine(db: Db, ctx: TenantContext, buildingId: string, id: string, input: LineCreate) {
   return db.transaction(async (tx) => {
-    const period = await getPeriodRow(tx, ctx, buildingId, id);
-    assertPeriodEditable(period);
+    const period = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);
+    if (period.status === 'generated') await resetDrafts(tx, ctx, id);
     let base: Partial<NewPeriodLine> = {};
     if (input.serviceId) {
       const s = await tx.select({ s: schema.services, rateBp: schema.taxRates.rateBp }).from(schema.services).leftJoin(schema.taxRates, eq(schema.taxRates.id, schema.services.taxRateId))
@@ -116,7 +151,7 @@ export async function addLine(db: Db, ctx: TenantContext, buildingId: string, id
       base = { serviceId: s[0].s.id, description: s[0].s.name, pricing: s[0].s.pricing, unitPriceMinor: s[0].s.defaultPriceMinor, taxRateBp: s[0].rateBp ?? 0, appliesTo: s[0].s.appliesTo };
     }
     const taxRateBp = input.taxRateId !== undefined ? ((await resolveTaxRateBp(tx, ctx, input.taxRateId)) ?? 0) : (base.taxRateBp ?? 0);
-    const [maxRow] = await tx.select({ max: sql<number>`coalesce(max(${PL.sortOrder}), -10)`.mapWith(Number) }).from(PL).where(eq(PL.periodId, id));
+    const [maxRow] = await tx.select({ max: sql<number>`coalesce(max(${PL.sortOrder}), -10)`.mapWith(Number) }).from(PL).where(and(eq(PL.tenantId, ctx.tenantId), eq(PL.periodId, id)));
     const max = maxRow?.max;
     const line: NewPeriodLine = {
       serviceId: base.serviceId ?? null, description: input.description ?? base.description!, pricing: input.pricing ?? base.pricing!,
@@ -131,8 +166,8 @@ export async function addLine(db: Db, ctx: TenantContext, buildingId: string, id
 
 export async function updateLine(db: Db, ctx: TenantContext, buildingId: string, id: string, lineId: string, patch: LinePatch) {
   return db.transaction(async (tx) => {
-    const period = await getPeriodRow(tx, ctx, buildingId, id);
-    assertPeriodEditable(period);
+    const period = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);
+    if (period.status === 'generated') await resetDrafts(tx, ctx, id);
     const before = await tx.query.periodLines.findFirst({ where: and(eq(PL.tenantId, ctx.tenantId), eq(PL.periodId, id), eq(PL.id, lineId)) });
     if (!before) throw notFound('Period line');
     if (before.source === 'auto' && !patch.note) throw badRequest('note_required', 'Editing an automatic line requires a note');
@@ -148,8 +183,8 @@ export async function updateLine(db: Db, ctx: TenantContext, buildingId: string,
 
 export async function deleteLine(db: Db, ctx: TenantContext, buildingId: string, id: string, lineId: string) {
   return db.transaction(async (tx) => {
-    const period = await getPeriodRow(tx, ctx, buildingId, id);
-    assertPeriodEditable(period);
+    const period = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);
+    if (period.status === 'generated') await resetDrafts(tx, ctx, id);
     const before = await tx.query.periodLines.findFirst({ where: and(eq(PL.tenantId, ctx.tenantId), eq(PL.periodId, id), eq(PL.id, lineId)) });
     if (!before) throw notFound('Period line');
     await tx.delete(PL).where(and(eq(PL.tenantId, ctx.tenantId), eq(PL.id, lineId)));

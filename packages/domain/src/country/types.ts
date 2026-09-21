@@ -25,11 +25,18 @@ export interface ReminderRules {
   channels: ReminderChannel[];
 }
 
+/** Descriptions the billing engine synthesizes into invoices, in the country's language. */
+export interface CountryLabels {
+  reserveFund: string;
+  managementFee: string;
+}
+
 export interface CountryPack {
   code: CountryCode;
   currency: string;
   locale: string;
   defaultTaxRates: TaxRateDefault[];
+  labels: CountryLabels;
   invoiceLayout: InvoiceLayoutRules;
   reminderRules: ReminderRules;
   /** Format minor units for display, e.g. 123456 → "1.234,56 ден." */

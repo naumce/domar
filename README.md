@@ -16,3 +16,12 @@ API http://localhost:3001/api/health, web http://localhost:5173, OpenAPI http://
     pnpm e2e
 
 (needs Google Chrome; uses the dev database on port 5180 for the web server)
+
+## Billing
+
+Define services (organization-wide), attach them to a building with a price and a frequency, set the
+building's reserve fund, then open a monthly period. The period starts with auto lines from the due
+building services; edit or add lines by hand, `generate` to produce draft invoices (one per owner),
+and `publish` to number them, book the charges and lock the period. Rendering an invoice to PDF needs
+Google Chrome installed (or set `PDF_BROWSER_CHANNEL` to another installed channel). Invoice numbering
+uses the server's local time, so set `TZ` (see `.env.example`) on the machine running the API.

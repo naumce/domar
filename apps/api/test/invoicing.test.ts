@@ -108,6 +108,21 @@ describe('generate and publish', () => {
     expect(numbers).toEqual(['INV-0004/2026', 'INV-0005/2026', 'INV-0006/2026']);
   });
 
+  it('editing a generated period drops its stale drafts and regenerates with the new line', async () => {
+    const dec = (await post(P(), { period: '2026-12' })).json();
+    expect((await post(P(`/${dec.id}/generate`), {})).json().invoiceCount).toBe(3);
+    const before = (await t.app.inject({ method: 'GET', url: `/api/invoices?buildingId=${buildingId}&period=2026-12`, headers: h() })).json().rows.find((i: { contactId: string }) => i.contactId === owners.O1);
+    const beforeLines = (await t.app.inject({ method: 'GET', url: `/api/invoices/${before.id}`, headers: h() })).json().lines.length;
+    expect((await post(P(`/${dec.id}/lines`), { description: 'Дезинфекција', pricing: 'fixed_per_unit', unitPriceMinor: 5000, appliesTo: ['apartment'] })).statusCode).toBe(201);
+    const reopened = (await t.app.inject({ method: 'GET', url: P(`/${dec.id}`), headers: h() })).json();
+    expect(reopened).toMatchObject({ status: 'open', invoiceCount: 0, generatedAt: null, warnings: [] });
+    expect((await post(P(`/${dec.id}/generate`), {})).json().invoiceCount).toBe(3);
+    const after = (await t.app.inject({ method: 'GET', url: `/api/invoices?buildingId=${buildingId}&period=2026-12`, headers: h() })).json().rows.find((i: { contactId: string }) => i.contactId === owners.O1);
+    const afterLines = (await t.app.inject({ method: 'GET', url: `/api/invoices/${after.id}`, headers: h() })).json().lines;
+    expect(afterLines).toHaveLength(beforeLines + 1);
+    expect(afterLines.filter((l: { description: string }) => l.description === 'Дезинфекција')).toHaveLength(1);
+  });
+
   it('refuses to delete a published invoice, deletes drafts, and is tenant isolated', async () => {
     const pubRows = (await t.app.inject({ method: 'GET', url: `/api/invoices?status=published`, headers: h() })).json().rows;
     expect((await t.app.inject({ method: 'DELETE', url: `/api/invoices/${pubRows[0].id}`, headers: h() })).statusCode).toBe(409);
@@ -179,5 +194,54 @@ describe('concurrent generate/publish', () => {
     const after = await t.app.inject({ method: 'GET', url: P(`/${period.id}`), headers: h() });
     expect(after.json().status).toBe('open');
     expect(after.json().warnings).toEqual([]);
+  });
+});
+
+describe('concurrent publish and draft deletion', () => {
+  let t: Awaited<ReturnType<typeof createTestApp>>;
+  let a: Awaited<ReturnType<typeof registerTenant>>;
+  let buildingId: string; let periodId: string; let draftId: string;
+  const h = () => ({ cookie: a.cookie });
+  const P = (s = '') => `/api/buildings/${buildingId}/periods${s}`;
+  const post = (url: string, payload: Record<string, unknown>) => t.app.inject({ method: 'POST', url, headers: h(), payload });
+
+  beforeAll(async () => {
+    t = await createTestApp();
+    a = await registerTenant(t.app, 'firma-del');
+    const owner = (await post('/api/contacts', { firstName: 'Тест', lastName: 'Бришење' })).json().id;
+    buildingId = (await post('/api/buildings', { name: 'Delete race', shareBasis: 'equal' })).json().id;
+    await post(`/api/buildings/${buildingId}/units`, { label: '1', kind: 'apartment', areaM2: 50, ownerContactId: owner });
+    const svc = (await post('/api/services', { name: 'Услуга', pricing: 'fixed_per_unit', defaultPriceMinor: 10000 })).json().id;
+    await post(`/api/buildings/${buildingId}/services`, { serviceId: svc, startsPeriod: '2026-01' });
+    periodId = (await post(P(), { period: '2026-01' })).json().id;
+    await post(P(`/${periodId}/generate`), {});
+    draftId = (await t.app.inject({ method: 'GET', url: `/api/invoices?buildingId=${buildingId}&period=2026-01`, headers: h() })).json().rows[0].id;
+  });
+  afterAll(async () => { await t.close(); });
+
+  it('publishing while the only draft is deleted: one side wins and the period stays consistent', async () => {
+    const [pub, del] = await Promise.all([
+      post(P(`/${periodId}/publish`), {}),
+      t.app.inject({ method: 'DELETE', url: `/api/invoices/${draftId}`, headers: h() }),
+    ]);
+    expect([[200, 409], [204, 409]]).toContainEqual([pub.statusCode, del.statusCode].sort());
+    const rows = (await t.app.inject({ method: 'GET', url: `/api/invoices?buildingId=${buildingId}&period=2026-01`, headers: h() })).json().rows;
+    const period = (await t.app.inject({ method: 'GET', url: P(`/${periodId}`), headers: h() })).json();
+    const charges = (await t.db.query.postings.findMany()).filter((p) => p.kind === 'charge');
+    if (pub.statusCode === 200) {
+      // publish won: the invoice is published, numbered and booked exactly once
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ id: draftId, status: 'published' });
+      expect(rows[0].number).toBeTruthy();
+      expect(period.status).toBe('published');
+      expect(charges.reduce((s, p) => s + p.amountMinor, 0)).toBe(rows[0].totalMinor);
+    } else {
+      // the deletion won: the draft is gone, the period reopened and nothing was booked
+      expect(rows).toHaveLength(0);
+      expect(period.status).toBe('open');
+      expect(period.warnings).toEqual([]);
+      expect(charges).toHaveLength(0);
+    }
+    expect(period.status).not.toBe('generated');
   });
 });

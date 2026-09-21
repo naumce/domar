@@ -56,10 +56,14 @@ describe('billing periods', () => {
     expect(noNote.json().error.code).toBe('note_required');
     const withNote = await t.app.inject({ method: 'PATCH', url: P(`/${id}/lines/${auto.id}`), headers: h(), payload: { unitPriceMinor: 32000, note: 'договорено попуст' } });
     expect(withNote.json()).toMatchObject({ unitPriceMinor: 32000, source: 'manual', note: 'договорено попуст' });
+    // a service the period has no manual copy of is still rebuilt on refresh
+    const intercom = (await t.app.inject({ method: 'POST', url: '/api/services', headers: h(), payload: { name: 'Домофон', pricing: 'fixed_per_unit', defaultPriceMinor: 5000, taxRateId: vatId, appliesTo: ['apartment'] } })).json().id;
+    await t.app.inject({ method: 'POST', url: `/api/buildings/${buildingId}/services`, headers: h(), payload: { serviceId: intercom, startsPeriod: '2026-01' } });
     const refreshed = (await t.app.inject({ method: 'POST', url: P(`/${id}/refresh-lines`), headers: h() })).json();
     const descs = refreshed.lines.map((l: { description: string; source: string; unitPriceMinor: number }) => `${l.description}:${l.source}:${l.unitPriceMinor}`);
-    expect(descs).toContain('Чистење:auto:30000');   // rebuilt auto line
-    expect(descs).toContain('Чистење:manual:32000'); // the edited copy survives as manual
+    expect(descs).not.toContain('Чистење:auto:30000'); // the manual copy wins; no duplicate auto line
+    expect(descs).toContain('Чистење:manual:32000');   // the edited copy survives as manual
+    expect(descs).toContain('Домофон:auto:5000');      // no manual copy: rebuilt as auto
     expect(descs).toContain('Замена брава:manual:2500');
     const del = await t.app.inject({ method: 'DELETE', url: P(`/${id}/lines/${refreshed.lines.find((l: { description: string }) => l.description === 'Замена брава').id}`), headers: h() });
     expect(del.statusCode).toBe(204);

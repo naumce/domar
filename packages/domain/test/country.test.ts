@@ -22,6 +22,9 @@ describe('mk country pack', () => {
       channels: ['email', 'sms', 'letter'],
     });
   });
+  it('carries the labels the billing engine synthesizes lines with', () => {
+    expect(mkPack.labels).toEqual({ reserveFund: 'Резервен фонд', managementFee: 'Управувачки услуги' });
+  });
   it('encodes Art. 33 invoice layout requirements', () => {
     expect(mkPack.invoiceLayout).toEqual({
       showBuildingWideAmountPerLine: true,
