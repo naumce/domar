@@ -6,6 +6,11 @@ export const pageQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 export const nullableStr = (max = 500) => z.string().max(max).nullable().optional();
+export const unitKindEnum = z.enum(['apartment', 'commercial', 'parking', 'storage', 'other']);
+export const boolQuery = z.enum(['true', 'false']).transform((v) => v === 'true');
+export const moneyMinor = z.number().int().min(0).max(1_000_000_000_000);
+export const periodStr = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM');
+export const dedupe = <T>(xs: T[]): T[] => [...new Set(xs)];
 
 /** Drops explicit-undefined keys so the result satisfies exactOptionalPropertyTypes when spread into drizzle's `.set()`. */
 export function stripUndefined<P extends Record<string, unknown>>(obj: P): { [K in keyof P]?: Exclude<P[K], undefined> } {

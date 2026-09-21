@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { unitKindEnum } from '../common.js';
 
-export const unitKindEnum = z.enum(['apartment', 'commercial', 'parking', 'storage', 'other']);
+export { unitKindEnum };
 const ownerOut = z.object({ id: z.string(), firstName: z.string(), lastName: z.string() }).nullable();
 export const unitOut = z.object({
   id: z.string(), buildingId: z.string(), label: z.string(), floor: z.string().nullable(), kind: unitKindEnum,
