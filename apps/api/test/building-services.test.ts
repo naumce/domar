@@ -41,6 +41,18 @@ describe('building services', () => {
     expect(back.json()).toMatchObject({ priceMinor: null, effectivePriceMinor: 30000, effectivePricing: 'fixed_per_unit', frequency: 'monthly', intervalMonths: 1 });
   });
 
+  it('rejects a merged endsPeriod that precedes startsPeriod', async () => {
+    const list = await t.app.inject({ method: 'GET', url: url(), headers: { cookie: a.cookie } });
+    const id = list.json().rows[0].id;
+    const rejected = await t.app.inject({ method: 'PATCH', url: `${url()}/${id}`, headers: { cookie: a.cookie }, payload: { endsPeriod: '2025-12' } });
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json().error.code).toBe('validation');
+    const ok = await t.app.inject({ method: 'PATCH', url: `${url()}/${id}`, headers: { cookie: a.cookie }, payload: { endsPeriod: '2026-12' } });
+    expect(ok.statusCode).toBe(200);
+    const rejected2 = await t.app.inject({ method: 'PATCH', url: `${url()}/${id}`, headers: { cookie: a.cookie }, payload: { startsPeriod: '2027-01' } });
+    expect(rejected2.statusCode).toBe(400);
+  });
+
   it('is tenant isolated and detaches', async () => {
     const b = await registerTenant(t.app, 'firma-b');
     expect((await t.app.inject({ method: 'GET', url: url(), headers: { cookie: b.cookie } })).statusCode).toBe(404);

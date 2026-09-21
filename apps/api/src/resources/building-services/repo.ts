@@ -1,4 +1,5 @@
 import { type Db, schema } from '@domar/db';
+import { comparePeriods } from '@domar/domain';
 import { and, asc, eq } from 'drizzle-orm';
 import type { z } from 'zod';
 import { writeAudit } from '../../audit.js';
@@ -49,7 +50,7 @@ export async function attachService(db: Db, ctx: TenantContext, buildingId: stri
     const intervalMonths = input.frequency === 'monthly' ? 1 : input.intervalMonths;
     let row;
     try {
-      [row] = await tx.insert(BS).values({ ...stripUndefined(input), serviceId: input.serviceId, startsPeriod: input.startsPeriod, frequency: input.frequency, intervalMonths, tenantId: ctx.tenantId, buildingId, priceMinor: input.priceMinor ?? null, pricing: input.pricing ?? null, endsPeriod: input.endsPeriod ?? null }).returning();
+      [row] = await tx.insert(BS).values({ ...stripUndefined(input), serviceId: input.serviceId, startsPeriod: input.startsPeriod, intervalMonths, tenantId: ctx.tenantId, buildingId, priceMinor: input.priceMinor ?? null, pricing: input.pricing ?? null, endsPeriod: input.endsPeriod ?? null }).returning();
     } catch (e) {
       if (isUniqueViolation(e)) throw conflict('already_attached', 'This service is already attached to the building');
       throw e;
@@ -65,6 +66,9 @@ export async function updateBuildingService(db: Db, ctx: TenantContext, building
     const frequency = patch.frequency ?? before.frequency;
     const intervalMonths = frequency === 'monthly' ? 1 : (patch.intervalMonths ?? before.intervalMonths);
     if (frequency === 'every_n_months' && intervalMonths < 2) throw badRequest('validation', 'intervalMonths must be ≥ 2 for every_n_months');
+    const startsPeriod = patch.startsPeriod ?? before.startsPeriod;
+    const endsPeriod = patch.endsPeriod === undefined ? before.endsPeriod : patch.endsPeriod;
+    if (endsPeriod && comparePeriods(endsPeriod, startsPeriod) < 0) throw badRequest('validation', 'endsPeriod must not precede startsPeriod');
     const [row] = await tx.update(BS).set({ ...stripUndefined(patch), frequency, intervalMonths, updatedAt: new Date() }).where(and(eq(BS.tenantId, ctx.tenantId), eq(BS.id, id))).returning();
     await writeAudit(tx, ctx, { action: 'building_service.update', entityType: 'building_service', entityId: id, before, after: row });
     return getBuildingService(tx, ctx, buildingId, id);
