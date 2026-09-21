@@ -1,0 +1,52 @@
+import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
+import type { Db } from '@domar/db';
+import Fastify, { type FastifyInstance } from 'fastify';
+import { hasZodFastifySchemaValidationErrors, serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
+import type postgres from 'postgres';
+import type { Config } from './config.js';
+import { AppError } from './errors.js';
+import { dbPlugin } from './plugins/db.js';
+import { healthRoutes } from './routes/health.js';
+
+export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config }): Promise<FastifyInstance> {
+  const app = Fastify({ logger: opts.config.env !== 'test', trustProxy: true }).withTypeProvider<ZodTypeProvider>();
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
+  await app.register(cors, { origin: opts.config.corsOrigins, credentials: true });
+  await app.register(cookie);
+  await app.register(rateLimit, { global: false });
+  await app.register(dbPlugin, { db: opts.db, sql: opts.sql });
+  app.decorate('config', opts.config);
+
+  app.setNotFoundHandler((req, reply) => {
+    reply.status(404).send({ error: { code: 'not_found', message: `Route ${req.method} ${req.url} not found` } });
+  });
+
+  app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof AppError) {
+      return reply.status(err.statusCode).send({ error: { code: err.code, message: err.message, ...(err.details !== undefined ? { details: err.details } : {}) } });
+    }
+    if (hasZodFastifySchemaValidationErrors(err)) {
+      return reply.status(400).send({ error: { code: 'validation', message: 'Invalid request', details: err.validation } });
+    }
+    if (typeof (err as { statusCode?: number }).statusCode === 'number' && (err as { statusCode: number }).statusCode < 500) {
+      const e = err as { statusCode: number; code?: string; message: string };
+      return reply.status(e.statusCode).send({ error: { code: e.code?.toLowerCase() ?? 'error', message: e.message } });
+    }
+    app.log.error(err);
+    return reply.status(500).send({ error: { code: 'internal', message: 'Internal error' } });
+  });
+
+  await app.register(async (api) => {
+    await api.register(healthRoutes);
+  }, { prefix: '/api' });
+
+  return app;
+}
+
+declare module 'fastify' {
+  interface FastifyInstance { config: Config }
+}
