@@ -15,6 +15,7 @@ import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
+import { reserveFundRoutes } from './resources/reserve-fund/routes.js';
 import { serviceRoutes } from './resources/services/routes.js';
 import { taxRateRoutes } from './resources/tax-rates/routes.js';
 import { unitRoutes } from './resources/units/routes.js';
@@ -65,6 +66,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(buildingRoutes, { prefix: '/buildings' });
     await api.register(unitRoutes, { prefix: '/buildings/:buildingId/units' });
     await api.register(buildingServiceRoutes, { prefix: '/buildings/:buildingId/services' });
+    await api.register(reserveFundRoutes, { prefix: '/buildings/:buildingId/reserve-fund' });
   }, { prefix: '/api' });
 
   return app;
