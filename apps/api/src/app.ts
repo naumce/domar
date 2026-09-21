@@ -6,6 +6,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { hasZodFastifySchemaValidationErrors, serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
 import type postgres from 'postgres';
 import type { Config } from './config.js';
+import { authPlugin } from './auth/plugin.js';
+import { authRoutes } from './auth/routes.js';
 import { AppError } from './errors.js';
 import { dbPlugin } from './plugins/db.js';
 import { healthRoutes } from './routes/health.js';
@@ -19,6 +21,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   await app.register(dbPlugin, { db: opts.db, sql: opts.sql });
+  await app.register(authPlugin);
   app.decorate('config', opts.config);
 
   app.setNotFoundHandler((req, reply) => {
@@ -42,6 +45,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
 
   await app.register(async (api) => {
     await api.register(healthRoutes);
+    await api.register(authRoutes, { prefix: '/auth' });
   }, { prefix: '/api' });
 
   return app;
