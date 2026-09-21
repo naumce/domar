@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allocateLargestRemainder, applyTaxBp, mulMinor, roundHalfUp } from '../src/money.js';
+import { allocateLargestRemainder, applyTaxBp, divRoundHalfUp, mulMinor, roundHalfUp } from '../src/money.js';
 
 describe('allocateLargestRemainder', () => {
   it('splits evenly when weights are equal', () => {
@@ -25,6 +25,9 @@ describe('allocateLargestRemainder', () => {
   });
   it('returns all zeros for zero total', () => {
     expect(allocateLargestRemainder(0, [0, 0])).toEqual([0, 0]);
+  });
+  it('breaks ties by lowest index', () => {
+    expect(allocateLargestRemainder(100, [1, 1, 1])).toEqual([34, 33, 33]);
   });
 });
 
@@ -52,5 +55,21 @@ describe('mulMinor', () => {
   it('multiplies price by decimal quantity with rounding', () => {
     expect(mulMinor(1250, 55.5)).toBe(69375);
     expect(mulMinor(333, 1.5)).toBe(500); // 499.5 → 500
+  });
+  it('handles exact-half products correctly', () => {
+    expect(mulMinor(750, 0.018)).toBe(14); // 750*0.018 = 13.5 → 14
+    expect(mulMinor(2000000, 0.0000005)).toBe(1); // 2000000*0.0000005 = 1.0 → 1
+    expect(mulMinor(-333, 1.5)).toBe(-500); // -333*1.5 = -499.5 → -500
+  });
+});
+
+describe('divRoundHalfUp', () => {
+  it('divides and rounds half away from zero', () => {
+    expect(divRoundHalfUp(13, 2)).toBe(7); // 13/2 = 6.5 → 7
+    expect(divRoundHalfUp(-13, 2)).toBe(-7); // -13/2 = -6.5 → -7
+    expect(divRoundHalfUp(10, 4)).toBe(3); // 10/4 = 2.5 → 3
+  });
+  it('throws on zero denominator', () => {
+    expect(() => divRoundHalfUp(1, 0)).toThrow(RangeError);
   });
 });

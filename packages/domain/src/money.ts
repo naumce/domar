@@ -1,17 +1,30 @@
-/** Round half away from zero to an integer. */
-export function roundHalfUp(value: number): number {
-  const sign = value < 0 ? -1 : 1;
-  return sign * Math.floor(Math.abs(value) + 0.5 + Number.EPSILON);
+/** Round half away from zero to an integer using only integer arithmetic. */
+export function divRoundHalfUp(numerator: number, denominator: number): number {
+  if (denominator === 0) throw new RangeError('denominator cannot be zero');
+  if (!Number.isInteger(numerator)) throw new RangeError('numerator must be an integer');
+  if (!Number.isInteger(denominator)) throw new RangeError('denominator must be an integer');
+  const sign = (numerator < 0) !== (denominator < 0) ? -1 : 1;
+  const abs = Math.abs(numerator);
+  const d = Math.abs(denominator);
+  return sign * Math.floor((2 * abs + d) / (2 * d));
 }
 
-/** price (minor units) × decimal quantity, rounded half up to minor units. */
+/** Round half away from zero to an integer; for values already free of float error; money code uses divRoundHalfUp. */
+export function roundHalfUp(value: number): number {
+  const sign = value < 0 ? -1 : 1;
+  return sign * Math.floor(Math.abs(value) + 0.5);
+}
+
+/** price (minor units) × decimal quantity (≤6 decimals), rounded half up to minor units. */
 export function mulMinor(priceMinor: number, quantity: number): number {
-  return roundHalfUp(priceMinor * quantity);
+  const scaledProduct = priceMinor * quantity * 1e6;
+  const roundedProduct = Math.floor(Math.abs(scaledProduct) + 0.5) * Math.sign(scaledProduct || 1);
+  return divRoundHalfUp(roundedProduct, 1_000_000);
 }
 
 /** Apply a tax rate in basis points (1800 = 18%). */
 export function applyTaxBp(netMinor: number, rateBp: number): { taxMinor: number; grossMinor: number } {
-  const taxMinor = roundHalfUp((netMinor * rateBp) / 10_000);
+  const taxMinor = divRoundHalfUp(netMinor * rateBp, 10_000);
   return { taxMinor, grossMinor: netMinor + taxMinor };
 }
 
