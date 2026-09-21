@@ -37,10 +37,29 @@ describe('mk country pack', () => {
     expect(mkPack.formatMoney(0)).toBe('0,00 ден.');
   });
   it('parses localized amounts to minor units', () => {
+    // Original test cases
     expect(mkPack.parseAmountToMinor('1.234,56')).toBe(123456);
     expect(mkPack.parseAmountToMinor('1234.56')).toBe(123456);
     expect(mkPack.parseAmountToMinor('1 234,5')).toBe(123450);
     expect(mkPack.parseAmountToMinor('-12')).toBe(-1200);
     expect(() => mkPack.parseAmountToMinor('abc')).toThrow();
+    // Fix round 1 test cases (correct grouping vs. decimal detection)
+    expect(mkPack.parseAmountToMinor('0.285')).toBe(29);
+    expect(mkPack.parseAmountToMinor('12.345')).toBe(1234500);
+    expect(mkPack.parseAmountToMinor('1.234')).toBe(123400);
+    expect(mkPack.parseAmountToMinor('1.23')).toBe(123);
+    expect(mkPack.parseAmountToMinor('1,234.56')).toBe(123456);
+    expect(mkPack.parseAmountToMinor('-1.234,56')).toBe(-123456);
+    expect(mkPack.parseAmountToMinor('1.234.567,89')).toBe(123456789);
+    expect(mkPack.parseAmountToMinor('1,5')).toBe(150);
+    expect(mkPack.parseAmountToMinor('12,345')).toBe(1235);
+    expect(mkPack.parseAmountToMinor('1234')).toBe(123400);
+    // Should throw on invalid grouping
+    expect(() => mkPack.parseAmountToMinor('1.2.345')).toThrow();
+    expect(() => mkPack.parseAmountToMinor('1.23.4')).toThrow();
+    expect(() => mkPack.parseAmountToMinor('1,234,5')).toThrow();
+    expect(() => mkPack.parseAmountToMinor('1.234.56')).toThrow();
+    expect(() => mkPack.parseAmountToMinor('.5')).toThrow();
+    expect(() => mkPack.parseAmountToMinor('')).toThrow();
   });
 });
