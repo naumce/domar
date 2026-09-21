@@ -1,0 +1,26 @@
+name: ci
+on: { push: { branches: [main] }, pull_request: {} }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: domar, POSTGRES_PASSWORD: domar, POSTGRES_DB: domar }
+        ports: ['54329:5432']
+        options: >-
+          --health-cmd "pg_isready -U domar" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://domar:domar@localhost:54329/domar
+      DATABASE_ADMIN_URL: postgres://domar:domar@localhost:54329/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm --filter @domar/web build
