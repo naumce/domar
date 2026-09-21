@@ -22,12 +22,21 @@ const error = ref('');
 onMounted(async () => { await res.load(); catalog.value = (await api.get<{ rows: Service[] }>('/api/services', { recurring: 'true' })).rows; });
 async function submit() {
   error.value = '';
-  const price = form.value.price.trim() === '' ? null : toMinor(form.value.price);
-  if (!form.value.serviceId || price === undefined) { error.value = t('auth.errors.validation'); return; }
+  const raw = form.value.price.trim();
+  const price = raw === '' ? null : toMinor(raw);
+  if (!form.value.serviceId || (raw !== '' && price === null)) { error.value = t('auth.errors.validation'); return; }
+  let intervalMonths = 1;
+  if (form.value.frequency === 'every_n_months') {
+    intervalMonths = Number(form.value.intervalMonths);
+    if (!Number.isInteger(intervalMonths) || intervalMonths < 2) { error.value = t('auth.errors.validation'); return; }
+  }
   try {
-    await res.create({ serviceId: form.value.serviceId, startsPeriod: form.value.startsPeriod, frequency: form.value.frequency, intervalMonths: form.value.frequency === 'monthly' ? 1 : Number(form.value.intervalMonths), priceMinor: price });
+    await res.create({ serviceId: form.value.serviceId, startsPeriod: form.value.startsPeriod, frequency: form.value.frequency, intervalMonths, priceMinor: price });
     open.value = false;
-  } catch (e) { error.value = (e as { code?: string }).code === 'already_attached' ? t('buildingServices.alreadyAttached') : t('auth.errors.validation'); }
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    error.value = code === 'already_attached' ? t('buildingServices.alreadyAttached') : code === 'validation' || code === 'invalid_reference' ? t('auth.errors.validation') : t('app.error');
+  }
 }
 </script>
 <template>
@@ -46,7 +55,7 @@ async function submit() {
       <AppInput v-model="form.startsPeriod" :label="t('buildingServices.startsPeriod')" type="month" data-test="attach-starts" />
       <AppSelect v-model="form.frequency" :label="t('buildingServices.frequency')" :options="[{ value: 'monthly', label: t('buildingServices.monthly') }, { value: 'every_n_months', label: t('buildingServices.everyN') }]" />
       <AppInput v-if="form.frequency === 'every_n_months'" v-model="form.intervalMonths" :label="t('buildingServices.intervalMonths')" type="number" />
-      <AppInput v-model="form.price" :label="t('buildingServices.overridePrice')" placeholder="—" />
+      <AppInput v-model="form.price" :label="t('buildingServices.overridePrice')" placeholder="—" data-test="attach-price" />
       <p v-if="error" class="col-span-2 text-sm text-red-600" data-test="error">{{ error }}</p>
       <div class="col-span-2 flex justify-end gap-2"><AppButton variant="secondary" @click="open = false">{{ t('app.cancel') }}</AppButton><AppButton type="submit" data-test="attach-submit">{{ t('app.save') }}</AppButton></div>
     </form>

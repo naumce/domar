@@ -21,11 +21,13 @@ const opening = ref('');
 const expense = ref({ description: '', supplierText: '', amount: '', paidAt: new Date().toISOString().slice(0, 10) });
 const error = ref('');
 async function load() {
-  state.value = await api.get<ReserveFundState>(base);
-  expenses.value = (await api.get<{ rows: Expense[] }>(`${base}/expenses`)).rows;
-  transactions.value = (await api.get<{ rows: FundTransaction[] }>(`${base}/transactions`)).rows;
-  const s = state.value.setting;
-  if (s) form.value = { basis: s.basis, amount: (s.amountMinor / 100).toFixed(2).replace('.', ','), appliesTo: [...s.appliesTo], active: s.active };
+  try {
+    state.value = await api.get<ReserveFundState>(base);
+    expenses.value = (await api.get<{ rows: Expense[] }>(`${base}/expenses`)).rows;
+    transactions.value = (await api.get<{ rows: FundTransaction[] }>(`${base}/transactions`)).rows;
+    const s = state.value.setting;
+    if (s) form.value = { basis: s.basis, amount: (s.amountMinor / 100).toFixed(2).replace('.', ','), appliesTo: [...s.appliesTo], active: s.active };
+  } catch { error.value = t('app.error'); }
 }
 onMounted(load);
 function toggleKind(k: UnitKind) { const i = form.value.appliesTo.indexOf(k); if (i >= 0) form.value.appliesTo.splice(i, 1); else form.value.appliesTo.push(k); }
@@ -96,4 +98,5 @@ async function voidExpense(id: string) {
       </DataTable>
     </div>
   </div>
+  <p v-else-if="error" class="text-sm text-red-600" data-test="page-error">{{ error }}</p>
 </template>
