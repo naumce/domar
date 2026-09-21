@@ -66,10 +66,12 @@ export type CalcWarning =
   | { code: 'missing_area'; unitId: string; lineId: string }
   | { code: 'missing_share'; unitId: string; lineId: string }
   | { code: 'no_owner'; unitId: string }
-  | { code: 'no_weight'; lineId: string };
+  | { code: 'target_no_owner'; unitId: string; targetUnitId: string }
+  | { code: 'no_weight'; lineId: string }
+  | { code: 'no_units'; lineId: string };
 
 export interface CalcResult {
   invoices: InvoiceDraft[];
   warnings: CalcWarning[];
-  skippedUnits: { unitId: string; reason: 'no_owner' }[];
+  skippedUnits: { unitId: string; reason: 'no_owner' | 'target_no_owner' }[];
 }

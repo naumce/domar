@@ -76,6 +76,103 @@ describe('calculatePeriod', () => {
     expect(r.invoices).toEqual([]);
   });
 
+  it('omits zero-amount lines from invoices', () => {
+    // P1 (attached to A, billed to O1) has no area, so its area-based lift share floors to 0.
+    expect(byOwner.O1!.lines.some((l) => l.lineId === 'l-lift' && l.unitId === 'P1')).toBe(false);
+    expect(result.invoices.flatMap((i) => i.lines).some((l) => l.ownerNetMinor === 0)).toBe(false);
+  });
+
+  it('applies quantity as a multiplier before per-unit or shared-total splitting', () => {
+    const twoApartments: CalcInput = {
+      building: { id: 'b1', shareBasis: 'area' },
+      units: [
+        { id: 'A', label: '1', kind: 'apartment', areaM2: 50, ownershipShare: null, ownerContactId: 'O1', attachedToUnitId: null },
+        { id: 'B', label: '2', kind: 'apartment', areaM2: 50, ownershipShare: null, ownerContactId: 'O2', attachedToUnitId: null },
+      ],
+      lines: [],
+      previousBalances: {},
+      reserveFundBuildingBalanceMinor: 0,
+    };
+
+    const perM2 = calculatePeriod({
+      ...twoApartments,
+      lines: [{ id: 'l1', kind: 'service', description: 'x', pricing: 'per_m2', quantity: 2, unitPriceMinor: 1000, taxRateBp: 0, appliesTo: ['apartment'], fund: 'regular' }],
+    });
+    expect(perM2.invoices.find((i) => i.contactId === 'O1')!.lines[0]!.ownerNetMinor).toBe(100000); // 1000 * 2 * 50
+
+    const shared = calculatePeriod({
+      ...twoApartments,
+      lines: [{ id: 'l2', kind: 'service', description: 'y', pricing: 'shared_total', quantity: 2, unitPriceMinor: 300000, taxRateBp: 0, appliesTo: ['apartment'], fund: 'regular' }],
+    });
+    const sharedA = shared.invoices.find((i) => i.contactId === 'O1')!.lines[0]!;
+    const sharedB = shared.invoices.find((i) => i.contactId === 'O2')!.lines[0]!;
+    expect([sharedA.ownerNetMinor, sharedB.ownerNetMinor]).toEqual([300000, 300000]); // total 600000 split evenly by equal area
+  });
+
+  it('skips an attached unit whose target exists but has no owner, distinctly from no_owner', () => {
+    const r = calculatePeriod({
+      building: { id: 'b1', shareBasis: 'area' },
+      units: [
+        { id: 'A', label: '1', kind: 'apartment', areaM2: 50, ownershipShare: null, ownerContactId: null, attachedToUnitId: null },
+        { id: 'P1', label: 'P-1', kind: 'parking', areaM2: null, ownershipShare: null, ownerContactId: 'OP', attachedToUnitId: 'A' },
+      ],
+      lines: [{ id: 'l1', kind: 'manual', description: 'x', pricing: 'fixed_per_unit', quantity: 1, unitPriceMinor: 1000, taxRateBp: 0, appliesTo: ['parking'], fund: 'regular' }],
+      previousBalances: {},
+      reserveFundBuildingBalanceMinor: 0,
+    });
+    expect(r.warnings).toContainEqual({ code: 'target_no_owner', unitId: 'P1', targetUnitId: 'A' });
+    expect(r.skippedUnits).toContainEqual({ unitId: 'P1', reason: 'target_no_owner' });
+    expect(r.invoices).toEqual([]);
+  });
+
+  it('warns no_units when a line covers no unit kind present in the building', () => {
+    const r = calculatePeriod({ ...input, lines: [{ id: 'l-other', kind: 'manual', description: 'x', pricing: 'fixed_per_unit', quantity: 1, unitPriceMinor: 1000, taxRateBp: 0, appliesTo: ['other'], fund: 'regular' }] });
+    expect(r.warnings).toContainEqual({ code: 'no_units', lineId: 'l-other' });
+    expect(r.invoices).toEqual([]);
+  });
+
+  it('orders invoices by first owned unit, even when an unowned unit is listed first', () => {
+    const r = calculatePeriod({
+      ...input,
+      units: [input.units[4]!, ...input.units.slice(0, 4)], // S1 (no owner) moved to the front
+    });
+    expect(r.invoices.map((i) => i.contactId)).toEqual(['O1', 'O2', 'O3']);
+  });
+
+  it('warns missing_share for a custom-basis unit with no configured share', () => {
+    const r = calculatePeriod({
+      ...input,
+      building: { id: 'b1', shareBasis: 'custom' },
+      units: input.units.map((u) => ({ ...u, ownershipShare: u.id === 'A' ? 0.5 : u.id === 'B' ? 0.5 : null })),
+      lines: [{ ...input.lines[1]!, appliesTo: ['apartment', 'commercial'] }],
+    });
+    expect(r.warnings).toContainEqual({ code: 'missing_share', unitId: 'C', lineId: 'l-lift' });
+  });
+
+  it('conserves the building-wide net: owner shares plus skipped-unit shares equal buildingWideNetMinor', () => {
+    // Give S1 (the only skipped unit in the fixture) an owner, so its share becomes visible on an
+    // invoice instead of being dropped, then compare against the original run's owner totals.
+    const withS1Owned = calculatePeriod({
+      ...input,
+      units: input.units.map((u) => (u.id === 'S1' ? { ...u, ownerContactId: 'O4' } : u)),
+    });
+    const sumByLine = (r: ReturnType<typeof calculatePeriod>, lineId: string) =>
+      r.invoices.flatMap((i) => i.lines).filter((l) => l.lineId === lineId).reduce((s, l) => s + l.ownerNetMinor, 0);
+
+    for (const line of input.lines) {
+      const buildingWide = withS1Owned.invoices.flatMap((i) => i.lines).find((l) => l.lineId === line.id)?.buildingWideNetMinor;
+      if (buildingWide === undefined) continue; // line billed nobody in either run
+      const skippedShare = withS1Owned.invoices.find((i) => i.contactId === 'O4')?.lines.filter((l) => l.lineId === line.id).reduce((s, l) => s + l.ownerNetMinor, 0) ?? 0;
+      expect(sumByLine(result, line.id) + skippedShare).toBe(buildingWide);
+    }
+  });
+
+  it('throws on duplicate unit ids', () => {
+    const dup: CalcInput = { ...input, units: [...input.units, { ...input.units[0]! }] };
+    expect(() => calculatePeriod(dup)).toThrow(RangeError);
+    expect(() => calculatePeriod(dup)).toThrow(/duplicate unit id/);
+  });
+
   it('uses equal and custom share bases', () => {
     const equal = calculatePeriod({ ...input, building: { id: 'b1', shareBasis: 'equal' }, lines: [input.lines[1]!] });
     // 5 covered units incl. P1 and S1; 600000/5 = 120000 each; S1 skipped (no owner)
