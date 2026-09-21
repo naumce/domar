@@ -58,7 +58,8 @@ describe('mulMinor', () => {
   });
   it('handles exact-half products correctly', () => {
     expect(mulMinor(750, 0.018)).toBe(14); // 750*0.018 = 13.5 → 14
-    expect(mulMinor(2000000, 0.0000005)).toBe(1); // 2000000*0.0000005 = 1.0 → 1
+    expect(mulMinor(1_000_000, 0.0000005)).toBe(1); // 1_000_000*0.0000005 = 0.5 → 1
+    expect(mulMinor(2_000_000, 0.0000005)).toBe(2); // 2_000_000*0.0000005 = 1.0 → 2
     expect(mulMinor(-333, 1.5)).toBe(-500); // -333*1.5 = -499.5 → -500
   });
 });

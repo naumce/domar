@@ -15,11 +15,10 @@ export function roundHalfUp(value: number): number {
   return sign * Math.floor(Math.abs(value) + 0.5);
 }
 
-/** price (minor units) × decimal quantity (≤6 decimals), rounded half up to minor units. */
+/** price (minor units) × decimal quantity. Quantities carry at most 6 decimals; they are scaled to integers first so no float rounding reaches the result. */
 export function mulMinor(priceMinor: number, quantity: number): number {
-  const scaledProduct = priceMinor * quantity * 1e6;
-  const roundedProduct = Math.floor(Math.abs(scaledProduct) + 0.5) * Math.sign(scaledProduct || 1);
-  return divRoundHalfUp(roundedProduct, 1_000_000);
+  const q = Math.round(quantity * 1_000_000);
+  return divRoundHalfUp(priceMinor * q, 1_000_000);
 }
 
 /** Apply a tax rate in basis points (1800 = 18%). */
