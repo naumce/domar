@@ -41,10 +41,11 @@ export default {
     title: 'Periods', create: 'New period', exists: 'Period already exists.', managementFee: 'Management fee (per unit)', managementFeeTax: 'Management fee tax', numbering: 'Numbering',
     prefix: 'Prefix', suffix: 'Suffix', lines: 'Lines', addLine: 'Add line', fromService: 'From service', auto: 'Auto', manual: 'Manual', note: 'Note (required for auto lines)',
     refresh: 'Refresh auto lines', generate: 'Generate invoices', regenerate: 'Regenerate', deleteDrafts: 'Delete drafts', publish: 'Publish all',
-    publishConfirm: 'Published invoices cannot be deleted. Continue?', warnings: 'Warnings',
+    publishConfirm: 'Published invoices cannot be deleted. Continue?', warnings: 'Warnings', noteRequired: 'Enter a note to edit an automatic line.', nothingToPublish: 'No drafts to publish.',
     warning: {
       missing_area: 'Unit {unit} has no area — not included in the m² allocation.', missing_share: 'Unit {unit} has no ownership share.',
       no_owner: 'Unit {unit} has no owner — not invoiced.', no_weight: 'Line has no units to allocate to — skipped.',
+      target_no_owner: 'Unit {unit} is attached to a unit without an owner — not invoiced.', no_units: 'A line applies to no unit — omitted.',
     },
     status: { open: 'Open', generated: 'Drafts', published: 'Published' },
     invoices: 'Invoices', locked: 'The period is published and can no longer be changed.',
