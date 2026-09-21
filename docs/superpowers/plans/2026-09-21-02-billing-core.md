@@ -2882,7 +2882,6 @@ async function saveSetting() {
   error.value = '';
   const amountMinor = toMinor(form.value.amount);
   if (amountMinor === null) { error.value = t('auth.errors.validation'); return; }
-  try { await api.patch(base, undefined as never); } catch { /* PUT below */ }
   try { await api.put(base, { basis: form.value.basis, amountMinor, appliesTo: form.value.appliesTo, active: form.value.active }); await load(); } catch { error.value = t('app.error'); }
 }
 async function addOpening() {
@@ -2948,7 +2947,7 @@ async function voidExpense(id: string) {
   </div>
 </template>
 ```
-Remove the stray `try { await api.patch(base, undefined as never); } catch {}` line from `saveSetting` — it is a typo in this plan; the function must only call `api.put`. Add `api.put` to `apps/web/src/api/client.ts` (`put: <T>(path, body) => request<T>('PUT', path, body)`). Add i18n keys: `reserveFund.voidReason` 'Причина за поништување', `reserveFund.kind.opening` 'Почетно салдо', `reserveFund.kind.expense` 'Трошок', `reserveFund.kind.adjustment` 'Корекција', `reserveFund.kind.payment` 'Уплата', `reserveFund.kind.charge` 'Задолжување' (en mirrors).
+Add `api.put` to `apps/web/src/api/client.ts` (`put: <T>(path, body) => request<T>('PUT', path, body)`). Add i18n keys: `reserveFund.voidReason` 'Причина за поништување', `reserveFund.kind.opening` 'Почетно салдо', `reserveFund.kind.expense` 'Трошок', `reserveFund.kind.adjustment` 'Корекција', `reserveFund.kind.payment` 'Уплата', `reserveFund.kind.charge` 'Задолжување' (en mirrors).
 
 `apps/web/src/pages/BuildingDetailPage.vue` — wrap the existing units section in a tab switcher:
 ```vue
@@ -3423,4 +3422,4 @@ git commit -m "test(e2e): billing flow from service to published invoice"
 - Spec §15 item 2 coverage: services (T3), building services (T4), reserve fund (T5), calculation engine (T1), periods (T6), invoices + ledger postings + publish (T7), PDF/HTML (T8); web for all of it (T9–T11); e2e (T12). Schema (T2) includes `expenses`, `postings` and `invoice_sequences` that sub-plans 3–5 build on.
 - Type consistency: `NewPosting`, `addPosting(s)`, `ownerBalances`, `fundBalance`, `billedToOwners` (T5 `ledger.ts`) are used by T7; `resolveTaxRateBp` (T3) by T6; `getPeriod`/`getPeriodRow`/`assertPeriodEditable` (T6) by T7; `getReserveFundSetting` (T5) by T7; `periodDetailOut`/`periodParam` (T6) by T7 routes; `getInvoice` (T7) by T8; `buildingParam`/`buildingUnitParam` (Foundation T10) by T4/T5; `unitKindEnum`, `boolQuery`, `moneyMinor`, `periodStr`, `dedupe` added to common.ts in T3 and used by T4–T7.
 - Known deliberate simplifications recorded in the design addendum (single reserve-fund row, 15-day due date, no corrections after publish).
-- Web: `api.put` is added in T10; `ReserveFundTab` contains one stray line the plan text itself flags for removal (the implementer removes it).
+- Web: `api.put` is added to the client in T10.
