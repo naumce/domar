@@ -87,6 +87,11 @@ describe('generate and publish', () => {
     expect(charges.filter((p) => p.fund === 'reserve').reduce((s, p) => s + p.amountMinor, 0)).toBe(225000);
     const rf = (await t.app.inject({ method: 'GET', url: `/api/buildings/${buildingId}/reserve-fund`, headers: h() })).json();
     expect(rf).toMatchObject({ balanceMinor: 3500000, contributionsBilledMinor: 225000 });
+    const html = await t.app.inject({ method: 'GET', url: `/api/invoices/${rows[0].id}/html`, headers: h() });
+    expect(html.statusCode).toBe(200);
+    expect(html.headers['content-type']).toMatch(/^text\/html/);
+    expect(html.body).toContain(rows[0].number);
+    expect(html.body).toContain('Резервен фонд');
     expect((await post(P(`/${periodId}/publish`), {})).statusCode).toBe(409);
     expect((await post(P(`/${periodId}/lines`), { description: 'x', pricing: 'fixed_per_unit', unitPriceMinor: 1 })).json().error.code).toBe('period_locked');
   });

@@ -11,6 +11,7 @@ import type { Config } from './config.js';
 import { authPlugin } from './auth/plugin.js';
 import { authRoutes } from './auth/routes.js';
 import { AppError } from './errors.js';
+import { pdfRoutes } from './pdf/routes.js';
 import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
@@ -73,6 +74,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(periodRoutes, { prefix: '/buildings/:buildingId/periods' });
     await api.register(invoicingRoutes, { prefix: '/buildings/:buildingId/periods' });
     await api.register(invoiceRoutes, { prefix: '/invoices' });
+    await api.register(pdfRoutes, { prefix: '/invoices' });
   }, { prefix: '/api' });
 
   return app;

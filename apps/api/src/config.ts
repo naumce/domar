@@ -7,6 +7,7 @@ const schema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   TRUST_PROXY: z.string().default('false'),
+  PDF_BROWSER_CHANNEL: z.string().default('chrome'),
 });
 
 export interface Config {
@@ -17,6 +18,7 @@ export interface Config {
   isProduction: boolean;
   env: 'development' | 'test' | 'production';
   trustProxy: boolean | string | number;
+  pdfBrowserChannel: string;
 }
 
 function parseTrustProxy(value: string): boolean | string | number {
@@ -36,5 +38,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     isProduction: parsed.NODE_ENV === 'production',
     env: parsed.NODE_ENV,
     trustProxy: parseTrustProxy(parsed.TRUST_PROXY),
+    pdfBrowserChannel: parsed.PDF_BROWSER_CHANNEL,
   };
 }
