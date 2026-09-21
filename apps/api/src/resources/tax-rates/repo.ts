@@ -3,14 +3,10 @@ import { and, eq, ne } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { stripUndefined } from '../common.js';
 import type { TaxRateCreate, TaxRatePatch } from './schema.js';
 
 const T = schema.taxRates;
-
-/** Drops explicit-undefined keys so the result satisfies exactOptionalPropertyTypes when spread into drizzle's `.set()`. */
-function stripUndefined<T extends Record<string, unknown>>(obj: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as { [K in keyof T]?: Exclude<T[K], undefined> };
-}
 
 export async function listTaxRates(db: Db, ctx: TenantContext, includeInactive = false) {
   return db.query.taxRates.findMany({
