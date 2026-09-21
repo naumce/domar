@@ -60,6 +60,17 @@ describe('units', () => {
     expect(del.statusCode).toBe(204);
   });
 
+  it('reflects the owner in the PATCH response when set and cleared', async () => {
+    const list = await t.app.inject({ method: 'GET', url: `/api/buildings/${buildingId}/units`, headers: { cookie: a.cookie } });
+    const apt = list.json().rows.find((u: { kind: string }) => u.kind === 'apartment');
+    const cleared = await t.app.inject({ method: 'PATCH', url: `/api/buildings/${buildingId}/units/${apt.id}`, headers: { cookie: a.cookie }, payload: { ownerContactId: null } });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().owner).toBeNull();
+    const restored = await t.app.inject({ method: 'PATCH', url: `/api/buildings/${buildingId}/units/${apt.id}`, headers: { cookie: a.cookie }, payload: { ownerContactId: ownerId } });
+    expect(restored.statusCode).toBe(200);
+    expect(restored.json().owner).toMatchObject({ firstName: 'Марко', lastName: 'Марков' });
+  });
+
   it('reports unitCount on the building list matching the current unit count', async () => {
     const units = await t.app.inject({ method: 'GET', url: `/api/buildings/${buildingId}/units`, headers: { cookie: a.cookie } });
     const expectedCount = units.json().rows.length;

@@ -41,9 +41,9 @@ async function validateRefs(db: Db, ctx: TenantContext, buildingId: string, inpu
   }
 }
 
-async function ownerOf(db: Db, ownerContactId: string | null): Promise<Owner> {
+async function ownerOf(db: Db, ctx: TenantContext, ownerContactId: string | null): Promise<Owner> {
   if (!ownerContactId) return null;
-  const c = await db.query.contacts.findFirst({ where: eq(schema.contacts.id, ownerContactId), columns: { id: true, firstName: true, lastName: true } });
+  const c = await db.query.contacts.findFirst({ where: and(eq(schema.contacts.tenantId, ctx.tenantId), eq(schema.contacts.id, ownerContactId)), columns: { id: true, firstName: true, lastName: true } });
   return c ?? null;
 }
 
@@ -51,7 +51,7 @@ export async function listUnits(db: Db, ctx: TenantContext, buildingId: string) 
   await getBuilding(db, ctx, buildingId);
   const rows = await db
     .select({ unit: U, owner: { id: schema.contacts.id, firstName: schema.contacts.firstName, lastName: schema.contacts.lastName } })
-    .from(U).leftJoin(schema.contacts, eq(schema.contacts.id, U.ownerContactId))
+    .from(U).leftJoin(schema.contacts, and(eq(schema.contacts.id, U.ownerContactId), eq(schema.contacts.tenantId, ctx.tenantId)))
     .where(and(eq(U.tenantId, ctx.tenantId), eq(U.buildingId, buildingId))).orderBy(asc(U.floor), asc(U.label));
   return { rows: rows.map((r) => toOut(r.unit, r.owner?.id ? r.owner : null)) };
 }
@@ -76,7 +76,7 @@ export async function createUnit(db: Db, ctx: TenantContext, buildingId: string,
       throw err;
     }
     await writeAudit(tx, ctx, { action: 'unit.create', entityType: 'unit', entityId: row!.id, after: row });
-    return toOut(row!, await ownerOf(tx, row!.ownerContactId));
+    return toOut(row!, await ownerOf(tx, ctx, row!.ownerContactId));
   });
 }
 
@@ -96,7 +96,7 @@ export async function updateUnit(db: Db, ctx: TenantContext, buildingId: string,
       throw err;
     }
     await writeAudit(tx, ctx, { action: 'unit.update', entityType: 'unit', entityId: id, before, after: row });
-    return toOut(row!, await ownerOf(tx, row!.ownerContactId));
+    return toOut(row!, await ownerOf(tx, ctx, row!.ownerContactId));
   });
 }
 
