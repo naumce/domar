@@ -26,4 +26,12 @@ describe('PeriodLineForm', () => {
     await w.get('form').trigger('submit');
     expect(w.emitted('submit')![0]![0]).toMatchObject({ note: 'попуст', unitPriceMinor: 600000 });
   });
+  it('omits taxRateId when the line rate is no longer active, and includes it once the user picks a rate', async () => {
+    const w = mount(PeriodLineForm, { props: { services, taxRates, requireNote: false, initial: { id: 'l1', serviceId: null, description: 'Осигурување', pricing: 'fixed_per_unit', quantity: 1, unitPriceMinor: 10000, taxRateBp: 500, appliesTo: [], fund: 'regular', source: 'manual', note: null, sortOrder: 0 } }, global: { plugins: [i18n] } });
+    await w.get('form').trigger('submit');
+    expect(w.emitted('submit')![0]![0]).not.toHaveProperty('taxRateId');
+    await w.get('[data-test=line-tax]').setValue('tr');
+    await w.get('form').trigger('submit');
+    expect(w.emitted('submit')![1]![0]).toMatchObject({ taxRateId: 'tr' });
+  });
 });

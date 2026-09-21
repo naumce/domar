@@ -7,7 +7,9 @@ import PeriodLineForm, { type LinePayload } from '@/components/billing/PeriodLin
 import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
-import { formatMoney, percentFromBp } from '@/utils/money';
+import AppInput from '@/components/ui/AppInput.vue';
+import AppSelect from '@/components/ui/AppSelect.vue';
+import { formatMoney, percentFromBp, toMinor } from '@/utils/money';
 
 const props = defineProps<{ id: string; periodId: string }>();
 const { t } = useI18n();
@@ -28,7 +30,7 @@ onMounted(async () => {
   [units.value, services.value, taxRates.value] = await Promise.all([
     api.get<{ rows: Unit[] }>(`/api/buildings/${props.id}/units`).then((r) => r.rows),
     api.get<{ rows: Service[] }>('/api/services').then((r) => r.rows),
-    api.get<{ rows: TaxRate[] }>('/api/tax-rates').then((r) => r.rows),
+    api.get<{ rows: TaxRate[] }>('/api/tax-rates', { includeInactive: 'true' }).then((r) => r.rows),
   ]);
 });
 const unitLabel = (unitId: unknown) => units.value.find((u) => u.id === unitId)?.label ?? String(unitId ?? '');
@@ -43,13 +45,33 @@ async function onLine(payload: LinePayload) {
   if (!error.value) open.value = false;
 }
 async function publish() { if (window.confirm(t('periods.publishConfirm'))) await run(() => api.post(`${base}/publish`)); }
+
+const settingsOpen = ref(false);
+const settingsPrefix = ref('');
+const settingsSuffix = ref('');
+const settingsFee = ref('');
+const settingsFeeTaxRateId = ref<string | null>(null);
+function openSettings() {
+  if (!period.value) return;
+  settingsPrefix.value = period.value.numberPrefix;
+  settingsSuffix.value = period.value.numberSuffix;
+  settingsFee.value = (period.value.managementFeeMinor / 100).toFixed(2).replace('.', ',');
+  settingsFeeTaxRateId.value = taxRates.value.find((r) => r.isActive && r.rateBp === period.value!.managementFeeTaxRateBp)?.id ?? null;
+  settingsOpen.value = true;
+}
+async function saveSettings() {
+  const managementFeeMinor = toMinor(settingsFee.value) ?? 0;
+  await run(() => api.patch(base, { numberPrefix: settingsPrefix.value, numberSuffix: settingsSuffix.value, managementFeeMinor, managementFeeTaxRateId: settingsFeeTaxRateId.value }));
+  if (!error.value) settingsOpen.value = false;
+}
 </script>
 <template>
   <div v-if="period">
     <div class="mb-4 flex items-center justify-between">
       <div><RouterLink :to="`/app/buildings/${id}?tab=periods`" class="text-sm text-emerald-700 underline">← {{ t('periods.title') }}</RouterLink>
         <h1 class="text-2xl font-semibold">{{ t('billing.period') }} {{ period.period }} <span class="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-sm" data-test="period-status">{{ t(`periods.status.${period.status}`) }}</span></h1>
-        <p class="text-sm text-slate-600">{{ t('periods.managementFee') }}: {{ formatMoney(period.managementFeeMinor) }} ({{ percentFromBp(period.managementFeeTaxRateBp) }}) · {{ t('periods.numbering') }}: {{ period.numberPrefix }}0001{{ period.numberSuffix }}</p></div>
+        <p class="text-sm text-slate-600">{{ t('periods.managementFee') }}: {{ formatMoney(period.managementFeeMinor) }} ({{ percentFromBp(period.managementFeeTaxRateBp) }}) · {{ t('periods.numbering') }}: {{ period.numberPrefix }}0001{{ period.numberSuffix }}
+          <AppButton v-if="editable" variant="secondary" class="ml-2" data-test="edit-period" @click="openSettings">{{ t('periods.editSettings') }}</AppButton></p></div>
       <div class="flex gap-2">
         <AppButton v-if="editable" variant="secondary" :loading="busy" data-test="refresh-lines" @click="run(() => api.post(`${base}/refresh-lines`))">{{ t('periods.refresh') }}</AppButton>
         <AppButton v-if="editable" :loading="busy" data-test="generate" @click="run(() => api.post(`${base}/generate`))">{{ period.status === 'generated' ? t('periods.regenerate') : t('periods.generate') }}</AppButton>
@@ -81,6 +103,18 @@ async function publish() { if (window.confirm(t('periods.publishConfirm'))) awai
     </DataTable>
     <ModalDialog :open="open" :title="editing ? t('app.edit') : t('periods.addLine')" @close="open = false">
       <PeriodLineForm :key="editing?.id ?? 'new'" :services="services" :tax-rates="taxRates" :initial="editing ?? undefined" :require-note="editing?.source === 'auto'" @submit="onLine" />
+    </ModalDialog>
+    <ModalDialog :open="settingsOpen" :title="t('periods.numbering')" @close="settingsOpen = false">
+      <form class="grid grid-cols-2 gap-3" @submit.prevent="saveSettings">
+        <AppInput v-model="settingsPrefix" :label="t('periods.prefix')" data-test="period-prefix" />
+        <AppInput v-model="settingsSuffix" :label="t('periods.suffix')" data-test="period-suffix" />
+        <AppInput v-model="settingsFee" :label="t('periods.managementFee')" data-test="period-fee-edit" class="col-span-2" />
+        <AppSelect v-model="settingsFeeTaxRateId" :label="t('periods.managementFeeTax')" :options="[{ value: null, label: t('services.noTax') }, ...taxRates.filter((r) => r.isActive).map((r) => ({ value: r.id, label: `${r.name} (${percentFromBp(r.rateBp)})` }))]" data-test="period-fee-tax" class="col-span-2" />
+        <div class="col-span-2 flex justify-end gap-2">
+          <AppButton type="button" variant="secondary" @click="settingsOpen = false">{{ t('app.cancel') }}</AppButton>
+          <AppButton type="submit" :loading="busy">{{ t('app.save') }}</AppButton>
+        </div>
+      </form>
     </ModalDialog>
   </div>
   <p v-else>{{ t('app.loading') }}</p>
