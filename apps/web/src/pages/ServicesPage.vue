@@ -17,10 +17,10 @@ const taxRates = ref<TaxRate[]>([]);
 const open = ref(false);
 const kinds: UnitKind[] = ['apartment', 'commercial', 'parking', 'storage', 'other'];
 const pricings: PricingModel[] = ['fixed_per_unit', 'per_m2', 'shared_total'];
-const blank = () => ({ name: '', category: '', pricing: 'fixed_per_unit' as PricingModel, price: '', taxRateId: null as string | null, recurring: 'true', appliesTo: [] as UnitKind[] });
+const blank = () => ({ name: '', category: '', pricing: 'fixed_per_unit' as PricingModel, price: '', taxRateId: taxRates.value.find((r) => r.isDefault)?.id ?? null, recurring: 'true', appliesTo: [] as UnitKind[] });
 const form = ref(blank());
 const formError = ref('');
-onMounted(async () => { await res.load(); taxRates.value = (await api.get<{ rows: TaxRate[] }>('/api/tax-rates')).rows; form.value.taxRateId = taxRates.value.find((r) => r.isDefault)?.id ?? null; });
+onMounted(async () => { await res.load(); taxRates.value = (await api.get<{ rows: TaxRate[] }>('/api/tax-rates')).rows; form.value = blank(); });
 function toggleKind(k: UnitKind) { const i = form.value.appliesTo.indexOf(k); if (i >= 0) form.value.appliesTo.splice(i, 1); else form.value.appliesTo.push(k); }
 async function submit() {
   formError.value = '';

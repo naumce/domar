@@ -11,6 +11,9 @@ describe('money utils', () => {
     expect(toMinor('1234,56')).toBe(123456);
     expect(toMinor('1234.56')).toBe(123456);
     expect(toMinor('1.234,5')).toBe(123450);
+    expect(toMinor('1.234')).toBe(123400);
+    expect(toMinor('0.285')).toBe(29);
+    expect(toMinor('-12')).toBe(-1200);
     expect(toMinor(300)).toBe(30000);
     expect(toMinor('')).toBeNull();
     expect(toMinor('abc')).toBeNull();

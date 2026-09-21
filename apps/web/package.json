@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@domar/domain": "workspace:*",
     "pinia": "^2.2.4",
     "vue": "^3.5.12",
     "vue-i18n": "^10.0.4",

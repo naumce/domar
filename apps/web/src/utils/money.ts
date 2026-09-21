@@ -1,3 +1,5 @@
+import { mkPack } from '@domar/domain';
+
 export function formatMoney(minor: number, currency = 'MKD'): string {
   if (currency !== 'MKD') return new Intl.NumberFormat('mk-MK', { style: 'currency', currency }).format(minor / 100);
   const sign = minor < 0 ? '-' : '';
@@ -9,15 +11,11 @@ export function formatMoney(minor: number, currency = 'MKD'): string {
 /** "1.234,56" | "1234.56" | 300 → minor units; empty/garbage → null */
 export function toMinor(input: string | number): number | null {
   if (typeof input === 'number') return Number.isFinite(input) ? Math.round(input * 100) : null;
-  const s = input.replace(/\s/g, '');
-  if (!/^-?[\d.,]+$/.test(s)) return null;
-  const lastComma = s.lastIndexOf(','), lastDot = s.lastIndexOf('.');
-  let normalized: string;
-  if (lastComma > lastDot) normalized = s.replace(/\./g, '').replace(',', '.');
-  else if (lastDot > lastComma) normalized = s.replace(/,/g, '');
-  else normalized = s;
-  const n = Number(normalized);
-  return Number.isFinite(n) ? Math.round(n * 100) : null;
+  try {
+    return mkPack.parseAmountToMinor(input);
+  } catch {
+    return null;
+  }
 }
 
 export function percentFromBp(bp: number): string {
