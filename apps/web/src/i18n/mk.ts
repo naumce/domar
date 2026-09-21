@@ -29,15 +29,16 @@ export default {
   },
   buildingServices: {
     title: 'Периодични услуги', attach: 'Додади периодична услуга', frequency: 'Фреквенција', monthly: 'Месечно', everyN: 'На секои N месеци', intervalMonths: 'Интервал (месеци)',
-    startsPeriod: 'Од период', endsPeriod: 'До период', overridePrice: 'Цена за оваа зграда (опционално)', detach: 'Отстрани',
+    startsPeriod: 'Од период', endsPeriod: 'До период', overridePrice: 'Цена за оваа зграда (опционално)', detach: 'Отстрани', alreadyAttached: 'Услугата е веќе додадена на зградата.',
   },
   reserveFund: {
     title: 'Резервен фонд', basis: 'Основ', perUnit: 'По единица', perM2: 'По m²', active: 'Активен', balance: 'Состојба', billed: 'Фактурирано на сопственици',
     openingBalance: 'Почетно салдо', addOpening: 'Внеси почетно салдо', expenses: 'Трошоци', addExpense: 'Евидентирај трошок', supplier: 'Добавувач', paidAt: 'Платено на',
-    void: 'Поништи', voided: 'Поништено', transactions: 'Трансакции',
+    void: 'Поништи', voided: 'Поништено', transactions: 'Трансакции', voidReason: 'Причина за поништување',
+    kind: { opening: 'Почетно салдо', expense: 'Трошок', adjustment: 'Корекција', payment: 'Уплата', charge: 'Задолжување' },
   },
   periods: {
-    title: 'Пресметки', create: 'Нов период', managementFee: 'Надоместок за управување (по единица)', managementFeeTax: 'ДДВ на надоместокот', numbering: 'Нумерација',
+    title: 'Пресметки', create: 'Нов период', exists: 'Периодот веќе постои.', managementFee: 'Надоместок за управување (по единица)', managementFeeTax: 'ДДВ на надоместокот', numbering: 'Нумерација',
     prefix: 'Префикс', suffix: 'Суфикс', lines: 'Ставки', addLine: 'Додади ставка', fromService: 'Од услуга', auto: 'Авто', manual: 'Рачно', note: 'Забелешка (задолжителна за авто ставки)',
     refresh: 'Освежи авто ставки', generate: 'Генерирај фактури', regenerate: 'Генерирај повторно', deleteDrafts: 'Избриши нацрти', publish: 'Објави ги сите',
     publishConfirm: 'Објавените фактури не може да се избришат. Продолжи?', warnings: 'Предупредувања',

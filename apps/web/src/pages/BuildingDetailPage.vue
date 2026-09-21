@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRoute, useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import type { Building, Contact, Unit } from '@/api/types';
+import BuildingServicesTab from '@/components/building/BuildingServicesTab.vue';
+import PeriodsTab from '@/components/building/PeriodsTab.vue';
+import ReserveFundTab from '@/components/building/ReserveFundTab.vue';
 import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
@@ -15,6 +19,10 @@ const building = ref<Building | null>(null);
 const contacts = ref<Contact[]>([]);
 const units = useResource<Unit>(`/api/buildings/${props.id}/units`);
 const open = ref(false); const editing = ref<Unit | null>(null); const formError = ref<string | null>(null);
+const route = useRoute(); const router = useRouter();
+const tabs = ['units', 'services', 'reserve-fund', 'periods'] as const;
+const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'units'));
+const tabLabel = (k: string) => ({ units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), periods: t('periods.title') })[k as (typeof tabs)[number]];
 
 onMounted(async () => {
   building.value = await api.get<Building>(`/api/buildings/${props.id}`);
@@ -37,16 +45,24 @@ async function onSubmit(payload: UnitCreatePayload) {
   <div v-if="building">
     <h1 class="text-2xl font-semibold">{{ building.name }}</h1>
     <p class="mb-6 text-slate-600">{{ building.address }}, {{ building.postalCode }} {{ building.city }}</p>
-    <div class="mb-3 flex items-center justify-between"><h2 class="text-lg font-semibold">{{ t('units.title') }} <span class="text-slate-500">{{ units.rows.value.length }}</span></h2><AppButton data-test="add-unit" @click="openNew">{{ t('units.add') }}</AppButton></div>
-    <p v-if="units.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
-    <DataTable :columns="[{ key: 'label', label: t('units.label') }, { key: 'floor', label: t('units.floor') }, { key: 'kind', label: t('units.kind') }, { key: 'areaM2', label: t('units.areaM2') }, { key: 'owner', label: t('units.owner') }]" :rows="units.rows.value">
-      <template #cell-kind="{ row }">{{ t(`units.kinds.${row.kind}`) }}</template>
-      <template #cell-owner="{ row }">{{ row.owner ? `${row.owner.firstName} ${row.owner.lastName}` : '' }}</template>
-      <template #actions="{ row }"><AppButton variant="secondary" @click="openEdit(row)">{{ t('app.edit') }}</AppButton><AppButton variant="danger" class="ml-2" @click="swallow(units.remove(row.id))">{{ t('app.delete') }}</AppButton></template>
-    </DataTable>
-    <ModalDialog :open="open" :title="editing ? t('app.edit') : t('units.add')" @close="open = false">
-      <UnitForm :key="editing?.id ?? 'new'" :units="units.rows.value" :contacts="contacts" :initial="editing ?? undefined" :error="formError" @submit="onSubmit" />
-    </ModalDialog>
+    <nav class="mb-4 flex gap-2 border-b border-slate-200">
+      <button v-for="k in tabs" :key="k" class="-mb-px border-b-2 px-3 py-2 text-sm" :class="tab === k ? 'border-emerald-600 font-medium text-emerald-800' : 'border-transparent text-slate-600'" :data-test="`tab-${k}`" @click="router.replace({ query: { ...route.query, tab: k } })">{{ tabLabel(k) }}</button>
+    </nav>
+    <div v-if="tab === 'units'">
+      <div class="mb-3 flex items-center justify-between"><h2 class="text-lg font-semibold">{{ t('units.title') }} <span class="text-slate-500">{{ units.rows.value.length }}</span></h2><AppButton data-test="add-unit" @click="openNew">{{ t('units.add') }}</AppButton></div>
+      <p v-if="units.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
+      <DataTable :columns="[{ key: 'label', label: t('units.label') }, { key: 'floor', label: t('units.floor') }, { key: 'kind', label: t('units.kind') }, { key: 'areaM2', label: t('units.areaM2') }, { key: 'owner', label: t('units.owner') }]" :rows="units.rows.value">
+        <template #cell-kind="{ row }">{{ t(`units.kinds.${row.kind}`) }}</template>
+        <template #cell-owner="{ row }">{{ row.owner ? `${row.owner.firstName} ${row.owner.lastName}` : '' }}</template>
+        <template #actions="{ row }"><AppButton variant="secondary" @click="openEdit(row)">{{ t('app.edit') }}</AppButton><AppButton variant="danger" class="ml-2" @click="swallow(units.remove(row.id))">{{ t('app.delete') }}</AppButton></template>
+      </DataTable>
+      <ModalDialog :open="open" :title="editing ? t('app.edit') : t('units.add')" @close="open = false">
+        <UnitForm :key="editing?.id ?? 'new'" :units="units.rows.value" :contacts="contacts" :initial="editing ?? undefined" :error="formError" @submit="onSubmit" />
+      </ModalDialog>
+    </div>
+    <BuildingServicesTab v-else-if="tab === 'services'" :building-id="id" />
+    <ReserveFundTab v-else-if="tab === 'reserve-fund'" :building-id="id" />
+    <PeriodsTab v-else :building-id="id" />
   </div>
   <p v-else>{{ t('app.loading') }}</p>
 </template>

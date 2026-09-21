@@ -29,15 +29,16 @@ export default {
   },
   buildingServices: {
     title: 'Recurring services', attach: 'Attach recurring service', frequency: 'Frequency', monthly: 'Monthly', everyN: 'Every N months', intervalMonths: 'Interval (months)',
-    startsPeriod: 'Starts period', endsPeriod: 'Ends period', overridePrice: 'Price for this building (optional)', detach: 'Detach',
+    startsPeriod: 'Starts period', endsPeriod: 'Ends period', overridePrice: 'Price for this building (optional)', detach: 'Detach', alreadyAttached: 'This service is already attached.',
   },
   reserveFund: {
     title: 'Reserve fund', basis: 'Basis', perUnit: 'Per unit', perM2: 'Per m²', active: 'Active', balance: 'Balance', billed: 'Billed to owners',
     openingBalance: 'Opening balance', addOpening: 'Enter opening balance', expenses: 'Expenses', addExpense: 'Record expense', supplier: 'Supplier', paidAt: 'Paid on',
-    void: 'Void', voided: 'Voided', transactions: 'Transactions',
+    void: 'Void', voided: 'Voided', transactions: 'Transactions', voidReason: 'Reason for voiding',
+    kind: { opening: 'Opening balance', expense: 'Expense', adjustment: 'Adjustment', payment: 'Payment', charge: 'Charge' },
   },
   periods: {
-    title: 'Periods', create: 'New period', managementFee: 'Management fee (per unit)', managementFeeTax: 'Management fee tax', numbering: 'Numbering',
+    title: 'Periods', create: 'New period', exists: 'Period already exists.', managementFee: 'Management fee (per unit)', managementFeeTax: 'Management fee tax', numbering: 'Numbering',
     prefix: 'Prefix', suffix: 'Suffix', lines: 'Lines', addLine: 'Add line', fromService: 'From service', auto: 'Auto', manual: 'Manual', note: 'Note (required for auto lines)',
     refresh: 'Refresh auto lines', generate: 'Generate invoices', regenerate: 'Regenerate', deleteDrafts: 'Delete drafts', publish: 'Publish all',
     publishConfirm: 'Published invoices cannot be deleted. Continue?', warnings: 'Warnings',
