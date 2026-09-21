@@ -1,5 +1,5 @@
 <script setup lang="ts">
-defineProps<{ label: string; options: { value: string; label: string }[]; dataTest?: string }>();
+defineProps<{ label: string; options: { value: string | null; label: string }[]; dataTest?: string }>();
 const model = defineModel<string | null>();
 </script>
 <template>

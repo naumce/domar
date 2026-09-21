@@ -1,1 +1,37 @@
-<template><div /></template>
+<script setup lang="ts">
+import { onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { TaxRate } from '@/api/types';
+import DataTable from '@/components/DataTable.vue';
+import ModalDialog from '@/components/ModalDialog.vue';
+import AppButton from '@/components/ui/AppButton.vue';
+import AppInput from '@/components/ui/AppInput.vue';
+import { useResource } from '@/composables/useResource';
+
+const { t } = useI18n();
+const res = useResource<TaxRate>('/api/tax-rates');
+const open = ref(false); const name = ref(''); const rate = ref<string>('18');
+onMounted(() => res.load());
+async function submit() {
+  await res.create({ name: name.value, rateBp: Math.round(Number(rate.value) * 100) });
+  open.value = false; name.value = ''; rate.value = '18';
+}
+</script>
+<template>
+  <div class="mb-4 flex items-center justify-between"><h1 class="text-2xl font-semibold">{{ t('taxRates.title') }}</h1><AppButton data-test="add" @click="open = true">{{ t('taxRates.add') }}</AppButton></div>
+  <DataTable :columns="[{ key: 'name', label: t('taxRates.name') }, { key: 'rateBp', label: t('taxRates.rate') }, { key: 'isDefault', label: t('taxRates.isDefault') }]" :rows="res.rows.value">
+    <template #cell-rateBp="{ row }">{{ (Number(row.rateBp) / 100).toFixed(2) }}</template>
+    <template #cell-isDefault="{ row }">{{ row.isDefault ? t('app.yes') : '' }}</template>
+    <template #actions="{ row }">
+      <AppButton v-if="!row.isDefault" variant="secondary" @click="res.update(String(row.id), { isDefault: true })">{{ t('taxRates.makeDefault') }}</AppButton>
+      <AppButton v-if="!row.isDefault" variant="danger" class="ml-2" @click="res.remove(String(row.id))">{{ t('app.delete') }}</AppButton>
+    </template>
+  </DataTable>
+  <ModalDialog :open="open" :title="t('taxRates.add')" @close="open = false">
+    <form class="space-y-3" @submit.prevent="submit">
+      <AppInput v-model="name" :label="t('taxRates.name')" data-test="name" />
+      <AppInput v-model="rate" :label="t('taxRates.rate')" type="number" step="0.01" data-test="rate" />
+      <div class="flex justify-end gap-2"><AppButton variant="secondary" @click="open = false">{{ t('app.cancel') }}</AppButton><AppButton type="submit">{{ t('app.create') }}</AppButton></div>
+    </form>
+  </ModalDialog>
+</template>
