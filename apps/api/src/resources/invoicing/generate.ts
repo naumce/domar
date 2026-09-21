@@ -43,15 +43,22 @@ async function deleteDraftInvoices(db: Db, ctx: TenantContext, periodId: string)
 
 export async function generatePeriod(db: Db, ctx: TenantContext, buildingId: string, periodId: string) {
   return db.transaction(async (tx) => {
-    const period = await getPeriodRow(tx, ctx, buildingId, periodId);
-    if (period.status === 'published') throw conflict('period_locked', 'A published period cannot be regenerated');
+    // Claim the row first: this locks it for the duration of the transaction, so a concurrent
+    // generate on the same period serializes behind us instead of racing on the delete+insert below.
+    const [claimed] = await tx.update(schema.billingPeriods).set({ updatedAt: new Date() })
+      .where(and(eq(schema.billingPeriods.tenantId, ctx.tenantId), eq(schema.billingPeriods.buildingId, buildingId), eq(schema.billingPeriods.id, periodId), inArray(schema.billingPeriods.status, ['open', 'generated'])))
+      .returning();
+    if (!claimed) {
+      await getPeriodRow(tx, ctx, buildingId, periodId); // 404 if the period doesn't exist for this tenant/building
+      throw conflict('period_locked', 'A published period cannot be regenerated');
+    }
     const input = await buildCalcInput(tx, ctx, buildingId, periodId);
     const result = calculatePeriod(input);
     await deleteDraftInvoices(tx, ctx, periodId);
     const lineIdIsPeriodLine = new Set(input.lines.filter((l) => l.kind === 'service' || l.kind === 'manual').map((l) => l.id));
     for (const draft of result.invoices) {
       const [inv] = await tx.insert(INV).values({
-        tenantId: ctx.tenantId, periodId, buildingId, contactId: draft.contactId, status: 'draft', currency: period.currency, unitIds: draft.unitIds,
+        tenantId: ctx.tenantId, periodId, buildingId, contactId: draft.contactId, status: 'draft', currency: claimed.currency, unitIds: draft.unitIds,
         subtotalMinor: draft.subtotalMinor, taxMinor: draft.taxMinor, totalMinor: draft.totalMinor, previousBalanceMinor: draft.previousBalanceMinor,
         amountDueMinor: draft.amountDueMinor, reserveFundBuildingBalanceMinor: draft.reserveFundBuildingBalanceMinor,
       }).returning({ id: INV.id });

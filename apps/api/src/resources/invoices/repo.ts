@@ -20,7 +20,7 @@ export async function listInvoices(db: Db, ctx: TenantContext, q: { buildingId?:
   if (q.contactId) conds.push(eq(INV.contactId, q.contactId));
   const where = and(...conds);
   const [rows, totalRows] = await Promise.all([
-    joined(db).where(where).orderBy(desc(BP.period), asc(C.lastName), asc(C.firstName)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    joined(db).where(where).orderBy(desc(BP.period), asc(C.lastName), asc(C.firstName), asc(INV.id)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ total: count() }).from(INV).innerJoin(BP, eq(BP.id, INV.periodId)).where(where),
   ]);
   return { rows: rows.map(toRow), total: Number(totalRows[0]?.total ?? 0) };
@@ -30,8 +30,8 @@ export async function getInvoice(db: Db, ctx: TenantContext, id: string) {
   const [r] = await joined(db).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, id))).limit(1);
   if (!r) throw notFound('Invoice');
   const [contact, building, lines] = await Promise.all([
-    db.query.contacts.findFirst({ where: eq(C.id, r.inv.contactId) }),
-    db.query.buildings.findFirst({ where: eq(B.id, r.inv.buildingId) }),
+    db.query.contacts.findFirst({ where: and(eq(C.tenantId, ctx.tenantId), eq(C.id, r.inv.contactId)) }),
+    db.query.buildings.findFirst({ where: and(eq(B.tenantId, ctx.tenantId), eq(B.id, r.inv.buildingId)) }),
     db.query.invoiceLines.findMany({ where: and(eq(IL.tenantId, ctx.tenantId), eq(IL.invoiceId, id)), orderBy: [asc(IL.sortOrder)] }),
   ]);
   return { ...toRow(r), contact: contact!, building: building!, lines };
@@ -44,7 +44,7 @@ export async function deleteDraftInvoice(db: Db, ctx: TenantContext, id: string)
     if (inv.status !== 'draft') throw conflict('not_draft', 'Only draft invoices can be deleted');
     await tx.delete(INV).where(eq(INV.id, id));
     const [left] = await tx.select({ n: count() }).from(INV).where(and(eq(INV.periodId, inv.periodId), eq(INV.status, 'draft')));
-    if (Number(left?.n ?? 0) === 0) await tx.update(BP).set({ status: 'open', generatedAt: null, updatedAt: new Date() }).where(eq(BP.id, inv.periodId));
+    if (Number(left?.n ?? 0) === 0) await tx.update(BP).set({ status: 'open', generatedAt: null, warnings: [], updatedAt: new Date() }).where(eq(BP.id, inv.periodId));
     await writeAudit(tx, ctx, { action: 'invoice.delete_draft', entityType: 'invoice', entityId: id, before: inv });
   });
 }
