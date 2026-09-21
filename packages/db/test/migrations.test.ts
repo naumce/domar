@@ -16,7 +16,8 @@ describe('migrations', () => {
     const rows = await t!.sql<{ table_name: string }[]>`
       select table_name from information_schema.tables where table_schema = 'public' order by 1`;
     const names = rows.map((r) => r.table_name);
-    for (const n of ['tenants', 'users', 'sessions', 'contacts', 'buildings', 'units', 'tax_rates', 'audit_logs'])
+    for (const n of ['tenants', 'users', 'sessions', 'contacts', 'buildings', 'units', 'tax_rates', 'audit_logs',
+      'services', 'building_services', 'reserve_fund_settings', 'expenses', 'billing_periods', 'period_lines', 'invoices', 'invoice_lines', 'postings', 'invoice_sequences'])
       expect(names).toContain(n);
   });
 
@@ -43,5 +44,14 @@ describe('migrations', () => {
     for (const c of cols) {
       expect(c.data_type, `${c.table_name}.${c.column_name}`).toBe('bigint');
     }
+  });
+
+  it('money columns on billing tables are bigint', async () => {
+    const cols = await t!.sql<{ table_name: string; column_name: string; data_type: string }[]>`
+      select table_name, column_name, data_type from information_schema.columns
+      where table_schema = 'public' and table_name in ('period_lines','invoices','invoice_lines','postings','expenses','reserve_fund_settings','billing_periods','services','building_services')
+        and column_name like '%_minor'`;
+    expect(cols.length).toBeGreaterThan(10);
+    for (const c of cols) expect(c.data_type, `${c.table_name}.${c.column_name}`).toBe('bigint');
   });
 });
