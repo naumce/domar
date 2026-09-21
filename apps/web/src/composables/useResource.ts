@@ -1,10 +1,10 @@
-import { ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import { api, ApiError } from '@/api/client';
 
 type Query = Record<string, string | number | boolean | undefined>;
 
 export function useResource<T extends { id: string }>(path: string) {
-  const rows = ref<T[]>([]) as import('vue').Ref<T[]>;
+  const rows = ref<T[]>([]) as Ref<T[]>;
   const total = ref(0);
   const loading = ref(false);
   const error = ref<string | null>(null);

@@ -13,7 +13,7 @@ export default {
     shareBasisOptions: { area: 'By area (m²)', equal: 'Equal', custom: 'Ownership share' }, regularFundAccount: 'Regular fund account', reserveFundAccount: 'Reserve fund account', unitCount: 'Units',
   },
   units: {
-    title: 'Units', add: 'Add unit', label: 'Label', floor: 'Floor', kind: 'Kind', areaM2: 'Area (m²)', ownershipShare: 'Ownership share', owner: 'Owner', attachedTo: 'Attached to', notAttached: '— billed separately —',
+    title: 'Units', add: 'Add unit', label: 'Label', floor: 'Floor', kind: 'Kind', areaM2: 'Area (m²)', ownershipShare: 'Ownership share (0–1, e.g. 0.0125)', owner: 'Owner', attachedTo: 'Attached to', notAttached: '— billed separately —',
     kinds: { apartment: 'Apartment', commercial: 'Commercial', parking: 'Parking', storage: 'Storage', other: 'Other' },
     errors: { label_taken: 'A unit with that label already exists.', invalid_attachment: 'Can only attach to an apartment or commercial unit in the same building.', invalid_reference: 'The selected contact does not exist.' },
   },

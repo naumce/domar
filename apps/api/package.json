@@ -6,7 +6,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch --env-file=../../.env src/index.ts"
   },
   "dependencies": {
     "@domar/db": "workspace:*",

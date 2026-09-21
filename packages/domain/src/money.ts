@@ -15,7 +15,10 @@ export function roundHalfUp(value: number): number {
   return sign * Math.floor(Math.abs(value) + 0.5);
 }
 
-/** price (minor units) × decimal quantity. Quantities carry at most 6 decimals; they are scaled to integers first so no float rounding reaches the result. */
+/**
+ * price (minor units) × decimal quantity. Quantities carry at most 6 decimals; they are scaled to integers first so no float rounding reaches the result.
+ * priceMinor × quantity·1e6 must stay below 2^53 (≈9e15): fine for amounts up to ~9e9 minor units with 6-decimal quantities.
+ */
 export function mulMinor(priceMinor: number, quantity: number): number {
   const q = Math.round(quantity * 1_000_000);
   return divRoundHalfUp(priceMinor * q, 1_000_000);

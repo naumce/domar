@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "tax_rates_one_default_idx" ON "tax_rates" USING btree ("tenant_id") WHERE is_default;

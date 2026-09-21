@@ -13,7 +13,7 @@ export default {
     shareBasisOptions: { area: 'По површина (m²)', equal: 'Рамномерно', custom: 'Сопственички удел' }, regularFundAccount: 'Сметка редовен фонд', reserveFundAccount: 'Сметка резервен фонд', unitCount: 'Единици',
   },
   units: {
-    title: 'Единици', add: 'Додади единица', label: 'Број', floor: 'Кат', kind: 'Тип', areaM2: 'Површина (m²)', ownershipShare: 'Сопственички удел', owner: 'Сопственик', attachedTo: 'Прикачено на', notAttached: '— се фактурира одделно —',
+    title: 'Единици', add: 'Додади единица', label: 'Број', floor: 'Кат', kind: 'Тип', areaM2: 'Површина (m²)', ownershipShare: 'Сопственички удел (0–1, пр. 0.0125)', owner: 'Сопственик', attachedTo: 'Прикачено на', notAttached: '— се фактурира одделно —',
     kinds: { apartment: 'Стан', commercial: 'Деловен простор', parking: 'Паркинг', storage: 'Остава', other: 'Друго' },
     errors: { label_taken: 'Единица со тој број веќе постои.', invalid_attachment: 'Може да се прикачи само на стан или деловен простор во истата зграда.', invalid_reference: 'Избраниот контакт не постои.' },
   },

@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AppError, conflict, unauthorized } from '../errors.js';
+import { AppError, conflict, isUniqueViolation, unauthorized } from '../errors.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { createSession, deleteSession, SESSION_COOKIE } from './session.js';
 
@@ -15,11 +15,6 @@ const meResponse = z.object({ user: publicUser, tenant: publicTenant });
 const slug = z.string().min(2).max(64).regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lowercase letters, digits and hyphens');
 const password = z.string().min(10).max(200);
 
-/** Postgres unique_violation (23505) as raised by the `postgres` driver. */
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === '23505';
-}
-
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
   const limited = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
@@ -28,7 +23,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     schema: {
       body: z.object({
         tenant: z.object({ slug, name: z.string().min(1).max(200), countryCode: z.enum(['mk']) }),
-        user: z.object({ email: z.string().email(), password, firstName: z.string().min(1), lastName: z.string().min(1) }),
+        user: z.object({ email: z.string().email(), password, firstName: z.string().min(1).max(100), lastName: z.string().min(1).max(100) }),
       }),
       response: { 201: meResponse },
     },
@@ -63,7 +58,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/login', {
     ...limited,
-    schema: { body: z.object({ tenantSlug: z.string(), email: z.string().email(), password: z.string() }), response: { 200: meResponse } },
+    schema: { body: z.object({ tenantSlug: z.string().max(64), email: z.string().email(), password: z.string().max(200) }), response: { 200: meResponse } },
   }, async (req, reply) => {
     const invalid = () => new AppError(401, 'invalid_credentials', 'Invalid organization, email or password');
     const tenant = await req.db.query.tenants.findFirst({ where: eq(schema.tenants.slug, req.body.tenantSlug) });

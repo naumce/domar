@@ -1,4 +1,5 @@
-import { boolean, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { tenants } from './tenant.js';
 
 export const taxRates = pgTable(
@@ -13,5 +14,8 @@ export const taxRates = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('tax_rates_tenant_idx').on(t.tenantId)],
+  (t) => [
+    index('tax_rates_tenant_idx').on(t.tenantId),
+    uniqueIndex('tax_rates_one_default_idx').on(t.tenantId).where(sql`is_default`),
+  ],
 );

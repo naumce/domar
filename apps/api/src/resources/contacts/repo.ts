@@ -1,7 +1,7 @@
 import { type Db, schema } from '@domar/db';
 import { and, asc, count, eq, ilike, or } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
-import { notFound } from '../../errors.js';
+import { badRequest, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { stripUndefined } from '../common.js';
 import type { ContactCreate, ContactPatch } from './schema.js';
@@ -38,6 +38,8 @@ export async function createContact(db: Db, ctx: TenantContext, input: ContactCr
 export async function updateContact(db: Db, ctx: TenantContext, id: string, patch: ContactPatch) {
   return db.transaction(async (tx) => {
     const before = await getContact(tx, ctx, id);
+    const merged = { ...before, ...stripUndefined(patch) };
+    if (merged.kind === 'company' && !merged.companyNumber) throw badRequest('validation', 'companyNumber is required for companies');
     const [row] = await tx.update(C).set({ ...stripUndefined(patch), updatedAt: new Date() }).where(and(eq(C.tenantId, ctx.tenantId), eq(C.id, id))).returning();
     await writeAudit(tx, ctx, { action: 'contact.update', entityType: 'contact', entityId: id, before, after: row });
     return row!;

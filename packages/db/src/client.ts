@@ -4,8 +4,8 @@ import * as schema from './schema/index.js';
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
-export function createDb(url: string): { db: Db; sql: postgres.Sql } {
-  const sql = postgres(url, { max: 10, onnotice: () => {} });
+export function createDb(url: string, opts?: { connectTimeoutSeconds?: number }): { db: Db; sql: postgres.Sql } {
+  const sql = postgres(url, { max: 10, onnotice: () => {}, ...(opts?.connectTimeoutSeconds !== undefined ? { connect_timeout: opts.connectTimeoutSeconds } : {}) });
   const db = drizzle(sql, { schema });
   return { db, sql };
 }

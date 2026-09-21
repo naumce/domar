@@ -62,6 +62,16 @@ describe('tax rates', () => {
     expect(all.json().rows.find((r: { id: string }) => r.id === id)?.isActive).toBe(false);
   });
 
+  it('an inactive tax rate cannot be made default', async () => {
+    const created = await t.app.inject({ method: 'POST', url: '/api/tax-rates', headers: { cookie: a.cookie }, payload: { name: 'Inactive', rateBp: 200 } });
+    const id = created.json().id;
+    const del = await t.app.inject({ method: 'DELETE', url: `/api/tax-rates/${id}`, headers: { cookie: a.cookie } });
+    expect(del.statusCode).toBe(204);
+    const res = await t.app.inject({ method: 'PATCH', url: `/api/tax-rates/${id}`, headers: { cookie: a.cookie }, payload: { isDefault: true } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('inactive_default');
+  });
+
   it('requires auth', async () => {
     const res = await t.app.inject({ method: 'GET', url: '/api/tax-rates' });
     expect(res.statusCode).toBe(401);

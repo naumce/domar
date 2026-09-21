@@ -1,9 +1,11 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import type { Db } from '@domar/db';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { hasZodFastifySchemaValidationErrors, serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
+import { hasZodFastifySchemaValidationErrors, jsonSchemaTransform, serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
 import type postgres from 'postgres';
 import type { Config } from './config.js';
 import { authPlugin } from './auth/plugin.js';
@@ -17,13 +19,18 @@ import { unitRoutes } from './resources/units/routes.js';
 import { healthRoutes } from './routes/health.js';
 
 export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config }): Promise<FastifyInstance> {
-  const app = Fastify({ logger: opts.config.env !== 'test', trustProxy: true }).withTypeProvider<ZodTypeProvider>();
+  // Fastify's TS types omit the numeric hop-count form of trustProxy even though it accepts one at
+  // runtime (passed through to @fastify/proxy-addr); cast to bridge that gap.
+  const trustProxy = opts.config.trustProxy as boolean | string;
+  const app = Fastify({ logger: opts.config.env !== 'test', trustProxy, routerOptions: { ignoreTrailingSlash: true } }).withTypeProvider<ZodTypeProvider>();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
   await app.register(cors, { origin: opts.config.corsOrigins, credentials: true });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
+  await app.register(swagger, { openapi: { info: { title: 'domar API', version: '0.0.1' } }, transform: jsonSchemaTransform });
+  await app.register(swaggerUi, { routePrefix: '/api/docs' });
   await app.register(dbPlugin, { db: opts.db, sql: opts.sql });
   await app.register(authPlugin);
   app.decorate('config', opts.config);

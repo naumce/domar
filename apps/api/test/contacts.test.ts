@@ -48,6 +48,14 @@ describe('contacts', () => {
     expect(get.statusCode).toBe(404);
   });
 
+  it('cannot be patched to kind company without a company number', async () => {
+    const created = await t.app.inject({ method: 'POST', url: '/api/contacts', headers: { cookie: a.cookie }, payload: { firstName: 'No', lastName: 'Company' } });
+    const id = created.json().id;
+    const res = await t.app.inject({ method: 'PATCH', url: `/api/contacts/${id}`, headers: { cookie: a.cookie }, payload: { kind: 'company' } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('validation');
+  });
+
   it('is tenant isolated', async () => {
     const list = await t.app.inject({ method: 'GET', url: '/api/contacts', headers: { cookie: b.cookie } });
     expect(list.json().total).toBe(0);

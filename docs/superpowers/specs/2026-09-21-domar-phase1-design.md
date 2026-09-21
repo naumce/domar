@@ -69,6 +69,10 @@ Entities (all tenant-scoped unless noted):
   one or more `contact` rows across tenants (an owner may own units under two managers).
 - `contact` — person or company. `kind` (`person`|`company`), names, `company_number`, `vat_number`,
   `email`, `phone`, `address`. Companies matter for e-Faktura later.
+  Deletion: contacts hard-delete while nothing financial references them; invoices, payments and
+  postings (sub-plans 2–3) reference contacts with `ON DELETE RESTRICT`, so a contact with
+  financial history cannot be deleted and must be archived instead (archive flag arrives with
+  sub-plan 2).
 - `building` — name, address fields, `representative_contact_id`, `regular_fund_account` and
   `reserve_fund_account` (IBAN strings), `share_basis` (`area`|`equal`|`custom`).
 - `unit` — `building_id`, `label`, `floor`, `kind` (`apartment`|`commercial`|`parking`|`storage`|
@@ -183,7 +187,7 @@ Engine is pure and deterministic; a JSON fixture in tests locks the numbers.
 
 ## 10. Auth and tenancy
 
-- Staff: email + password (argon2id), session cookie (httpOnly, SameSite=Lax), server-side session
+- Staff: email + password (scrypt (Node crypto, N=2^17, r=8, p=1; no native dependency)), session cookie (httpOnly, SameSite=Lax), server-side session
   table with expiry. Tenant resolved from the session, never from the URL.
 - Owners: separate `owner_account`, same mechanism, separate cookie name, routes under
   `/api/portal/*`. Magic-link login added later.

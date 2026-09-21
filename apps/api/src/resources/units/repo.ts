@@ -1,7 +1,7 @@
 import { type Db, schema } from '@domar/db';
 import { and, asc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
-import { badRequest, conflict, notFound } from '../../errors.js';
+import { badRequest, conflict, isUniqueViolation, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { stripUndefined } from '../common.js';
@@ -10,11 +10,6 @@ import type { UnitCreate, UnitPatch } from './schema.js';
 const U = schema.units;
 type Row = typeof U.$inferSelect;
 type Owner = { id: string; firstName: string; lastName: string } | null;
-
-/** Postgres unique_violation (23505) as raised by the `postgres` driver. */
-function isUniqueViolation(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === '23505';
-}
 
 function toOut(row: Row, owner: Owner) {
   return { ...row, areaM2: row.areaM2 === null ? null : Number(row.areaM2), ownershipShare: row.ownershipShare === null ? null : Number(row.ownershipShare), owner };

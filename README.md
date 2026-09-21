@@ -11,4 +11,8 @@ Operations and billing platform for licensed building managers. Phase 1 design:
     pnpm --filter @domar/db migrate
     pnpm dev
 
-API on http://localhost:3001, web on http://localhost:5173.
+API http://localhost:3001/api/health, web http://localhost:5173, OpenAPI http://localhost:3001/api/docs
+
+    pnpm e2e
+
+(needs Google Chrome; uses the dev database on port 5180 for the web server)

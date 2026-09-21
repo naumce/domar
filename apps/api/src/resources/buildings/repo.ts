@@ -15,6 +15,8 @@ async function assertContactInTenant(db: Db, ctx: TenantContext, contactId: stri
 }
 
 export async function listBuildings(db: Db, ctx: TenantContext) {
+  // "buildings"."id" is hard-coded: drizzle renders single-table select columns unqualified
+  // inside raw sql, so an unqualified `id` here would bind to the subquery's own `units.id`.
   const rows = await db
     .select({ building: B, unitCount: sql<number>`(select count(*) from ${schema.units} u where u.building_id = "buildings"."id")`.mapWith(Number) })
     .from(B).where(eq(B.tenantId, ctx.tenantId)).orderBy(asc(B.name));

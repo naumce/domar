@@ -29,7 +29,7 @@ async function onSubmit(payload: UnitCreatePayload) {
     open.value = false;
   } catch (e) {
     const code = (e as { code?: string }).code ?? 'generic';
-    formError.value = te(`units.errors.${code}`) ? t(`units.errors.${code}`) : t('app.error');
+    formError.value = te(`units.errors.${code}`) ? t(`units.errors.${code}`) : code === 'validation' ? t('auth.errors.validation') : t('app.error');
   }
 }
 </script>

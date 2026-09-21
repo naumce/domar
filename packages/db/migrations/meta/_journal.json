@@ -8,6 +8,13 @@
       "when": 1790006513725,
       "tag": "0000_stale_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790013910904,
+      "tag": "0001_thankful_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }
