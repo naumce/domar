@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import type { z } from 'zod';
 import { writeAudit } from '../../audit.js';
 import { conflict, notFound } from '../../errors.js';
@@ -56,14 +56,14 @@ export async function addOpeningBalance(db: Db, ctx: TenantContext, buildingId: 
 
 export async function listTransactions(db: Db, ctx: TenantContext, buildingId: string) {
   await getBuilding(db, ctx, buildingId);
-  const rows = await db.select({ p: P, description: E.description }).from(P).leftJoin(E, and(eq(E.id, P.refId), eq(P.refType, 'expense')))
+  const rows = await db.select({ p: P, description: E.description }).from(P).leftJoin(E, and(eq(E.id, P.refId), inArray(P.refType, ['expense', 'expense_void'])))
     .where(and(eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'fund'), eq(P.fund, 'reserve'))).orderBy(desc(P.bookedAt), desc(P.createdAt));
   return { rows: rows.map((r) => ({ id: r.p.id, kind: r.p.kind, fund: r.p.fund, amountMinor: r.p.amountMinor, refType: r.p.refType, refId: r.p.refId, bookedAt: r.p.bookedAt, description: r.description ?? null })) };
 }
 
 export async function listExpenses(db: Db, ctx: TenantContext, buildingId: string) {
   await getBuilding(db, ctx, buildingId);
-  const rows = await db.query.expenses.findMany({ where: and(eq(E.tenantId, ctx.tenantId), eq(E.buildingId, buildingId)), orderBy: (e, { desc: d }) => [d(e.paidAt)] });
+  const rows = await db.query.expenses.findMany({ where: and(eq(E.tenantId, ctx.tenantId), eq(E.buildingId, buildingId)), orderBy: (e, { desc: d }) => [d(e.paidAt), d(e.createdAt)] });
   return { rows };
 }
 
@@ -82,8 +82,9 @@ export async function voidExpense(db: Db, ctx: TenantContext, buildingId: string
   return db.transaction(async (tx) => {
     const before = await tx.query.expenses.findFirst({ where: and(eq(E.tenantId, ctx.tenantId), eq(E.buildingId, buildingId), eq(E.id, id)) });
     if (!before) throw notFound('Expense');
-    if (before.voidedAt) throw conflict('already_voided', 'Expense is already voided');
-    const [row] = await tx.update(E).set({ voidedAt: new Date(), voidReason: reason, updatedAt: new Date() }).where(eq(E.id, id)).returning();
+    const [row] = await tx.update(E).set({ voidedAt: new Date(), voidReason: reason, updatedAt: new Date() })
+      .where(and(eq(E.tenantId, ctx.tenantId), eq(E.id, id), isNull(E.voidedAt))).returning();
+    if (!row) throw conflict('already_voided', 'Expense is already voided');
     await addPosting(tx, ctx, { buildingId, account: 'fund', fund: before.fund, kind: 'adjustment', amountMinor: before.amountMinor, refType: 'expense_void', refId: id });
     await writeAudit(tx, ctx, { action: 'expense.void', entityType: 'expense', entityId: id, before, after: row });
     return row!;

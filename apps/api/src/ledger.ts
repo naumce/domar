@@ -6,18 +6,19 @@ const P = schema.postings;
 export type Fund = 'regular' | 'reserve';
 export type PostingKind = 'charge' | 'payment' | 'expense' | 'adjustment' | 'opening';
 
-export interface NewPosting {
+type PostingBase = {
   buildingId: string;
-  account: 'owner' | 'fund';
   fund: Fund;
-  contactId?: string | null | undefined;
   kind: PostingKind;
   amountMinor: number;
   refType: string;
   refId?: string | null | undefined;
   period?: string | null | undefined;
   bookedAt?: Date | undefined;
-}
+};
+
+/** Owner-account postings must carry a contactId; fund-account postings never do. */
+export type NewPosting = PostingBase & ({ account: 'owner'; contactId: string } | { account: 'fund'; contactId?: null | undefined });
 
 export async function addPosting(db: Db, ctx: TenantContext, p: NewPosting) {
   const [row] = await db.insert(P).values({
@@ -29,9 +30,10 @@ export async function addPosting(db: Db, ctx: TenantContext, p: NewPosting) {
 
 export async function addPostings(db: Db, ctx: TenantContext, ps: NewPosting[]) {
   if (ps.length === 0) return;
+  const now = new Date();
   await db.insert(P).values(ps.map((p) => ({
     tenantId: ctx.tenantId, buildingId: p.buildingId, account: p.account, fund: p.fund, contactId: p.contactId ?? null, kind: p.kind,
-    amountMinor: p.amountMinor, refType: p.refType, refId: p.refId ?? null, period: p.period ?? null, bookedAt: p.bookedAt ?? new Date(),
+    amountMinor: p.amountMinor, refType: p.refType, refId: p.refId ?? null, period: p.period ?? null, bookedAt: p.bookedAt ?? now,
   })));
 }
 

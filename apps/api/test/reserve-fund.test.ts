@@ -42,12 +42,21 @@ describe('reserve fund', () => {
     state = (await t.app.inject({ method: 'GET', url: url(), headers: { cookie: a.cookie } })).json();
     expect(state.balanceMinor).toBe(2300000);
     const tx = await t.app.inject({ method: 'GET', url: url('/transactions'), headers: { cookie: a.cookie } });
+    type TxRow = { kind: string; amountMinor: number; description: string | null };
+    const txRows: TxRow[] = tx.json().rows;
     // Order is `desc(bookedAt), desc(createdAt)`. The opening balance and the void adjustment are
     // both booked "now" (no explicit bookedAt), while the expenses are booked at their `paidAt`
     // (2026-09-10/11), which is in the past relative to "now" — so the exact ordering across the
     // two now-booked rows is not guaranteed by insertion order alone. Assert the set of rows
-    // instead of a specific order.
-    expect(tx.json().rows.map((r: { kind: string; amountMinor: number }) => [r.kind, r.amountMinor]).sort()).toEqual([['adjustment', 100], ['expense', -1200000], ['expense', -100], ['opening', 3500000]].sort());
+    // instead of a specific order between them.
+    expect(txRows.map((r) => [r.kind, r.amountMinor]).sort()).toEqual([['adjustment', 100], ['expense', -1200000], ['expense', -100], ['opening', 3500000]].sort());
+    // The two "now"-booked rows (opening, adjustment) must both sort ahead of the two past-dated
+    // expense rows.
+    const kindIndex = (kind: string) => txRows.findIndex((r) => r.kind === kind);
+    const expenseIndices = txRows.flatMap((r, i) => (r.kind === 'expense' ? [i] : []));
+    expect(Math.max(kindIndex('opening'), kindIndex('adjustment'))).toBeLessThan(Math.min(...expenseIndices));
+    expect(txRows.find((r) => r.amountMinor === -1200000)?.description).toBe('Поправка кров');
+    expect(txRows.find((r) => r.kind === 'adjustment')?.description).toBe('Грешка');
     const expenses = await t.app.inject({ method: 'GET', url: url('/expenses'), headers: { cookie: a.cookie } });
     expect(expenses.json().rows).toHaveLength(2);
     expect(expenses.json().rows.find((e: { id: string }) => e.id === exp2.json().id).voidedAt).not.toBeNull();
