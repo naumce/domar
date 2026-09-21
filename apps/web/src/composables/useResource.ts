@@ -26,3 +26,5 @@ export function useResource<T extends { id: string }>(path: string) {
   const remove = (id: string) => wrap(() => api.del(`${path}/${id}`));
   return { rows, total, loading, error, load, create, update, remove };
 }
+
+export const swallow = (p: Promise<unknown>): void => { void p.catch(() => {}); };

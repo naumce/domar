@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useResource } from '@/composables/useResource';
+import { swallow, useResource } from '@/composables/useResource';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
 
@@ -24,5 +24,8 @@ describe('useResource', () => {
     const r = useResource('/api/x');
     await expect(r.create({})).rejects.toMatchObject({ code: 'label_taken' });
     expect(r.error.value).toBe('label_taken');
+  });
+  it('swallow catches a rejected promise without an unhandled rejection', async () => {
+    await expect(Promise.resolve(swallow(Promise.reject(new Error('x'))))).resolves.toBeUndefined();
   });
 });

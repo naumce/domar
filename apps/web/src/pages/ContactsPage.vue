@@ -7,7 +7,7 @@ import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppInput from '@/components/ui/AppInput.vue';
 import AppSelect from '@/components/ui/AppSelect.vue';
-import { useResource } from '@/composables/useResource';
+import { swallow, useResource } from '@/composables/useResource';
 
 const { t } = useI18n();
 const res = useResource<Contact>('/api/contacts');
@@ -25,8 +25,9 @@ async function submit() {
 <template>
   <div class="mb-4 flex items-center justify-between"><h1 class="text-2xl font-semibold">{{ t('contacts.title') }} <span class="text-base text-slate-500">{{ res.total.value }}</span></h1><AppButton data-test="add" @click="open = true">{{ t('contacts.add') }}</AppButton></div>
   <form class="mb-3 flex gap-2" @submit.prevent="doSearch"><input v-model="search" :placeholder="t('app.search')" class="rounded-md border border-slate-300 px-3 py-2 text-sm" data-test="search" /><AppButton type="submit" variant="secondary">{{ t('app.search') }}</AppButton></form>
+  <p v-if="res.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
   <DataTable :columns="[{ key: 'lastName', label: t('auth.lastName') }, { key: 'firstName', label: t('auth.firstName') }, { key: 'email', label: t('auth.email') }, { key: 'phone', label: t('contacts.phone') }]" :rows="res.rows.value">
-    <template #actions="{ row }"><AppButton variant="danger" @click="res.remove(String(row.id))">{{ t('app.delete') }}</AppButton></template>
+    <template #actions="{ row }"><AppButton variant="danger" @click="swallow(res.remove(row.id))">{{ t('app.delete') }}</AppButton></template>
   </DataTable>
   <ModalDialog :open="open" :title="t('contacts.add')" @close="open = false">
     <form class="grid grid-cols-2 gap-3" @submit.prevent="submit">

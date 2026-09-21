@@ -8,7 +8,7 @@ import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppInput from '@/components/ui/AppInput.vue';
 import AppSelect from '@/components/ui/AppSelect.vue';
-import { useResource } from '@/composables/useResource';
+import { swallow, useResource } from '@/composables/useResource';
 
 const { t } = useI18n();
 const res = useResource<Building>('/api/buildings');
@@ -22,9 +22,10 @@ const shareOptions = (['area', 'equal', 'custom'] as const).map((v) => ({ value:
 </script>
 <template>
   <div class="mb-4 flex items-center justify-between"><h1 class="text-2xl font-semibold">{{ t('buildings.title') }}</h1><AppButton data-test="add" @click="open = true">{{ t('buildings.add') }}</AppButton></div>
+  <p v-if="res.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
   <DataTable :columns="[{ key: 'name', label: t('buildings.name') }, { key: 'address', label: t('buildings.address') }, { key: 'city', label: t('buildings.city') }, { key: 'unitCount', label: t('buildings.unitCount') }]" :rows="res.rows.value">
     <template #cell-name="{ row }"><RouterLink :to="`/app/buildings/${row.id}`" class="text-emerald-700 underline" data-test="building-link">{{ row.name }}</RouterLink></template>
-    <template #actions="{ row }"><AppButton variant="danger" @click="res.remove(String(row.id))">{{ t('app.delete') }}</AppButton></template>
+    <template #actions="{ row }"><AppButton variant="danger" @click="swallow(res.remove(row.id))">{{ t('app.delete') }}</AppButton></template>
   </DataTable>
   <ModalDialog :open="open" :title="t('buildings.add')" @close="open = false">
     <form class="grid grid-cols-2 gap-3" @submit.prevent="submit">

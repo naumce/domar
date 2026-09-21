@@ -7,7 +7,7 @@ import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import UnitForm, { type UnitCreatePayload } from '@/components/units/UnitForm.vue';
-import { useResource } from '@/composables/useResource';
+import { swallow, useResource } from '@/composables/useResource';
 
 const props = defineProps<{ id: string }>();
 const { t, te } = useI18n();
@@ -38,10 +38,11 @@ async function onSubmit(payload: UnitCreatePayload) {
     <h1 class="text-2xl font-semibold">{{ building.name }}</h1>
     <p class="mb-6 text-slate-600">{{ building.address }}, {{ building.postalCode }} {{ building.city }}</p>
     <div class="mb-3 flex items-center justify-between"><h2 class="text-lg font-semibold">{{ t('units.title') }} <span class="text-slate-500">{{ units.rows.value.length }}</span></h2><AppButton data-test="add-unit" @click="openNew">{{ t('units.add') }}</AppButton></div>
+    <p v-if="units.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
     <DataTable :columns="[{ key: 'label', label: t('units.label') }, { key: 'floor', label: t('units.floor') }, { key: 'kind', label: t('units.kind') }, { key: 'areaM2', label: t('units.areaM2') }, { key: 'owner', label: t('units.owner') }]" :rows="units.rows.value">
       <template #cell-kind="{ row }">{{ t(`units.kinds.${row.kind}`) }}</template>
       <template #cell-owner="{ row }">{{ row.owner ? `${row.owner.firstName} ${row.owner.lastName}` : '' }}</template>
-      <template #actions="{ row }"><AppButton variant="secondary" @click="openEdit(row as unknown as Unit)">{{ t('app.edit') }}</AppButton><AppButton variant="danger" class="ml-2" @click="units.remove(String(row.id))">{{ t('app.delete') }}</AppButton></template>
+      <template #actions="{ row }"><AppButton variant="secondary" @click="openEdit(row)">{{ t('app.edit') }}</AppButton><AppButton variant="danger" class="ml-2" @click="swallow(units.remove(row.id))">{{ t('app.delete') }}</AppButton></template>
     </DataTable>
     <ModalDialog :open="open" :title="editing ? t('app.edit') : t('units.add')" @close="open = false">
       <UnitForm :key="editing?.id ?? 'new'" :units="units.rows.value" :contacts="contacts" :initial="editing ?? undefined" :error="formError" @submit="onSubmit" />
