@@ -10,6 +10,7 @@ import { authPlugin } from './auth/plugin.js';
 import { authRoutes } from './auth/routes.js';
 import { AppError } from './errors.js';
 import { dbPlugin } from './plugins/db.js';
+import { buildingRoutes } from './resources/buildings/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
 import { taxRateRoutes } from './resources/tax-rates/routes.js';
 import { healthRoutes } from './routes/health.js';
@@ -50,6 +51,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(authRoutes, { prefix: '/auth' });
     await api.register(taxRateRoutes, { prefix: '/tax-rates' });
     await api.register(contactRoutes, { prefix: '/contacts' });
+    await api.register(buildingRoutes, { prefix: '/buildings' });
   }, { prefix: '/api' });
 
   return app;
