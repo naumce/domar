@@ -13,6 +13,7 @@ import { dbPlugin } from './plugins/db.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
 import { taxRateRoutes } from './resources/tax-rates/routes.js';
+import { unitRoutes } from './resources/units/routes.js';
 import { healthRoutes } from './routes/health.js';
 
 export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config }): Promise<FastifyInstance> {
@@ -52,6 +53,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(taxRateRoutes, { prefix: '/tax-rates' });
     await api.register(contactRoutes, { prefix: '/contacts' });
     await api.register(buildingRoutes, { prefix: '/buildings' });
+    await api.register(unitRoutes, { prefix: '/buildings/:buildingId/units' });
   }, { prefix: '/api' });
 
   return app;

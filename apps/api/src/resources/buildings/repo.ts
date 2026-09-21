@@ -16,7 +16,7 @@ async function assertContactInTenant(db: Db, ctx: TenantContext, contactId: stri
 
 export async function listBuildings(db: Db, ctx: TenantContext) {
   const rows = await db
-    .select({ building: B, unitCount: sql<number>`(select count(*) from ${schema.units} u where u.building_id = ${B.id})`.mapWith(Number) })
+    .select({ building: B, unitCount: sql<number>`(select count(*) from ${schema.units} u where u.building_id = "buildings"."id")`.mapWith(Number) })
     .from(B).where(eq(B.tenantId, ctx.tenantId)).orderBy(asc(B.name));
   return { rows: rows.map((r) => ({ ...r.building, unitCount: r.unitCount })) };
 }
