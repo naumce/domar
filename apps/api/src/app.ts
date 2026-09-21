@@ -12,6 +12,7 @@ import { authPlugin } from './auth/plugin.js';
 import { authRoutes } from './auth/routes.js';
 import { AppError } from './errors.js';
 import { dbPlugin } from './plugins/db.js';
+import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
 import { serviceRoutes } from './resources/services/routes.js';
@@ -63,6 +64,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(serviceRoutes, { prefix: '/services' });
     await api.register(buildingRoutes, { prefix: '/buildings' });
     await api.register(unitRoutes, { prefix: '/buildings/:buildingId/units' });
+    await api.register(buildingServiceRoutes, { prefix: '/buildings/:buildingId/services' });
   }, { prefix: '/api' });
 
   return app;
