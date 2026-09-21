@@ -15,12 +15,12 @@ function url(path: string, query?: Query): string {
 }
 
 async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
-  const res = await fetch(url(path, query), {
-    method,
-    credentials: 'include',
-    headers: body !== undefined ? { 'content-type': 'application/json' } : {},
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const init: RequestInit = { method, credentials: 'include' };
+  if (body !== undefined) {
+    init.headers = { 'content-type': 'application/json' };
+    init.body = JSON.stringify(body);
+  }
+  const res = await fetch(url(path, query), init);
   if (res.status === 204) return undefined as T;
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json() : undefined;
