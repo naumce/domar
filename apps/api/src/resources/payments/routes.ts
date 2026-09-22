@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
 import { idParam } from '../common.js';
 import { buildingParam } from '../units/schema.js';
-import { getPayment, listPayments } from './repo.js';
+import { getPayment, listInvoicePayments, listPayments } from './repo.js';
 import { onAccountCreate, paymentCreate, paymentListQuery, paymentOut, recordOut, summaryOut, voidBody } from './schema.js';
 import { recordPayment, voidPayment } from './service.js';
 
@@ -21,7 +21,7 @@ export const paymentRoutes: FastifyPluginAsyncZod = async (app) => {
 /** /api/invoices/:id/payments */
 export const invoicePaymentRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requireAuth);
-  app.get('/:id/payments', { schema: { params: idParam, response: { 200: z.object({ rows: z.array(paymentOut) }) } } }, async (req) => ({ rows: (await listPayments(req.db, req.ctx!, { invoiceId: req.params.id, page: 1, pageSize: 200 })).rows }));
+  app.get('/:id/payments', { schema: { params: idParam, response: { 200: z.object({ rows: z.array(paymentOut) }) } } }, async (req) => listInvoicePayments(req.db, req.ctx!, req.params.id));
   app.post('/:id/payments', { preHandler: requireRole(...WRITE_ROLES), schema: { params: idParam, body: paymentCreate, response: { 201: recordOut } } }, async (req, reply) => {
     const r = await req.db.transaction((tx) => recordPayment(tx, req.ctx!, { ...req.body, invoiceId: req.params.id, paidAt: new Date(req.body.paidAt) }));
     return reply.status(201).send({ payment: await getPayment(req.db, req.ctx!, r.payment.id), invoice: r.invoice });

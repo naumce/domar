@@ -23,13 +23,7 @@ export async function listPayments(db: Db, ctx: TenantContext, q: PaymentListQue
   if (q.status) conds.push(eq(PAY.status, q.status as typeof PAY.$inferSelect.status));
   if (q.from) conds.push(gte(PAY.paidAt, new Date(q.from)));
   if (q.to) conds.push(lt(PAY.paidAt, new Date(q.to)));
-  if (q.search) {
-    // The free-text reference matches on a substring; the invoice number is a structured identifier
-    // and matches whole (case-insensitively), so a partial number does not drag in every payment
-    // booked against that invoice.
-    const esc = (v: string) => v.replace(/[\\%_]/g, (m) => '\\' + m);
-    conds.push(or(ilike(PAY.reference, `%${esc(q.search)}%`), ilike(INV.number, esc(q.search)))!);
-  }
+  if (q.search) { const term = `%${q.search.replace(/[\\%_]/g, (m) => '\\' + m)}%`; conds.push(or(ilike(PAY.reference, term), ilike(INV.number, term))!); }
   const where = and(...conds);
   const [rows, totalRows, summaryRows, byMethod] = await Promise.all([
     joined(db).where(where).orderBy(desc(PAY.paidAt), desc(PAY.createdAt), asc(PAY.id)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
@@ -42,6 +36,13 @@ export async function listPayments(db: Db, ctx: TenantContext, q: PaymentListQue
     rows: rows.map(toOut), total: Number(totalRows[0]?.total ?? 0),
     summary: { totalMinor: Number(completed?.total ?? 0), completedCount: Number(completed?.n ?? 0), voidedCount: Number(voided?.n ?? 0), byMethod: byMethod.map((m) => ({ method: m.method, totalMinor: Number(m.total) })) },
   };
+}
+
+/** Payments of one invoice, newest first; 404s when the invoice is not this tenant's. */
+export async function listInvoicePayments(db: Db, ctx: TenantContext, invoiceId: string) {
+  const [inv] = await db.select({ id: INV.id }).from(INV).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, invoiceId))).limit(1);
+  if (!inv) throw notFound('Invoice');
+  return { rows: (await listPayments(db, ctx, { invoiceId, page: 1, pageSize: 200 })).rows };
 }
 
 export async function getPayment(db: Db, ctx: TenantContext, id: string) {

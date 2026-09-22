@@ -10,7 +10,7 @@ const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.co
 
 // "invoices"."id" is hard-coded rather than interpolated: how drizzle qualifies a column inside raw
 // sql depends on the surrounding select, and an unqualified `id` would bind to the subquery's own row.
-const paidMinorSql = sql<string>`(select coalesce(sum(p.amount_minor), 0) from ${schema.payments} p where p.invoice_id = "invoices"."id" and p.status = 'completed')`;
+const paidMinorSql = sql<string>`(select coalesce(sum(p.amount_minor), 0) from ${schema.payments} p where p.tenant_id = "invoices"."tenant_id" and p.invoice_id = "invoices"."id" and p.status = 'completed')`;
 const rowSelect = { inv: INV, period: BP.period, paidMinor: paidMinorSql, contact: { id: C.id, firstName: C.firstName, lastName: C.lastName }, building: { id: B.id, name: B.name } };
 function joined(db: Db) {
   return db.select(rowSelect).from(INV).innerJoin(BP, eq(BP.id, INV.periodId)).innerJoin(C, eq(C.id, INV.contactId)).innerJoin(B, eq(B.id, INV.buildingId));

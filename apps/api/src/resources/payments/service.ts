@@ -16,7 +16,9 @@ export interface RecordPaymentInput {
 
 /** Re-derives the invoice status from its completed payments. Draft/cancelled invoices keep their status. */
 export async function recomputeInvoiceStatus(tx: Db, ctx: TenantContext, invoiceId: string) {
-  const inv = await tx.query.invoices.findFirst({ where: and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, invoiceId)) });
+  // Lock the invoice row: a concurrent payment or void on the same invoice must not read the paid
+  // total while the other side is still writing it, or the two could settle on different statuses.
+  const [inv] = await tx.select().from(INV).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, invoiceId))).for('update');
   if (!inv) throw notFound('Invoice');
   const [r] = await tx.select({ paid: sql<string>`coalesce(sum(${PAY.amountMinor}), 0)` }).from(PAY)
     .where(and(eq(PAY.tenantId, ctx.tenantId), eq(PAY.invoiceId, invoiceId), eq(PAY.status, 'completed')));
@@ -86,9 +88,10 @@ export async function voidPayment(tx: Db, ctx: TenantContext, id: string, reason
     throw conflict('already_voided', 'Payment is already voided');
   }
   const originals = await tx.select().from(P).where(and(eq(P.tenantId, ctx.tenantId), eq(P.refType, 'payment'), eq(P.refId, id)));
+  // The reversals are dated now, not in the original's billing period, so `period` stays null.
   await addPostings(tx, ctx, originals.map((o): NewPosting => o.account === 'owner'
-    ? { account: 'owner', contactId: o.contactId!, buildingId: o.buildingId, fund: o.fund, kind: 'adjustment', amountMinor: -o.amountMinor, refType: 'payment_void', refId: id, period: o.period }
-    : { account: 'fund', buildingId: o.buildingId, fund: o.fund, kind: 'adjustment', amountMinor: -o.amountMinor, refType: 'payment_void', refId: id, period: o.period }));
+    ? { account: 'owner', contactId: o.contactId!, buildingId: o.buildingId, fund: o.fund, kind: 'adjustment', amountMinor: -o.amountMinor, refType: 'payment_void', refId: id }
+    : { account: 'fund', buildingId: o.buildingId, fund: o.fund, kind: 'adjustment', amountMinor: -o.amountMinor, refType: 'payment_void', refId: id }));
   if (payment.statementLineId) {
     await tx.update(SL).set({ matchStatus: 'unmatched', paymentId: null, confidence: null }).where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, payment.statementLineId)));
   }

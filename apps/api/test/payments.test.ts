@@ -51,6 +51,13 @@ describe('payments', () => {
 
   it('rejects payments on drafts, bad amounts and foreign invoices; records on-account payments', async () => {
     expect((await post(`/api/invoices/${fx.invoices.O2.id}/payments`, { amountMinor: 0, method: 'cash', paidAt: '2026-10-06T09:00:00.000Z' })).statusCode).toBe(400);
+    const period = (await post(`/api/buildings/${fx.buildingId}/periods`, { period: '2027-03' })).json();
+    await post(`/api/buildings/${fx.buildingId}/periods/${period.id}/generate`, {});
+    const draft = (await t.app.inject({ method: 'GET', url: `/api/invoices?buildingId=${fx.buildingId}&period=2027-03`, headers: h() })).json().rows[0];
+    const onDraft = await post(`/api/invoices/${draft.id}/payments`, { amountMinor: 100, method: 'cash', paidAt: '2026-10-06T09:00:00.000Z' });
+    expect(onDraft.statusCode).toBe(409);
+    expect(onDraft.json().error.code).toBe('invoice_not_payable');
+    expect((await t.app.inject({ method: 'GET', url: `/api/invoices/${draft.id}/payments`, headers: { cookie: (await registerTenant(t.app, 'firma-c')).cookie } })).statusCode).toBe(404);
     const b = await registerTenant(t.app, 'firma-b');
     expect((await t.app.inject({ method: 'POST', url: `/api/invoices/${fx.invoices.O2.id}/payments`, headers: { cookie: b.cookie }, payload: { amountMinor: 100, method: 'cash', paidAt: '2026-10-06T09:00:00.000Z' } })).statusCode).toBe(404);
     const onAccount = await post(`/api/buildings/${fx.buildingId}/payments`, { contactId: fx.owners.O3, amountMinor: 5000, method: 'cash', paidAt: '2026-10-07T09:00:00.000Z', note: 'аконтација' });
@@ -65,7 +72,7 @@ describe('payments', () => {
     expect(all.summary).toMatchObject({ completedCount: 2, voidedCount: 1, totalMinor: 105000 });
     expect(all.summary.byMethod.find((m: { method: string }) => m.method === 'bank_transfer').totalMinor).toBe(100000);
     const search = (await t.app.inject({ method: 'GET', url: `/api/payments?search=INV-0001`, headers: h() })).json();
-    expect(search.rows.map((r: { amountMinor: number }) => r.amountMinor)).toEqual([100000]);
+    expect(search.rows.map((r: { amountMinor: number }) => r.amountMinor)).toEqual([160000, 100000]);
     const range = (await t.app.inject({ method: 'GET', url: `/api/payments?from=2026-10-07T00:00:00.000Z&to=2026-10-08T00:00:00.000Z`, headers: h() })).json();
     expect(range.rows).toHaveLength(1);
     expect(range.rows[0].contact.lastName).toBe('Велковски');
