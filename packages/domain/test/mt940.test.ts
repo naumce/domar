@@ -33,4 +33,27 @@ describe('mt940 parser', () => {
   it('does not detect CSV text', () => {
     expect(mt940Parser.detect('date;amount;reference\n2026-09-01;100,00;x')).toBe(false);
   });
+  it('treats RC (reversal of credit) as negative and RD (reversal of debit) as positive', () => {
+    const rc = [':20:X', ':61:2609150915RC10000,00NTRFNONREF//1'].join('\r\n');
+    const rd = [':20:X', ':61:2609150915RD10000,00NTRFNONREF//1'].join('\r\n');
+    expect(mt940Parser.parse(rc, mkPack.parseAmountToMinor).lines[0]!.amountMinor).toBe(-1000000);
+    expect(mt940Parser.parse(rd, mkPack.parseAmountToMinor).lines[0]!.amountMinor).toBe(1000000);
+  });
+  it('warns and skips :61: lines with an invalid value date', () => {
+    const bad = [':20:X', ':61:2613400915C100,00NTRFX//1'].join('\r\n');
+    const r = mt940Parser.parse(bad, mkPack.parseAmountToMinor);
+    expect(r.lines).toHaveLength(0);
+    expect(r.warnings[0]).toMatch(/date/i);
+  });
+  it('appends :61: continuation lines (subfield 9) to raw and reference', () => {
+    const withCont = [':20:X', ':61:2609150915C10000,00NTRFNONREF//1', 'CONTLINE', ':86:Uplata'].join('\r\n');
+    const r = mt940Parser.parse(withCont, mkPack.parseAmountToMinor);
+    expect(r.lines[0]!.reference).toContain('CONTLINE');
+    expect(r.lines[0]!.raw).toContain('CONTLINE');
+  });
+  it('treats an empty :25: as no account number', () => {
+    const noAcct = [':20:X', ':25:', ':61:2609150915C100,00NTRFX//1', ':86:x'].join('\r\n');
+    const r = mt940Parser.parse(noAcct, mkPack.parseAmountToMinor);
+    expect(r.accountNumber).toBeNull();
+  });
 });

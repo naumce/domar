@@ -13,6 +13,9 @@ describe('normalizeRef', () => {
     expect(normalizeRef('inv-0001 / 2026 стан 12')).toBe('INV-0001/2026STAN12');
     expect(normalizeRef('Бошковски Ѓорѓи')).toBe('BOSKOVSKIGJORGJI');
   });
+  it('strips Latin diacritics', () => {
+    expect(normalizeRef('Boškovski')).toBe('BOSKOVSKI');
+  });
 });
 
 describe('matchLine', () => {
@@ -32,5 +35,16 @@ describe('matchLine', () => {
   });
   it('maps a batch with indices', () => {
     expect(matchStatementLines([line(1, 'x'), line(5, 'INV-0003/2026')], cands)).toEqual([{ index: 1, invoiceId: 'i3', confidence: 'exact' }]);
+  });
+  it('resolves multiple exact number hits by outstanding amount, or by earliest position when the amount does not disambiguate', () => {
+    const ref = 'uplata INV-0002/2026 i INV-0001/2026';
+    expect(matchLine(line(100, ref), cands)).toEqual({ invoiceId: 'i2', confidence: 'likely' });
+    expect(matchLine(line(2560999, ref), cands)).toEqual({ invoiceId: 'i1', confidence: 'exact' });
+  });
+  it('requires digit boundaries around a matched number so it does not match inside a longer digit run', () => {
+    const numOnly = [{ invoiceId: 'x1', number: '0001', contactLastName: 'Zzz', outstandingMinor: 1 }];
+    expect(matchLine(line(100, 'od smetka 300000000123456'), numOnly)).toBeNull();
+    expect(matchLine(line(100, 'ref 10001'), numOnly)).toBeNull();
+    expect(matchLine(line(100, 'uplata 0001 stan'), numOnly)).toEqual({ invoiceId: 'x1', confidence: 'exact' });
   });
 });
