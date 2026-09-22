@@ -4,6 +4,9 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import type { Invoice, InvoiceLine } from '@/api/types';
+import PaymentForm, { type PaymentPayload } from '@/components/billing/PaymentForm.vue';
+import DataTable from '@/components/DataTable.vue';
+import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import { formatMoney, percentFromBp } from '@/utils/money';
 
@@ -13,7 +16,17 @@ const router = useRouter();
 const API = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 const inv = ref<Invoice | null>(null);
 const error = ref('');
-onMounted(async () => { inv.value = await api.get<Invoice>(`/api/invoices/${props.id}`); });
+const payOpen = ref(false);
+async function load() { inv.value = await api.get<Invoice>(`/api/invoices/${props.id}`); }
+onMounted(load);
+async function recordPayment(p: PaymentPayload) {
+  try { await api.post(`/api/invoices/${props.id}/payments`, p); payOpen.value = false; await load(); } catch { error.value = t('app.error'); }
+}
+async function voidPayment(id: string) {
+  const reason = window.prompt(t('payments.voidReason'));
+  if (!reason) return;
+  try { await api.post(`/api/payments/${id}/void`, { reason }); await load(); } catch { error.value = t('app.error'); }
+}
 const groups = computed(() => {
   const ls = inv.value?.lines ?? [];
   return ([['service', ls.filter((l) => l.kind === 'service' || l.kind === 'manual')], ['management_fee', ls.filter((l) => l.kind === 'management_fee')], ['reserve_fund', ls.filter((l) => l.kind === 'reserve_fund')]] as [InvoiceLine['kind'], InvoiceLine[]][]).filter(([, x]) => x.length);
@@ -30,6 +43,7 @@ async function remove() { try { await api.del(`/api/invoices/${props.id}`); awai
       <div class="flex gap-2">
         <a :href="`${API}/api/invoices/${inv.id}/html`" target="_blank" rel="noopener" class="rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-300" data-test="open-html">{{ t('invoices.openHtml') }}</a>
         <a :href="`${API}/api/invoices/${inv.id}/pdf`" target="_blank" rel="noopener" class="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white">{{ t('invoices.downloadPdf') }}</a>
+        <AppButton v-if="inv.status !== 'draft'" data-test="record-payment" @click="payOpen = true">{{ t('payments.record') }}</AppButton>
         <AppButton v-if="inv.status === 'draft'" variant="danger" @click="remove">{{ t('invoices.deleteDraft') }}</AppButton>
       </div>
     </div>
@@ -53,8 +67,22 @@ async function remove() { try { await api.del(`/api/invoices/${props.id}`); awai
       <div class="flex justify-between font-medium"><span>{{ t('billing.total') }}</span><span data-test="invoice-total">{{ formatMoney(inv.totalMinor) }}</span></div>
       <div class="flex justify-between"><span>{{ t('billing.previousBalance') }}</span><span>{{ formatMoney(inv.previousBalanceMinor) }}</span></div>
       <div class="flex justify-between border-t border-slate-300 pt-1 text-base font-semibold"><span>{{ t('billing.amountDue') }}</span><span>{{ formatMoney(inv.amountDueMinor) }}</span></div>
+      <div class="flex justify-between"><span>{{ t('billing.paid') }}</span><span data-test="invoice-paid">{{ formatMoney(inv.paidMinor) }}</span></div>
+      <div class="flex justify-between"><span>{{ t('billing.outstanding') }}</span><span data-test="invoice-outstanding">{{ formatMoney(inv.outstandingMinor) }}</span></div>
       <div class="flex justify-between pt-2 text-slate-600"><span>{{ t('invoices.reserveBalance') }}</span><span>{{ formatMoney(inv.reserveFundBuildingBalanceMinor) }}</span></div>
     </div>
+    <h2 class="mb-2 mt-6 text-lg font-semibold">{{ t('payments.title') }}</h2>
+    <DataTable :columns="[{ key: 'paidAt', label: t('payments.paidAt') }, { key: 'method', label: t('payments.method') }, { key: 'amountMinor', label: t('payments.amount') }, { key: 'reference', label: t('payments.reference') }, { key: 'status', label: t('billing.status') }]" :rows="inv.payments">
+      <template #cell-paidAt="{ row }">{{ date(row.paidAt) }}</template>
+      <template #cell-method="{ row }">{{ t(`payments.methods.${row.method}`) }}</template>
+      <template #cell-amountMinor="{ row }">{{ formatMoney(row.amountMinor) }}</template>
+      <template #cell-reference="{ row }">{{ row.reference ?? '—' }}</template>
+      <template #cell-status="{ row }">{{ t(`payments.status.${row.status}`) }}</template>
+      <template #actions="{ row }"><AppButton v-if="row.status === 'completed'" variant="danger" data-test="void-payment" @click="voidPayment(row.id)">{{ t('payments.void') }}</AppButton></template>
+    </DataTable>
+    <ModalDialog :open="payOpen" :title="t('payments.record')" @close="payOpen = false">
+      <PaymentForm :outstanding-minor="inv.outstandingMinor" @submit="recordPayment" />
+    </ModalDialog>
   </div>
   <p v-else>{{ t('app.loading') }}</p>
 </template>

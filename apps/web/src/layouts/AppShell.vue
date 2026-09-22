@@ -9,7 +9,7 @@ const auth = useAuthStore();
 const router = useRouter();
 const nav = [
   { to: '/app', key: 'nav.dashboard' }, { to: '/app/buildings', key: 'nav.buildings' }, { to: '/app/services', key: 'nav.services' },
-  { to: '/app/contacts', key: 'nav.contacts' }, { to: '/app/invoices', key: 'nav.invoices' }, { to: '/app/tax-rates', key: 'nav.taxRates' },
+  { to: '/app/contacts', key: 'nav.contacts' }, { to: '/app/invoices', key: 'nav.invoices' }, { to: '/app/payments', key: 'nav.payments' }, { to: '/app/tax-rates', key: 'nav.taxRates' },
 ];
 async function logout() { await auth.logout(); await router.push('/login'); }
 function toggleLocale() { setLocale((i18n.global.locale.value === 'mk' ? 'en' : 'mk') as Locale); }

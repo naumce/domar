@@ -1,6 +1,6 @@
 export default {
   app: { name: 'domar', loading: 'Loading…', save: 'Save', cancel: 'Cancel', create: 'Create', edit: 'Edit', delete: 'Delete', confirmDelete: 'Are you sure?', actions: 'Actions', search: 'Search', empty: 'No data', yes: 'Yes', no: 'No', error: 'Something went wrong' },
-  nav: { dashboard: 'Dashboard', buildings: 'Buildings', services: 'Services', contacts: 'Contacts', invoices: 'Invoices', taxRates: 'Tax rates', settings: 'Settings', logout: 'Log out', portal: 'Owner portal' },
+  nav: { dashboard: 'Dashboard', buildings: 'Buildings', services: 'Services', contacts: 'Contacts', invoices: 'Invoices', payments: 'Payments', taxRates: 'Tax rates', settings: 'Settings', logout: 'Log out', portal: 'Owner portal' },
   auth: {
     login: 'Log in', register: 'Create account', tenantSlug: 'Organization (slug)', email: 'Email', password: 'Password', firstName: 'First name', lastName: 'Last name', orgName: 'Company name', noAccount: 'No account?', haveAccount: 'Already have an account?',
     errors: { invalid_credentials: 'Wrong organization, email or password.', slug_taken: 'That slug is already taken.', validation: 'Check the entered data.', generic: 'Something went wrong. Try again.' },
@@ -26,6 +26,7 @@ export default {
   billing: {
     regular: 'Regular fund', reserve: 'Reserve fund', fund: 'Fund', amount: 'Amount', quantity: 'Quantity', unitPrice: 'Unit price', tax: 'Tax', total: 'Total', subtotal: 'Subtotal',
     previousBalance: 'Previous balance', amountDue: 'Amount due', buildingWide: 'Building-wide', ownerShare: 'Your share', description: 'Description', period: 'Period', status: 'Status',
+    paid: 'Paid', outstanding: 'Outstanding',
   },
   buildingServices: {
     title: 'Recurring services', attach: 'Attach recurring service', frequency: 'Frequency', monthly: 'Monthly', everyN: 'Every N months', intervalMonths: 'Interval (months)',
@@ -56,5 +57,12 @@ export default {
     openHtml: 'Open (HTML)', downloadPdf: 'Download PDF', deleteDraft: 'Delete draft', reserveBalance: 'Building reserve fund balance',
     issued: 'Issued', due: 'Due', units: 'Units',
     lineKind: { service: 'Service', manual: 'Line item', reserve_fund: 'Reserve fund', management_fee: 'Management' },
+  },
+  payments: {
+    title: 'Payments', record: 'Record payment', amount: 'Amount', method: 'Method',
+    methods: { cash: 'Cash', bank_transfer: 'Bank transfer', card: 'Card', cheque: 'Cheque', other: 'Other' },
+    paidAt: 'Payment date', reference: 'Reference', note: 'Note', void: 'Void', voidReason: 'Void reason',
+    status: { completed: 'Completed', voided: 'Voided' },
+    received: 'Received', count: 'Payments', voidedCount: 'Voided', from: 'From', to: 'To', none: 'No payments', onAccount: 'On account (no invoice)',
   },
 } as const;
