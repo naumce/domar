@@ -1,6 +1,9 @@
 import type { ParsedStatementLine } from './types.js';
 
-const CYR: Record<string, string> = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', ѓ: 'gj', е: 'e', ж: 'z', з: 'z', ѕ: 'dz', и: 'i', ј: 'j', к: 'k', л: 'l', љ: 'lj', м: 'm', н: 'n', њ: 'nj', о: 'o', п: 'p', р: 'r', с: 's', т: 't', ќ: 'kj', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'c', џ: 'dz', ш: 's' };
+const CYR: Record<string, string> = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', ѓ: 'gj', е: 'e', ж: 'z', з: 'z', ѕ: 'dz', и: 'i', ј: 'j', к: 'k', л: 'l', љ: 'lj', м: 'm', н: 'n', њ: 'nj', о: 'o', п: 'p', р: 'r', с: 's', т: 't', ќ: 'kj', у: 'u', ф: 'f', х: 'h', ц: 'c', ч: 'c', џ: 'dz', ш: 's',
+  // Latin đ (the usual transcription of ѓ) is a single code point with no NFD decomposition, so it is
+  // mapped here rather than left to the diacritic strip, which would drop it entirely.
+  đ: 'gj' };
 
 export function transliterate(s: string): string {
   return [...s.toLowerCase()].map((c) => CYR[c] ?? c).join('');
@@ -9,7 +12,7 @@ export function transliterate(s: string): string {
 /**
  * Uppercase Latin, digits, '/' and '-' only.
  * Diacritics (e.g. š, é) are stripped via NFD decomposition + combining-mark removal after transliteration,
- * so Cyrillic digraphs (ѓ/ќ etc., which also canonically decompose under NFD) are mapped first and unaffected.
+ * so Cyrillic digraphs (ѓ/ќ etc., which also canonically decompose under NFD) and Latin đ are mapped first and unaffected.
  */
 export function normalizeRef(s: string): string {
   const flat = transliterate(s).normalize('NFD').replace(/\p{M}/gu, '');

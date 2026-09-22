@@ -13,12 +13,14 @@ const { t } = useI18n();
 const rows = ref<Payment[]>([]); const total = ref(0); const summary = ref<PaymentSummary | null>(null); const buildings = ref<Building[]>([]); const error = ref('');
 const f = ref({ buildingId: null as string | null, method: null as PaymentMethod | null, status: null as 'completed' | 'voided' | null, from: '', to: '', search: '' });
 const methods: PaymentMethod[] = ['bank_transfer', 'cash', 'card', 'cheque', 'other'];
+/** The API's `to` is exclusive, so the last day of the range is included by asking for next-day local midnight. */
+function endOfDayIso(day: string) { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + 1); return d.toISOString(); }
 async function search() {
   error.value = '';
   try {
     const r = await api.get<{ rows: Payment[]; total: number; summary: PaymentSummary }>('/api/payments', {
       buildingId: f.value.buildingId ?? undefined, method: f.value.method ?? undefined, status: f.value.status ?? undefined,
-      from: f.value.from ? new Date(`${f.value.from}T00:00:00`).toISOString() : undefined, to: f.value.to ? new Date(`${f.value.to}T23:59:59`).toISOString() : undefined,
+      from: f.value.from ? new Date(`${f.value.from}T00:00:00`).toISOString() : undefined, to: f.value.to ? endOfDayIso(f.value.to) : undefined,
       search: f.value.search || undefined, pageSize: 200,
     });
     rows.value = r.rows; total.value = r.total; summary.value = r.summary;

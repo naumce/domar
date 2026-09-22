@@ -16,6 +16,11 @@ describe('normalizeRef', () => {
   it('strips Latin diacritics', () => {
     expect(normalizeRef('Boškovski')).toBe('BOSKOVSKI');
   });
+  it('maps Latin đ like Cyrillic ѓ, so both spellings of a surname meet', () => {
+    expect(normalizeRef('Anđelovski')).toBe('ANGJELOVSKI');
+    expect(normalizeRef('Анѓеловски')).toBe('ANGJELOVSKI');
+    expect(normalizeRef('ĐORĐEVIC')).toBe('GJORGJEVIC');
+  });
 });
 
 describe('matchLine', () => {
