@@ -1,3 +1,5 @@
+import type { StatementParser } from '../statements/types.js';
+
 export type CountryCode = 'mk';
 
 export interface TaxRateDefault {
@@ -39,6 +41,7 @@ export interface CountryPack {
   labels: CountryLabels;
   invoiceLayout: InvoiceLayoutRules;
   reminderRules: ReminderRules;
+  statementParsers: StatementParser[];
   /** Format minor units for display, e.g. 123456 → "1.234,56 ден." */
   formatMoney(minor: number): string;
   /** Parse user or bank text like "1.234,56" or "1234.56" into minor units. Throws on garbage. */

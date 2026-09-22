@@ -1,4 +1,6 @@
 import { divRoundHalfUp } from '../money.js';
+import { csvParser } from '../statements/csv.js';
+import { mt940Parser } from '../statements/mt940.js';
 import type { CountryPack } from './types.js';
 
 function groupThousands(intPart: string, sep: string): string {
@@ -32,6 +34,7 @@ export const mkPack: CountryPack = {
     feeAllowed: false,
     channels: ['email', 'sms', 'letter'],
   },
+  statementParsers: [mt940Parser, csvParser],
   formatMoney(minor: number): string {
     const sign = minor < 0 ? '-' : '';
     const abs = Math.abs(minor);
