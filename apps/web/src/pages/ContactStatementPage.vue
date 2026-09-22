@@ -31,7 +31,7 @@ watch(buildingId, load);
   <p class="mb-4 text-slate-600">{{ t('contacts.statement') }}</p>
   <AppSelect v-model="buildingId" :label="t('invoices.building')" :options="[{ value: null, label: t('contacts.allBuildings') }, ...buildings.map((b) => ({ value: b.id, label: b.name }))]" class="mb-4 max-w-xs" />
   <p v-if="error" class="mb-2 text-sm text-red-600" data-test="page-error">{{ error }}</p>
-  <DataTable v-if="statement" :columns="[{ key: 'bookedAt', label: t('billing.period') }, { key: 'label', label: t('billing.description') }, { key: 'kind', label: t('billing.status') }, { key: 'fund', label: t('billing.fund') }, { key: 'amountMinor', label: t('billing.amount') }, { key: 'balanceMinor', label: t('contacts.balance') }]" :rows="statement.rows">
+  <DataTable v-if="statement" :columns="[{ key: 'bookedAt', label: t('contacts.date') }, { key: 'label', label: t('billing.description') }, { key: 'kind', label: t('billing.status') }, { key: 'fund', label: t('billing.fund') }, { key: 'amountMinor', label: t('billing.amount') }, { key: 'balanceMinor', label: t('contacts.balance') }]" :rows="statement.rows">
     <template #cell-bookedAt="{ row }">{{ new Date(row.bookedAt).toLocaleDateString('mk-MK') }}</template>
     <template #cell-kind="{ row }">{{ t(`ledger.kind.${row.kind}`) }}</template>
     <template #cell-fund="{ row }">{{ t(`billing.${row.fund}`) }}</template>

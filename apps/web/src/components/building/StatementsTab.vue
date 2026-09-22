@@ -37,6 +37,17 @@ async function act(line: StatementLine, action: 'confirm' | 'ignore' | 'unmatch'
     if (action === 'confirm' && !invoiceId) { error.value = t('statements.chooseInvoice'); return; }
     await api.post(`/api/statement-lines/${line.id}/${action}`, action === 'confirm' ? { invoiceId } : {});
     if (selected.value) await select(selected.value);
+    if (action === 'confirm' && invoiceId) {
+      const inv = openInvoices.value.find((i) => i.id === invoiceId);
+      if (inv) {
+        inv.outstandingMinor -= line.amountMinor;
+        if (inv.outstandingMinor <= 0) openInvoices.value = openInvoices.value.filter((i) => i.id !== invoiceId);
+        else inv.status = 'partially_paid';
+      }
+      delete chosen.value[line.id];
+    } else if (action === 'unmatch') {
+      await loadOpen().catch(() => {});
+    }
   } catch { error.value = t('app.error'); }
 }
 </script>

@@ -7,7 +7,7 @@ export default {
   },
   dashboard: { welcome: 'Welcome, {name}', buildings: 'Buildings', units: 'Units', owners: 'Owners', billed: 'Billed this month', unpaid: 'Unpaid invoices', paid: 'Paid this month', outstanding: 'Outstanding' },
   taxRates: { title: 'Tax rates', name: 'Name', rate: 'Rate (%)', isDefault: 'Default', add: 'Add rate', makeDefault: 'Make default' },
-  contacts: { title: 'Contacts', add: 'Add contact', kind: 'Kind', person: 'Person', company: 'Company', companyNumber: 'Company number', vatNumber: 'VAT number', phone: 'Phone', address: 'Address', notes: 'Notes', statement: 'Statement', balance: 'Balance', allBuildings: 'All buildings' },
+  contacts: { title: 'Contacts', add: 'Add contact', kind: 'Kind', person: 'Person', company: 'Company', companyNumber: 'Company number', vatNumber: 'VAT number', phone: 'Phone', address: 'Address', notes: 'Notes', statement: 'Statement', balance: 'Balance', allBuildings: 'All buildings', date: 'Date' },
   buildings: {
     title: 'Buildings', add: 'Add building', name: 'Name', address: 'Address', city: 'City', postalCode: 'Postal code', representative: 'Representative', none: '— none —', shareBasis: 'Share basis',
     shareBasisOptions: { area: 'By area (m²)', equal: 'Equal', custom: 'Ownership share' }, regularFundAccount: 'Regular fund account', reserveFundAccount: 'Reserve fund account', unitCount: 'Units',

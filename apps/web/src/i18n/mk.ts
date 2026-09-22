@@ -7,7 +7,7 @@ export default {
   },
   dashboard: { welcome: 'Добредојде, {name}', buildings: 'Згради', units: 'Единици', owners: 'Сопственици', billed: 'Фактурирано овој месец', unpaid: 'Неплатени фактури', paid: 'Платено овој месец', outstanding: 'Ненаплатено' },
   taxRates: { title: 'Даночни стапки', name: 'Име', rate: 'Стапка (%)', isDefault: 'Стандардна', add: 'Додади стапка', makeDefault: 'Постави стандардна' },
-  contacts: { title: 'Контакти', add: 'Додади контакт', kind: 'Тип', person: 'Физичко лице', company: 'Правно лице', companyNumber: 'Матичен број', vatNumber: 'Даночен број', phone: 'Телефон', address: 'Адреса', notes: 'Белешки', statement: 'Картица', balance: 'Салдо', allBuildings: 'Сите згради' },
+  contacts: { title: 'Контакти', add: 'Додади контакт', kind: 'Тип', person: 'Физичко лице', company: 'Правно лице', companyNumber: 'Матичен број', vatNumber: 'Даночен број', phone: 'Телефон', address: 'Адреса', notes: 'Белешки', statement: 'Картица', balance: 'Салдо', allBuildings: 'Сите згради', date: 'Датум' },
   buildings: {
     title: 'Згради', add: 'Додади зграда', name: 'Име', address: 'Адреса', city: 'Град', postalCode: 'Поштенски број', representative: 'Претставник', none: '— нема —', shareBasis: 'Основ за распределба',
     shareBasisOptions: { area: 'По површина (m²)', equal: 'Рамномерно', custom: 'Сопственички удел' }, regularFundAccount: 'Сметка редовен фонд', reserveFundAccount: 'Сметка резервен фонд', unitCount: 'Единици',
