@@ -22,7 +22,7 @@ export async function ownerStatement(db: Db, ctx: TenantContext, contactId: stri
 
   const conds = [eq(P.tenantId, ctx.tenantId), eq(P.account, 'owner'), eq(P.contactId, contactId)];
   if (buildingId) conds.push(eq(P.buildingId, buildingId));
-  const postings = await db.select().from(P).where(and(...conds)).orderBy(asc(P.bookedAt), asc(P.createdAt));
+  const postings = await db.select().from(P).where(and(...conds)).orderBy(asc(P.bookedAt), asc(P.createdAt), asc(P.id));
 
   const invoiceIds = dedupe(postings.filter((p) => p.refType === 'invoice' && p.refId).map((p) => p.refId!));
   const paymentIds = dedupe(postings.filter((p) => (p.refType === 'payment' || p.refType === 'payment_void') && p.refId).map((p) => p.refId!));
