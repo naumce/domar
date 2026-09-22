@@ -7,7 +7,7 @@ import type { TenantContext } from '../../tenant-context.js';
 import { getPeriod, getPeriodRow } from '../periods/repo.js';
 import { nextInvoiceNumber } from './numbering.js';
 
-const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.contacts; const BP = schema.billingPeriods;
+const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.contacts; const BP = schema.billingPeriods; const T = schema.tenants;
 const DUE_DAYS = 15;
 
 export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: string, periodId: string) {
@@ -25,11 +25,13 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
     const drafts = await tx.select({ inv: INV, lastName: C.lastName, firstName: C.firstName }).from(INV).innerJoin(C, eq(C.id, INV.contactId))
       .where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.periodId, periodId), eq(INV.status, 'draft'))).orderBy(asc(C.lastName), asc(C.firstName), asc(INV.id));
     if (drafts.length === 0) throw conflict('nothing_to_publish', 'There are no draft invoices in this period');
+    const tenant = await tx.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId), columns: { timezone: true } });
     const issuedAt = new Date();
+    const year = Number(new Intl.DateTimeFormat('en-US', { timeZone: tenant!.timezone, year: 'numeric' }).format(issuedAt));
     const dueAt = new Date(issuedAt.getTime() + DUE_DAYS * 24 * 3600 * 1000);
     const postings: NewPosting[] = [];
     for (const { inv } of drafts) {
-      const number = await nextInvoiceNumber(tx, ctx, issuedAt.getFullYear(), claimed.numberPrefix, claimed.numberSuffix);
+      const number = await nextInvoiceNumber(tx, ctx, year, claimed.numberPrefix, claimed.numberSuffix);
       let updated: { id: string } | undefined;
       try {
         [updated] = await tx.update(INV).set({ number, status: 'published', issuedAt, dueAt, publishedAt: issuedAt, updatedAt: issuedAt })

@@ -16,6 +16,7 @@ import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
+import { dashboardRoutes } from './resources/dashboard/routes.js';
 import { invoiceRoutes } from './resources/invoices/routes.js';
 import { invoicingRoutes } from './resources/invoicing/routes.js';
 import { buildingPaymentRoutes, invoicePaymentRoutes, paymentRoutes } from './resources/payments/routes.js';
@@ -24,6 +25,7 @@ import { reserveFundRoutes } from './resources/reserve-fund/routes.js';
 import { serviceRoutes } from './resources/services/routes.js';
 import { buildingStatementRoutes, statementLineRoutes, statementRoutes } from './resources/statements/routes.js';
 import { taxRateRoutes } from './resources/tax-rates/routes.js';
+import { tenantRoutes } from './resources/tenant/routes.js';
 import { unitRoutes } from './resources/units/routes.js';
 import { healthRoutes } from './routes/health.js';
 
@@ -69,6 +71,8 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(async (api) => {
     await api.register(healthRoutes);
     await api.register(authRoutes, { prefix: '/auth' });
+    await api.register(tenantRoutes, { prefix: '/tenant' });
+    await api.register(dashboardRoutes, { prefix: '/dashboard' });
     await api.register(taxRateRoutes, { prefix: '/tax-rates' });
     await api.register(contactRoutes, { prefix: '/contacts' });
     await api.register(serviceRoutes, { prefix: '/services' });

@@ -9,7 +9,7 @@ import { hashPassword, verifyPassword } from './password.js';
 import { createSession, deleteSession, SESSION_COOKIE } from './session.js';
 
 const publicUser = z.object({ id: z.string(), email: z.string(), firstName: z.string(), lastName: z.string(), role: z.enum(schema.userRole.enumValues) });
-const publicTenant = z.object({ id: z.string(), slug: z.string(), name: z.string(), countryCode: z.string(), currency: z.string(), locale: z.string() });
+const publicTenant = z.object({ id: z.string(), slug: z.string(), name: z.string(), countryCode: z.string(), currency: z.string(), locale: z.string(), timezone: z.string() });
 const meResponse = z.object({ user: publicUser, tenant: publicTenant });
 
 const slug = z.string().min(2).max(64).regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lowercase letters, digits and hyphens');

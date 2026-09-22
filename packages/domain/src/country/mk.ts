@@ -20,6 +20,9 @@ export const mkPack: CountryPack = {
   labels: {
     reserveFund: 'Резервен фонд',
     managementFee: 'Управувачки услуги',
+    payment: 'Уплата',
+    paymentVoid: 'Сторно уплата',
+    openingBalance: 'Почетно салдо',
   },
   invoiceLayout: {
     showBuildingWideAmountPerLine: true,

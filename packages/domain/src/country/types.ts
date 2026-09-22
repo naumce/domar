@@ -31,6 +31,9 @@ export interface ReminderRules {
 export interface CountryLabels {
   reserveFund: string;
   managementFee: string;
+  payment: string;
+  paymentVoid: string;
+  openingBalance: string;
 }
 
 export interface CountryPack {

@@ -23,7 +23,10 @@ describe('mk country pack', () => {
     });
   });
   it('carries the labels the billing engine synthesizes lines with', () => {
-    expect(mkPack.labels).toEqual({ reserveFund: 'Резервен фонд', managementFee: 'Управувачки услуги' });
+    expect(mkPack.labels).toEqual({
+      reserveFund: 'Резервен фонд', managementFee: 'Управувачки услуги',
+      payment: 'Уплата', paymentVoid: 'Сторно уплата', openingBalance: 'Почетно салдо',
+    });
   });
   it('encodes Art. 33 invoice layout requirements', () => {
     expect(mkPack.invoiceLayout).toEqual({
