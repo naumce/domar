@@ -14,7 +14,7 @@ const { t } = useI18n();
 const fmt = (minor: number) => (minor / 100).toFixed(2).replace('.', ',');
 const amount = ref(props.outstandingMinor && props.outstandingMinor > 0 ? fmt(props.outstandingMinor) : '');
 const method = ref<PaymentMethod>('bank_transfer');
-const date = ref(new Date().toISOString().slice(0, 10));
+const date = ref(new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
 const reference = ref(''); const note = ref(''); const error = ref('');
 const methods: PaymentMethod[] = ['bank_transfer', 'cash', 'card', 'cheque', 'other'];
 function submit() {
