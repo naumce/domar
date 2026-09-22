@@ -42,6 +42,7 @@ export async function deleteDraftInvoice(db: Db, ctx: TenantContext, id: string)
   return db.transaction(async (tx) => {
     const inv = await tx.query.invoices.findFirst({ where: and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, id)) });
     if (!inv) throw notFound('Invoice');
+    if (inv.status !== 'draft') throw conflict('not_draft', 'Only draft invoices can be deleted');
     // Claim the period before touching the invoice: a concurrent publish either wins the row lock
     // (and we see 'published' here) or waits for us and finds no drafts left to number.
     await claimPeriod(tx, ctx, inv.buildingId, inv.periodId, ['open', 'generated']);

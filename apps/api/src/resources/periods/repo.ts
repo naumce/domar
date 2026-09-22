@@ -114,7 +114,8 @@ export async function createPeriod(db: Db, ctx: TenantContext, buildingId: strin
 export async function updatePeriod(db: Db, ctx: TenantContext, buildingId: string, id: string, patch: PeriodPatch) {
   return db.transaction(async (tx) => {
     const before = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);
-    if (before.status === 'generated') await resetDrafts(tx, ctx, id);
+    const touchesFee = patch.managementFeeMinor !== undefined || patch.managementFeeTaxRateId !== undefined || patch.managementFeeAppliesTo !== undefined;
+    if (before.status === 'generated' && touchesFee) await resetDrafts(tx, ctx, id);
     const { managementFeeTaxRateId, ...rest } = patch;
     const set: Partial<typeof BP.$inferInsert> = { ...stripUndefined(rest), updatedAt: new Date() };
     if (managementFeeTaxRateId !== undefined) set.managementFeeTaxRateBp = (await resolveTaxRateBp(tx, ctx, managementFeeTaxRateId)) ?? 0;

@@ -1,13 +1,18 @@
 import { type Browser, chromium } from 'playwright-core';
 
 let browser: Browser | null = null;
+let launching: Promise<Browser> | null = null;
 const MAX_CONCURRENT_RENDERS = 2;
 let running = 0;
 const waiting: (() => void)[] = [];
 
+/** Memoizes the in-flight launch: concurrent cold starts share one Chrome instead of racing separate launches. */
 async function getBrowser(channel: string): Promise<Browser> {
-  if (!browser || !browser.isConnected()) browser = await chromium.launch({ channel, headless: true });
-  return browser;
+  if (browser?.isConnected()) return browser;
+  if (!launching) {
+    launching = chromium.launch({ channel, headless: true }).then((b) => { browser = b; return b; }).finally(() => { launching = null; });
+  }
+  return launching;
 }
 
 /** Tiny in-process semaphore: Chrome is happy with a couple of pages at a time, not with dozens. */
@@ -42,4 +47,11 @@ export async function closePdfBrowser(): Promise<void> {
   const b = browser;
   browser = null;
   if (b) await b.close();
+}
+
+export function _resetForTests(): void {
+  browser = null;
+  launching = null;
+  running = 0;
+  waiting.length = 0;
 }

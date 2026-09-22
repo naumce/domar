@@ -123,9 +123,27 @@ describe('generate and publish', () => {
     expect(afterLines.filter((l: { description: string }) => l.description === 'Дезинфекција')).toHaveLength(1);
   });
 
+  it('keeps drafts on a numbering-only patch', async () => {
+    const jan = (await post(P(), { period: '2027-01' })).json();
+    expect((await post(P(`/${jan.id}/generate`), {})).json().invoiceCount).toBe(3);
+    const numbering = await t.app.inject({ method: 'PATCH', url: P(`/${jan.id}`), headers: h(), payload: { numberPrefix: 'R-' } });
+    expect(numbering.json()).toMatchObject({ status: 'generated', invoiceCount: 3 });
+    const fee = await t.app.inject({ method: 'PATCH', url: P(`/${jan.id}`), headers: h(), payload: { managementFeeMinor: 20000 } });
+    expect(fee.json()).toMatchObject({ status: 'open', invoiceCount: 0 });
+  });
+
+  it('rejects a line whose total exceeds the supported maximum', async () => {
+    const feb = (await post(P(), { period: '2027-02' })).json();
+    const res = await post(P(`/${feb.id}/lines`), { description: 'x', pricing: 'fixed_per_unit', unitPriceMinor: 1_000_000_000_000, quantity: 10 });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('validation');
+  });
+
   it('refuses to delete a published invoice, deletes drafts, and is tenant isolated', async () => {
     const pubRows = (await t.app.inject({ method: 'GET', url: `/api/invoices?status=published`, headers: h() })).json().rows;
-    expect((await t.app.inject({ method: 'DELETE', url: `/api/invoices/${pubRows[0].id}`, headers: h() })).statusCode).toBe(409);
+    const refused = await t.app.inject({ method: 'DELETE', url: `/api/invoices/${pubRows[0].id}`, headers: h() });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe('not_draft');
     const nov = (await post(P(), { period: '2026-11' })).json();
     await post(P(`/${nov.id}/generate`), {});
     const drafts = (await t.app.inject({ method: 'GET', url: `/api/invoices?period=2026-11`, headers: h() })).json().rows;

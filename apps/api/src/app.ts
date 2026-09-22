@@ -53,6 +53,9 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     if (hasZodFastifySchemaValidationErrors(err)) {
       return reply.status(400).send({ error: { code: 'validation', message: 'Invalid request', details: err.validation } });
     }
+    if (err instanceof RangeError) {
+      return reply.status(400).send({ error: { code: 'out_of_range', message: err.message } });
+    }
     if (typeof (err as { statusCode?: number }).statusCode === 'number' && (err as { statusCode: number }).statusCode < 500) {
       const e = err as { statusCode: number; code?: string; message: string };
       return reply.status(e.statusCode).send({ error: { code: e.code?.toLowerCase() ?? 'error', message: e.message } });
