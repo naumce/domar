@@ -26,7 +26,8 @@ export async function recomputeInvoiceStatus(tx: Db, ctx: TenantContext, invoice
   const outstandingMinor = Math.max(0, inv.totalMinor - paidMinor);
   let status = inv.status;
   if (status === 'published' || status === 'partially_paid' || status === 'paid') {
-    status = paidMinor >= inv.totalMinor ? 'paid' : paidMinor > 0 ? 'partially_paid' : 'published';
+    // `paid` needs money actually received: a zero-total invoice would otherwise satisfy `0 >= 0`.
+    status = paidMinor <= 0 ? 'published' : paidMinor >= inv.totalMinor ? 'paid' : 'partially_paid';
     if (status !== inv.status) await tx.update(INV).set({ status, updatedAt: new Date() }).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, invoiceId)));
   }
   return { id: invoiceId, status, paidMinor, outstandingMinor };
@@ -93,7 +94,8 @@ export async function voidPayment(tx: Db, ctx: TenantContext, id: string, reason
     ? { account: 'owner', contactId: o.contactId!, buildingId: o.buildingId, fund: o.fund, kind: 'adjustment', amountMinor: -o.amountMinor, refType: 'payment_void', refId: id }
     : { account: 'fund', buildingId: o.buildingId, fund: o.fund, kind: 'adjustment', amountMinor: -o.amountMinor, refType: 'payment_void', refId: id }));
   if (payment.statementLineId) {
-    await tx.update(SL).set({ matchStatus: 'unmatched', paymentId: null, confidence: null }).where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, payment.statementLineId)));
+    await tx.update(SL).set({ matchStatus: 'unmatched', paymentId: null, confidence: null })
+      .where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, payment.statementLineId), eq(SL.paymentId, id)));
   }
   const invoice = payment.invoiceId ? await recomputeInvoiceStatus(tx, ctx, payment.invoiceId) : null;
   await writeAudit(tx, ctx, { action: 'payment.void', entityType: 'payment', entityId: id, after: payment });

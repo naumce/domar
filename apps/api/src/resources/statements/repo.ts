@@ -13,13 +13,14 @@ const BS = schema.bankStatements; const SL = schema.statementLines; const INV = 
 const MAX_BYTES = 2 * 1024 * 1024; const MAX_LINES = 5000;
 const OPEN_STATUSES = ['published', 'partially_paid'] as const;
 const CLAIMABLE = ['unmatched', 'suggested'] as const;
-const REOPENABLE = ['matched', 'ignored'] as const;
 
 // "invoices"."id"/"tenant_id" are hard-coded rather than interpolated: drizzle qualifies columns
 // inside raw sql by the surrounding select, and an unqualified `id` would bind to the subquery's row.
 const paidMinorSql = sql<string>`(select coalesce(sum(p.amount_minor), 0) from ${PAY} p where p.tenant_id = "invoices"."tenant_id" and p.invoice_id = "invoices"."id" and p.status = 'completed')`;
 
-const fingerprint = (l: ParsedStatementLine) => createHash('sha256').update(`${l.bookedAt}|${l.amountMinor}|${l.reference}|${l.counterparty}`).digest('hex');
+// The bank's own line text is the identity: two owners can pay the same fee on the same day with the
+// same generic reference, and only the untouched row (extra columns, the bank's `//ref`) tells them apart.
+const fingerprint = (l: ParsedStatementLine) => createHash('sha256').update(l.raw).digest('hex');
 /** Bank statements carry a date, not a time; noon UTC keeps the day stable in either direction of the local offset. */
 const noon = (iso: string) => new Date(`${iso}T12:00:00.000Z`);
 
@@ -94,8 +95,8 @@ export async function importStatement(db: Db, ctx: TenantContext, buildingId: st
       tenantId: ctx.tenantId, buildingId, filename: input.filename, format: parsed.format, accountNumber: parsed.accountNumber, createdBy: ctx.userId,
     }).returning();
 
-    // A line already imported for this building (same date, amount, reference and counterparty) is
-    // skipped; the seen set also covers repeats inside the file itself, which the unique index rejects.
+    // A line already imported for this building (same raw bank text) is skipped; the seen set also
+    // covers repeats inside the file itself, which the unique index rejects.
     const seen = new Set((await tx.select({ fp: SL.fingerprint }).from(SL).where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.buildingId, buildingId)))).map((r) => r.fp));
     const fresh: { line: ParsedStatementLine; fp: string }[] = [];
     for (const line of parsed.lines) {
@@ -117,11 +118,16 @@ export async function importStatement(db: Db, ctx: TenantContext, buildingId: st
     // Match on what was actually inserted, so the result indices line up with `inserted`.
     const byFingerprint = new Map(fresh.map(({ line, fp }) => [fp, line]));
     const candidates = await openInvoices(tx, ctx, buildingId);
+    // The candidate snapshot is taken once, so what earlier lines of this same file already paid is
+    // tracked here; a later exact hit on an invoice with nothing left is left `suggested` for review.
+    const remaining = new Map(candidates.map((c) => [c.invoiceId, c.outstandingMinor]));
     let matched = 0;
     for (const m of matchStatementLines(inserted.map((r) => byFingerprint.get(r.fingerprint)!), candidates)) {
       const line = inserted[m.index]!;
       await tx.update(SL).set({ matchStatus: 'suggested', confidence: m.confidence, suggestedInvoiceId: m.invoiceId }).where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, line.id)));
       if (m.confidence !== 'exact' || input.autoConfirm === false) continue;
+      if ((remaining.get(m.invoiceId) ?? 0) <= 0) continue;
+      remaining.set(m.invoiceId, (remaining.get(m.invoiceId) ?? 0) - line.amountMinor);
       const { payment } = await recordPayment(tx, ctx, {
         invoiceId: m.invoiceId, amountMinor: line.amountMinor, method: 'bank_transfer', paidAt: line.bookedAt, reference: line.reference, statementLineId: line.id,
       });
@@ -177,17 +183,22 @@ export async function ignoreLine(db: Db, ctx: TenantContext, id: string) {
 
 export async function unmatchLine(db: Db, ctx: TenantContext, id: string) {
   return db.transaction(async (tx) => {
-    // Claim the line first, so a concurrent unmatch loses here instead of voiding the payment twice.
-    // `payment_id` is left to voidPayment: clearing it here would hide the id RETURNING must hand back.
-    const [claimed] = await tx.update(SL).set({ matchStatus: 'unmatched', confidence: null })
-      .where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id), inArray(SL.matchStatus, [...REOPENABLE]))).returning();
-    if (!claimed) {
-      const exists = await tx.query.statementLines.findFirst({ where: and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id)), columns: { id: true } });
-      if (!exists) throw notFound('Statement line');
+    // A plain read, not a claim: `POST /payments/:id/void` locks payments before statement_lines, and
+    // claiming the line first would make the two paths deadlock. The payment row is the single claim —
+    // voidPayment's `status = 'completed'` predicate makes a concurrent unmatch or void lose there,
+    // and it resets the line (status, payment_id, confidence) itself.
+    const line = await tx.query.statementLines.findFirst({ where: and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id)) });
+    if (!line) throw notFound('Statement line');
+    if (line.paymentId) {
+      await voidPayment(tx, ctx, line.paymentId, 'unmatched');
+    } else if (line.matchStatus === 'ignored') {
+      const [claimed] = await tx.update(SL).set({ matchStatus: 'unmatched', confidence: null })
+        .where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id), eq(SL.matchStatus, 'ignored'))).returning();
+      if (!claimed) throw conflict('line_not_matched', 'Only matched or ignored lines can be reopened');
+    } else {
       throw conflict('line_not_matched', 'Only matched or ignored lines can be reopened');
     }
-    if (claimed.paymentId) await voidPayment(tx, ctx, claimed.paymentId, 'unmatched');
-    await writeAudit(tx, ctx, { action: 'statement_line.unmatch', entityType: 'statement_line', entityId: id, before: claimed });
+    await writeAudit(tx, ctx, { action: 'statement_line.unmatch', entityType: 'statement_line', entityId: id, before: line });
     return getLine(tx, ctx, id);
   });
 }

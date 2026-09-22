@@ -1,4 +1,5 @@
 import { schema } from '@domar/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hashPassword } from '../src/auth/password.js';
 import { setupPublishedBuilding } from './billing-fixture.js';
@@ -59,6 +60,9 @@ describe('bank statements', () => {
     expect((await post(`/api/statement-lines/${likely.id}/confirm`, { invoiceId: fx.invoices.O2.id })).statusCode).toBe(409);
     const ignored = await post(`/api/statement-lines/${unmatched.id}/ignore`, {});
     expect(ignored.json().matchStatus).toBe('ignored');
+    // an ignored line carries no payment, so unmatch reopens it on its own
+    expect((await post(`/api/statement-lines/${unmatched.id}/unmatch`, {})).json()).toMatchObject({ matchStatus: 'unmatched', payment: null });
+    expect((await post(`/api/statement-lines/${unmatched.id}/unmatch`, {})).json().error.code).toBe('line_not_matched');
     const unmatch = await post(`/api/statement-lines/${likely.id}/unmatch`, {});
     expect(unmatch.json()).toMatchObject({ matchStatus: 'unmatched', payment: null });
     expect((await t.app.inject({ method: 'GET', url: `/api/invoices/${fx.invoices.O2.id}`, headers: h() })).json().status).toBe('published');
@@ -108,5 +112,56 @@ describe('bank statements', () => {
     expect(one.json().skippedCount + two.json().skippedCount).toBe(2);
     const payments = (await t.app.inject({ method: 'GET', url: `/api/payments?invoiceId=${fx.invoices.O2.id}`, headers: h() })).json();
     expect(payments.rows.filter((p: { status: string; amountMinor: number }) => p.status === 'completed' && p.amountMinor === 100000)).toHaveLength(1);
+  });
+
+  it('keeps two credits that parse the same but differ in the bank\'s raw text', async () => {
+    const content = csv([
+      '2026-12-01;100,00;uplata;Nekoj',
+      '2026-12-01;100,00;uplata;Nekoj;900123', // same date/amount/reference/counterparty, extra column in the export
+    ]);
+    const res = await post(`/api/buildings/${fx.buildingId}/statements`, { filename: 'raw.csv', content });
+    expect(res.json()).toMatchObject({ lineCount: 2, skippedCount: 0 });
+    const lines = res.json().lines as { amountMinor: number; reference: string; counterparty: string }[];
+    expect(lines.map((l) => [l.amountMinor, l.reference, l.counterparty])).toEqual([[10000, 'uplata', 'Nekoj'], [10000, 'uplata', 'Nekoj']]);
+    expect((await post(`/api/buildings/${fx.buildingId}/statements`, { filename: 'raw.csv', content })).json()).toMatchObject({ lineCount: 0, skippedCount: 2 });
+  });
+
+  it('leaves a second exact hit on an invoice this file already settled for review', async () => {
+    const o3 = fx.invoices.O3;
+    const amount = `${Math.floor(o3.totalMinor / 100)},${String(o3.totalMinor % 100).padStart(2, '0')}`;
+    const content = csv([
+      `2026-12-02;${amount};Uplata ${o3.number} prva;Velkovski`,
+      `2026-12-02;${amount};Uplata ${o3.number} vtora;Velkovski`,
+    ]);
+    const res = await post(`/api/buildings/${fx.buildingId}/statements`, { filename: 'dvojno.csv', content });
+    expect(res.json()).toMatchObject({ lineCount: 2, matchedCount: 1 });
+    const lines = res.json().lines as { matchStatus: string; suggestedInvoice: { id: string } | null }[];
+    expect(lines.map((l) => l.matchStatus)).toEqual(['matched', 'suggested']);
+    expect(lines[1]!.suggestedInvoice?.id).toBe(o3.id);
+    const payments = (await t.app.inject({ method: 'GET', url: `/api/payments?invoiceId=${o3.id}`, headers: h() })).json();
+    expect(payments.rows.filter((p: { status: string }) => p.status === 'completed')).toHaveLength(1);
+  });
+
+  it('settles a concurrent unmatch and direct void as 200/409, writing the reversals once', async () => {
+    const content = csv([`2026-12-03;500,00;Uplata ${fx.invoices.O2.number} rata;Boskovski`]);
+    const imported = (await post(`/api/buildings/${fx.buildingId}/statements`, { filename: 'sudir.csv', content })).json();
+    const line = imported.lines[0] as { id: string; matchStatus: string; payment: { id: string } };
+    expect(line.matchStatus).toBe('matched');
+    const [unmatch, voided] = await Promise.all([
+      post(`/api/statement-lines/${line.id}/unmatch`, {}),
+      post(`/api/payments/${line.payment.id}/void`, { reason: 'greska' }),
+    ]);
+    expect([unmatch.statusCode, voided.statusCode].sort()).toEqual([200, 409]);
+    const after = (await t.app.inject({ method: 'GET', url: `/api/statements/${imported.id}`, headers: h() })).json().lines[0];
+    expect(after).toMatchObject({ matchStatus: 'unmatched', payment: null });
+    const [stored] = await t.db.select().from(schema.statementLines).where(eq(schema.statementLines.id, line.id));
+    expect(stored).toMatchObject({ matchStatus: 'unmatched', paymentId: null, confidence: null });
+    const postings = await t.db.select().from(schema.postings).where(eq(schema.postings.refId, line.payment.id));
+    const originals = postings.filter((p) => p.refType === 'payment');
+    const reversals = postings.filter((p) => p.refType === 'payment_void');
+    expect(originals.length).toBeGreaterThan(0);
+    expect(reversals).toHaveLength(originals.length);
+    const amounts = (rows: typeof postings) => rows.map((p) => p.amountMinor).sort((x, y) => x - y);
+    expect(amounts(reversals)).toEqual(amounts(originals).map((v) => -v).sort((x, y) => x - y));
   });
 });
