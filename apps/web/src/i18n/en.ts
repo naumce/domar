@@ -5,9 +5,9 @@ export default {
     login: 'Log in', register: 'Create account', tenantSlug: 'Organization (slug)', email: 'Email', password: 'Password', firstName: 'First name', lastName: 'Last name', orgName: 'Company name', noAccount: 'No account?', haveAccount: 'Already have an account?',
     errors: { invalid_credentials: 'Wrong organization, email or password.', slug_taken: 'That slug is already taken.', validation: 'Check the entered data.', generic: 'Something went wrong. Try again.' },
   },
-  dashboard: { welcome: 'Welcome, {name}', buildings: 'Buildings', units: 'Units', contacts: 'Contacts' },
+  dashboard: { welcome: 'Welcome, {name}', buildings: 'Buildings', units: 'Units', owners: 'Owners', billed: 'Billed this month', unpaid: 'Unpaid invoices', paid: 'Paid this month', outstanding: 'Outstanding' },
   taxRates: { title: 'Tax rates', name: 'Name', rate: 'Rate (%)', isDefault: 'Default', add: 'Add rate', makeDefault: 'Make default' },
-  contacts: { title: 'Contacts', add: 'Add contact', kind: 'Kind', person: 'Person', company: 'Company', companyNumber: 'Company number', vatNumber: 'VAT number', phone: 'Phone', address: 'Address', notes: 'Notes' },
+  contacts: { title: 'Contacts', add: 'Add contact', kind: 'Kind', person: 'Person', company: 'Company', companyNumber: 'Company number', vatNumber: 'VAT number', phone: 'Phone', address: 'Address', notes: 'Notes', statement: 'Statement', balance: 'Balance', allBuildings: 'All buildings' },
   buildings: {
     title: 'Buildings', add: 'Add building', name: 'Name', address: 'Address', city: 'City', postalCode: 'Postal code', representative: 'Representative', none: '— none —', shareBasis: 'Share basis',
     shareBasisOptions: { area: 'By area (m²)', equal: 'Equal', custom: 'Ownership share' }, regularFundAccount: 'Regular fund account', reserveFundAccount: 'Reserve fund account', unitCount: 'Units',
@@ -64,5 +64,17 @@ export default {
     paidAt: 'Payment date', reference: 'Reference', note: 'Note', void: 'Void', voidReason: 'Void reason',
     status: { completed: 'Completed', voided: 'Voided' },
     received: 'Received', count: 'Payments', voidedCount: 'Voided', from: 'From', to: 'To', none: 'No payments', onAccount: 'On account (no invoice)',
+  },
+  statements: {
+    title: 'Statements', upload: 'Import statement', file: 'File (MT940 or CSV)', lines: 'Lines', imported: 'Imported', matched: 'Matched', skipped: 'Skipped (duplicates)',
+    status: { unmatched: 'Unmatched', suggested: 'Suggested', matched: 'Matched', ignored: 'Ignored' },
+    confirm: 'Confirm', ignore: 'Ignore', unmatch: 'Unmatch', suggested: 'Suggested invoice', chooseInvoice: 'Choose invoice', warnings: 'Import warnings', counterparty: 'Counterparty',
+    unknownFormat: 'File format not recognised (MT940 or CSV with date and amount columns).',
+  },
+  settings: {
+    title: 'Organization settings', timezone: 'Timezone', bankName: 'Bank', bankAccount: 'Account', companyNumber: 'Company number', vatNumber: 'VAT number', saved: 'Saved.',
+  },
+  ledger: {
+    kind: { charge: 'Charge', payment: 'Payment', adjustment: 'Adjustment', opening: 'Opening balance', expense: 'Expense' },
   },
 } as const;

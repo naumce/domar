@@ -5,9 +5,9 @@ export default {
     login: 'Најави се', register: 'Отвори сметка', tenantSlug: 'Организација (слаг)', email: 'Е-пошта', password: 'Лозинка', firstName: 'Име', lastName: 'Презиме', orgName: 'Име на фирма', noAccount: 'Нема сметка?', haveAccount: 'Веќе имате сметка?',
     errors: { invalid_credentials: 'Погрешна организација, е-пошта или лозинка.', slug_taken: 'Тој слаг е веќе зафатен.', validation: 'Проверете ги внесените податоци.', generic: 'Настана грешка. Обидете се повторно.' },
   },
-  dashboard: { welcome: 'Добредојде, {name}', buildings: 'Згради', units: 'Единици', contacts: 'Контакти' },
+  dashboard: { welcome: 'Добредојде, {name}', buildings: 'Згради', units: 'Единици', owners: 'Сопственици', billed: 'Фактурирано овој месец', unpaid: 'Неплатени фактури', paid: 'Платено овој месец', outstanding: 'Ненаплатено' },
   taxRates: { title: 'Даночни стапки', name: 'Име', rate: 'Стапка (%)', isDefault: 'Стандардна', add: 'Додади стапка', makeDefault: 'Постави стандардна' },
-  contacts: { title: 'Контакти', add: 'Додади контакт', kind: 'Тип', person: 'Физичко лице', company: 'Правно лице', companyNumber: 'Матичен број', vatNumber: 'Даночен број', phone: 'Телефон', address: 'Адреса', notes: 'Белешки' },
+  contacts: { title: 'Контакти', add: 'Додади контакт', kind: 'Тип', person: 'Физичко лице', company: 'Правно лице', companyNumber: 'Матичен број', vatNumber: 'Даночен број', phone: 'Телефон', address: 'Адреса', notes: 'Белешки', statement: 'Картица', balance: 'Салдо', allBuildings: 'Сите згради' },
   buildings: {
     title: 'Згради', add: 'Додади зграда', name: 'Име', address: 'Адреса', city: 'Град', postalCode: 'Поштенски број', representative: 'Претставник', none: '— нема —', shareBasis: 'Основ за распределба',
     shareBasisOptions: { area: 'По површина (m²)', equal: 'Рамномерно', custom: 'Сопственички удел' }, regularFundAccount: 'Сметка редовен фонд', reserveFundAccount: 'Сметка резервен фонд', unitCount: 'Единици',
@@ -64,5 +64,17 @@ export default {
     paidAt: 'Датум на уплата', reference: 'Повикување', note: 'Белешка', void: 'Поништи', voidReason: 'Причина за поништување',
     status: { completed: 'Завршено', voided: 'Поништено' },
     received: 'Примено', count: 'Плаќања', voidedCount: 'Поништени', from: 'Од', to: 'До', none: 'Нема плаќања', onAccount: 'Аконтација (без фактура)',
+  },
+  statements: {
+    title: 'Изводи', upload: 'Увези извод', file: 'Датотека (MT940 или CSV)', lines: 'Ставки', imported: 'Увезен', matched: 'Усогласени', skipped: 'Прескокнати (дупликати)',
+    status: { unmatched: 'Неусогласено', suggested: 'Предлог', matched: 'Усогласено', ignored: 'Игнорирано' },
+    confirm: 'Потврди', ignore: 'Игнорирај', unmatch: 'Раздвои', suggested: 'Предложена фактура', chooseInvoice: 'Избери фактура', warnings: 'Предупредувања при увоз', counterparty: 'Уплаќач',
+    unknownFormat: 'Форматот на датотеката не е препознаен (MT940 или CSV со колони date и amount).',
+  },
+  settings: {
+    title: 'Поставки на организацијата', timezone: 'Временска зона', bankName: 'Банка', bankAccount: 'Сметка', companyNumber: 'ЕМБС', vatNumber: 'ЕДБ', saved: 'Зачувано.',
+  },
+  ledger: {
+    kind: { charge: 'Задолжување', payment: 'Уплата', adjustment: 'Корекција', opening: 'Почетно салдо', expense: 'Трошок' },
   },
 } as const;

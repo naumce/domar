@@ -7,6 +7,7 @@ import type { Building, Contact, Unit } from '@/api/types';
 import BuildingServicesTab from '@/components/building/BuildingServicesTab.vue';
 import PeriodsTab from '@/components/building/PeriodsTab.vue';
 import ReserveFundTab from '@/components/building/ReserveFundTab.vue';
+import StatementsTab from '@/components/building/StatementsTab.vue';
 import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
@@ -20,9 +21,9 @@ const contacts = ref<Contact[]>([]);
 const units = useResource<Unit>(`/api/buildings/${props.id}/units`);
 const open = ref(false); const editing = ref<Unit | null>(null); const formError = ref<string | null>(null);
 const route = useRoute(); const router = useRouter();
-const tabs = ['units', 'services', 'reserve-fund', 'periods'] as const;
+const tabs = ['units', 'services', 'reserve-fund', 'periods', 'statements'] as const;
 const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'units'));
-const tabLabel = (k: string) => ({ units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), periods: t('periods.title') })[k as (typeof tabs)[number]];
+const tabLabel = (k: string) => ({ units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), periods: t('periods.title'), statements: t('statements.title') })[k as (typeof tabs)[number]];
 
 onMounted(async () => {
   building.value = await api.get<Building>(`/api/buildings/${props.id}`);
@@ -62,6 +63,7 @@ async function onSubmit(payload: UnitCreatePayload) {
     </div>
     <BuildingServicesTab v-else-if="tab === 'services'" :building-id="id" />
     <ReserveFundTab v-else-if="tab === 'reserve-fund'" :building-id="id" />
+    <StatementsTab v-else-if="tab === 'statements'" :building-id="id" />
     <PeriodsTab v-else :building-id="id" />
   </div>
   <p v-else>{{ t('app.loading') }}</p>

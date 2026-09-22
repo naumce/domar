@@ -27,6 +27,7 @@ async function submit() {
   <form class="mb-3 flex gap-2" @submit.prevent="doSearch"><input v-model="search" :placeholder="t('app.search')" class="rounded-md border border-slate-300 px-3 py-2 text-sm" data-test="search" /><AppButton type="submit" variant="secondary">{{ t('app.search') }}</AppButton></form>
   <p v-if="res.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
   <DataTable :columns="[{ key: 'lastName', label: t('auth.lastName') }, { key: 'firstName', label: t('auth.firstName') }, { key: 'email', label: t('auth.email') }, { key: 'phone', label: t('contacts.phone') }]" :rows="res.rows.value">
+    <template #cell-lastName="{ row }"><RouterLink :to="`/app/contacts/${row.id}`" class="text-emerald-700 underline" data-test="contact-link">{{ row.lastName }}</RouterLink></template>
     <template #actions="{ row }"><AppButton variant="danger" @click="swallow(res.remove(row.id))">{{ t('app.delete') }}</AppButton></template>
   </DataTable>
   <ModalDialog :open="open" :title="t('contacts.add')" @close="open = false">
