@@ -13,6 +13,7 @@ const BS = schema.bankStatements; const SL = schema.statementLines; const INV = 
 const MAX_BYTES = 2 * 1024 * 1024; const MAX_LINES = 5000;
 const OPEN_STATUSES = ['published', 'partially_paid'] as const;
 const CLAIMABLE = ['unmatched', 'suggested'] as const;
+const REOPENABLE = ['matched', 'ignored'] as const;
 
 // "invoices"."id"/"tenant_id" are hard-coded rather than interpolated: drizzle qualifies columns
 // inside raw sql by the surrounding select, and an unqualified `id` would bind to the subquery's row.
@@ -67,6 +68,7 @@ async function openInvoices(db: Db, ctx: TenantContext, buildingId: string): Pro
 }
 
 export async function listStatements(db: Db, ctx: TenantContext, buildingId: string) {
+  await getBuilding(db, ctx, buildingId);
   const rows = await db.select().from(BS).where(and(eq(BS.tenantId, ctx.tenantId), eq(BS.buildingId, buildingId))).orderBy(desc(BS.importedAt), desc(BS.id));
   return { rows };
 }
@@ -102,17 +104,21 @@ export async function importStatement(db: Db, ctx: TenantContext, buildingId: st
       seen.add(fp);
       fresh.push({ line, fp });
     }
-    const skipped = parsed.lines.length - fresh.length;
     const inserted = fresh.length
       ? await tx.insert(SL).values(fresh.map(({ line, fp }, i) => ({
         tenantId: ctx.tenantId, statementId: statement!.id, buildingId, lineNo: i + 1, bookedAt: noon(line.bookedAt), amountMinor: line.amountMinor,
         counterparty: line.counterparty || null, reference: line.reference || null, raw: line.raw, fingerprint: fp,
-      }))).returning()
+      }))).onConflictDoNothing({ target: [SL.buildingId, SL.fingerprint] }).returning()
       : [];
+    // The unique index has the last word: a concurrent import of the same file can land lines
+    // between the pre-check and this insert, and those come back as skipped rather than as a 23505.
+    const skipped = parsed.lines.length - inserted.length;
 
+    // Match on what was actually inserted, so the result indices line up with `inserted`.
+    const byFingerprint = new Map(fresh.map(({ line, fp }) => [fp, line]));
     const candidates = await openInvoices(tx, ctx, buildingId);
     let matched = 0;
-    for (const m of matchStatementLines(fresh.map((f) => f.line), candidates)) {
+    for (const m of matchStatementLines(inserted.map((r) => byFingerprint.get(r.fingerprint)!), candidates)) {
       const line = inserted[m.index]!;
       await tx.update(SL).set({ matchStatus: 'suggested', confidence: m.confidence, suggestedInvoiceId: m.invoiceId }).where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, line.id)));
       if (m.confidence !== 'exact' || input.autoConfirm === false) continue;
@@ -171,17 +177,17 @@ export async function ignoreLine(db: Db, ctx: TenantContext, id: string) {
 
 export async function unmatchLine(db: Db, ctx: TenantContext, id: string) {
   return db.transaction(async (tx) => {
-    const line = await tx.query.statementLines.findFirst({ where: and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id)) });
-    if (!line) throw notFound('Statement line');
-    if (line.matchStatus === 'matched' && line.paymentId) {
-      // voidPayment resets the line it was booked from back to unmatched.
-      await voidPayment(tx, ctx, line.paymentId, 'unmatched');
-    } else if (line.matchStatus === 'ignored') {
-      await tx.update(SL).set({ matchStatus: 'unmatched' }).where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id)));
-    } else {
+    // Claim the line first, so a concurrent unmatch loses here instead of voiding the payment twice.
+    // `payment_id` is left to voidPayment: clearing it here would hide the id RETURNING must hand back.
+    const [claimed] = await tx.update(SL).set({ matchStatus: 'unmatched', confidence: null })
+      .where(and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id), inArray(SL.matchStatus, [...REOPENABLE]))).returning();
+    if (!claimed) {
+      const exists = await tx.query.statementLines.findFirst({ where: and(eq(SL.tenantId, ctx.tenantId), eq(SL.id, id)), columns: { id: true } });
+      if (!exists) throw notFound('Statement line');
       throw conflict('line_not_matched', 'Only matched or ignored lines can be reopened');
     }
-    await writeAudit(tx, ctx, { action: 'statement_line.unmatch', entityType: 'statement_line', entityId: id, before: line });
+    if (claimed.paymentId) await voidPayment(tx, ctx, claimed.paymentId, 'unmatched');
+    await writeAudit(tx, ctx, { action: 'statement_line.unmatch', entityType: 'statement_line', entityId: id, before: claimed });
     return getLine(tx, ctx, id);
   });
 }

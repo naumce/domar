@@ -1,12 +1,19 @@
+import { schema } from '@domar/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { hashPassword } from '../src/auth/password.js';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
 
 describe('bank statements', () => {
-  let t: Awaited<ReturnType<typeof createTestApp>>; let a: Awaited<ReturnType<typeof registerTenant>>; let fx: Awaited<ReturnType<typeof setupPublishedBuilding>>;
+  let t: Awaited<ReturnType<typeof createTestApp>>; let a: Awaited<ReturnType<typeof registerTenant>>; let fx: Awaited<ReturnType<typeof setupPublishedBuilding>>; let readonlyCookie: string;
   const h = () => ({ cookie: a.cookie });
-  beforeAll(async () => { t = await createTestApp(); a = await registerTenant(t.app, 'firma-a'); fx = await setupPublishedBuilding(t.app, a.cookie); });
+  beforeAll(async () => {
+    t = await createTestApp(); a = await registerTenant(t.app, 'firma-a'); fx = await setupPublishedBuilding(t.app, a.cookie);
+    await t.db.insert(schema.users).values({ tenantId: a.tenantId, email: 'ro@firma-a.mk', passwordHash: await hashPassword('correct-horse-1'), firstName: 'R', lastName: 'O', role: 'readonly' });
+    const login = await t.app.inject({ method: 'POST', url: '/api/auth/login', payload: { tenantSlug: 'firma-a', email: 'ro@firma-a.mk', password: 'correct-horse-1' } });
+    readonlyCookie = String(login.headers['set-cookie']).split(';')[0]!;
+  });
   afterAll(async () => { await t.close(); });
   const post = (url: string, payload: Record<string, unknown>) => t.app.inject({ method: 'POST', url, headers: h(), payload });
   const csv = (rows: string[]) => ['date;amount;reference;counterparty', ...rows].join('\n');
@@ -70,11 +77,36 @@ describe('bank statements', () => {
     expect((await t.app.inject({ method: 'GET', url: `/api/statements/${statement.id}`, headers: { cookie: b.cookie } })).statusCode).toBe(404);
   });
 
+  it('rejects an invoice from another building and writes by a readonly user', async () => {
+    const otherBuildingId = (await post('/api/buildings', { name: 'Нова 1', shareBasis: 'area' })).json().id;
+    const imported = (await post(`/api/buildings/${otherBuildingId}/statements`, { filename: 'druga.csv', content: csv(['2026-10-07;500,00;uplata;Petko']) })).json();
+    const lineId = imported.lines[0].id;
+    expect((await post(`/api/statement-lines/${lineId}/confirm`, { invoiceId: fx.invoices.O2.id })).json().error.code).toBe('invalid_reference');
+    const forbidden = await t.app.inject({ method: 'POST', url: `/api/statement-lines/${lineId}/confirm`, headers: { cookie: readonlyCookie }, payload: { invoiceId: fx.invoices.O2.id } });
+    expect(forbidden.statusCode).toBe(403);
+  });
+
   it('imports MT940 too', async () => {
     const mt = [':20:S1', ':25:300000000123456', ':61:261010C4543,76NTRFNONREF//B1', `:86:?20${fx.invoices.O3.number}?32VELKOVSKI`, '-'].join('\r\n');
     const res = await post(`/api/buildings/${fx.buildingId}/statements`, { filename: 'izvod.sta', content: mt, autoConfirm: false });
     expect(res.statusCode).toBe(201);
     expect(res.json()).toMatchObject({ format: 'mt940', accountNumber: '300000000123456', lineCount: 1, matchedCount: 0 });
     expect(res.json().lines[0]).toMatchObject({ matchStatus: 'suggested', confidence: 'exact', suggestedInvoice: { id: fx.invoices.O3.id } });
+  });
+
+  it('imports the same file twice concurrently without duplicating lines or payments', async () => {
+    const content = csv([
+      `2026-11-01;1.000,00;Uplata ${fx.invoices.O2.number};Boskovski`,
+      '2026-11-01;250,00;kirija;Nekoj',
+    ]);
+    const [one, two] = await Promise.all([
+      post(`/api/buildings/${fx.buildingId}/statements`, { filename: 'nov.csv', content }),
+      post(`/api/buildings/${fx.buildingId}/statements`, { filename: 'nov.csv', content }),
+    ]);
+    expect([one.statusCode, two.statusCode]).toEqual([201, 201]);
+    expect(one.json().lineCount + two.json().lineCount).toBe(2);
+    expect(one.json().skippedCount + two.json().skippedCount).toBe(2);
+    const payments = (await t.app.inject({ method: 'GET', url: `/api/payments?invoiceId=${fx.invoices.O2.id}`, headers: h() })).json();
+    expect(payments.rows.filter((p: { status: string; amountMinor: number }) => p.status === 'completed' && p.amountMinor === 100000)).toHaveLength(1);
   });
 });
