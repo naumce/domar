@@ -14,6 +14,7 @@ export const tenants = pgTable('tenants', {
   email: text('email'),
   bankName: text('bank_name'),
   bankAccount: text('bank_account'),
+  timezone: varchar('timezone', { length: 64 }).notNull().default('Europe/Skopje'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

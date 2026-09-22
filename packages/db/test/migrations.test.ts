@@ -17,8 +17,16 @@ describe('migrations', () => {
       select table_name from information_schema.tables where table_schema = 'public' order by 1`;
     const names = rows.map((r) => r.table_name);
     for (const n of ['tenants', 'users', 'sessions', 'contacts', 'buildings', 'units', 'tax_rates', 'audit_logs',
-      'services', 'building_services', 'reserve_fund_settings', 'expenses', 'billing_periods', 'period_lines', 'invoices', 'invoice_lines', 'postings', 'invoice_sequences'])
+      'services', 'building_services', 'reserve_fund_settings', 'expenses', 'billing_periods', 'period_lines', 'invoices', 'invoice_lines', 'postings', 'invoice_sequences',
+      'payments', 'bank_statements', 'statement_lines'])
       expect(names).toContain(n);
+  });
+
+  it('tenants have a timezone default and invoice_sequences a primary key', async () => {
+    const [tz] = await t!.sql<{ column_default: string }[]>`select column_default from information_schema.columns where table_name='tenants' and column_name='timezone'`;
+    expect(tz!.column_default).toContain('Europe/Skopje');
+    const pk = await t!.sql`select 1 from information_schema.table_constraints where table_name='invoice_sequences' and constraint_type='PRIMARY KEY'`;
+    expect(pk.length).toBe(1);
   });
 
   it('every tenant-scoped table has tenant_id and an index starting with it', async () => {

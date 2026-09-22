@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, char, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { bigint, boolean, char, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { buildings, units } from './building.js';
 import { contacts } from './contact.js';
 import { taxRates } from './tax-rate.js';
@@ -140,6 +140,8 @@ export const invoices = pgTable('invoices', {
   index('invoices_tenant_period_idx').on(t.tenantId, t.periodId),
   index('invoices_tenant_contact_idx').on(t.tenantId, t.contactId),
   uniqueIndex('invoices_tenant_number_idx').on(t.tenantId, t.number),
+  index('invoices_tenant_status_due_idx').on(t.tenantId, t.status, t.dueAt),
+  index('invoices_tenant_building_idx').on(t.tenantId, t.buildingId),
 ]);
 
 export const invoiceLines = pgTable('invoice_lines', {
@@ -176,7 +178,7 @@ export const postings = pgTable('postings', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('postings_tenant_building_fund_idx').on(t.tenantId, t.buildingId, t.fund, t.account),
-  index('postings_tenant_contact_idx').on(t.tenantId, t.contactId),
+  index('postings_tenant_contact_idx').on(t.tenantId, t.contactId, t.bookedAt),
   index('postings_tenant_ref_idx').on(t.tenantId, t.refType, t.refId),
 ]);
 
@@ -184,4 +186,4 @@ export const invoiceSequences = pgTable('invoice_sequences', {
   tenantId: tenantRef(),
   year: integer('year').notNull(),
   next: integer('next').notNull().default(1),
-}, (t) => [uniqueIndex('invoice_sequences_pk').on(t.tenantId, t.year)]);
+}, (t) => [primaryKey({ name: 'invoice_sequences_pk', columns: [t.tenantId, t.year] })]);

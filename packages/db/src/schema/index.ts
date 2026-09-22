@@ -5,3 +5,4 @@ export * from './building.js';
 export * from './tax-rate.js';
 export * from './audit.js';
 export * from './billing.js';
+export * from './payments.js';
