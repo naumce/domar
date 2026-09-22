@@ -22,6 +22,7 @@ import { buildingPaymentRoutes, invoicePaymentRoutes, paymentRoutes } from './re
 import { periodRoutes } from './resources/periods/routes.js';
 import { reserveFundRoutes } from './resources/reserve-fund/routes.js';
 import { serviceRoutes } from './resources/services/routes.js';
+import { buildingStatementRoutes, statementLineRoutes, statementRoutes } from './resources/statements/routes.js';
 import { taxRateRoutes } from './resources/tax-rates/routes.js';
 import { unitRoutes } from './resources/units/routes.js';
 import { healthRoutes } from './routes/health.js';
@@ -78,10 +79,13 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(periodRoutes, { prefix: '/buildings/:buildingId/periods' });
     await api.register(invoicingRoutes, { prefix: '/buildings/:buildingId/periods' });
     await api.register(buildingPaymentRoutes, { prefix: '/buildings/:buildingId/payments' });
+    await api.register(buildingStatementRoutes, { prefix: '/buildings/:buildingId/statements' });
     await api.register(invoiceRoutes, { prefix: '/invoices' });
     await api.register(invoicePaymentRoutes, { prefix: '/invoices' });
     await api.register(pdfRoutes, { prefix: '/invoices' });
     await api.register(paymentRoutes, { prefix: '/payments' });
+    await api.register(statementRoutes, { prefix: '/statements' });
+    await api.register(statementLineRoutes, { prefix: '/statement-lines' });
   }, { prefix: '/api' });
 
   return app;
