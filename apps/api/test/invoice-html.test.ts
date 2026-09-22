@@ -6,6 +6,7 @@ const invoice = {
   id: 'inv1', tenantId: 't', periodId: 'p1', buildingId: 'b1', contactId: 'c1', number: 'INV-0001/2026', status: 'published' as const, currency: 'MKD', unitIds: ['A', 'P1'],
   subtotalMinor: 224660, taxMinor: 31439, totalMinor: 256099, previousBalanceMinor: 5000, amountDueMinor: 261099, reserveFundBuildingBalanceMinor: 3500000,
   issuedAt: new Date('2026-10-01T08:00:00Z'), dueAt: new Date('2026-10-16T08:00:00Z'), publishedAt: new Date('2026-10-01T08:00:00Z'), createdAt: new Date(), updatedAt: new Date(), period: '2026-09',
+  paidMinor: 0, outstandingMinor: 256099, payments: [],
   contact: { id: 'c1', kind: 'person' as const, firstName: 'Тест', lastName: 'Анѓеловски', email: null, address: 'Партизанска 12/1', companyNumber: null, vatNumber: null, phone: null, notes: null, tenantId: 't', createdAt: new Date(), updatedAt: new Date() },
   building: { id: 'b1', name: 'Партизанска 12', address: 'Партизанска 12', city: 'Скопје', postalCode: '1000', regularFundAccount: '200001234567890', reserveFundAccount: '200009876543210', countryCode: 'mk', representativeContactId: null, shareBasis: 'area' as const, tenantId: 't', createdAt: new Date(), updatedAt: new Date() },
   lines: [

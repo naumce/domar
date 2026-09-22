@@ -1,17 +1,24 @@
 import { type Db, schema } from '@domar/db';
-import { and, asc, count, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { conflict, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { listPayments } from '../payments/repo.js';
 import { claimPeriod } from '../periods/repo.js';
 
 const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.contacts; const B = schema.buildings; const BP = schema.billingPeriods;
 
-const rowSelect = { inv: INV, period: BP.period, contact: { id: C.id, firstName: C.firstName, lastName: C.lastName }, building: { id: B.id, name: B.name } };
+// "invoices"."id" is hard-coded rather than interpolated: how drizzle qualifies a column inside raw
+// sql depends on the surrounding select, and an unqualified `id` would bind to the subquery's own row.
+const paidMinorSql = sql<string>`(select coalesce(sum(p.amount_minor), 0) from ${schema.payments} p where p.invoice_id = "invoices"."id" and p.status = 'completed')`;
+const rowSelect = { inv: INV, period: BP.period, paidMinor: paidMinorSql, contact: { id: C.id, firstName: C.firstName, lastName: C.lastName }, building: { id: B.id, name: B.name } };
 function joined(db: Db) {
   return db.select(rowSelect).from(INV).innerJoin(BP, eq(BP.id, INV.periodId)).innerJoin(C, eq(C.id, INV.contactId)).innerJoin(B, eq(B.id, INV.buildingId));
 }
-const toRow = (r: { inv: typeof INV.$inferSelect; period: string; contact: { id: string; firstName: string; lastName: string }; building: { id: string; name: string } }) => ({ ...r.inv, period: r.period, contact: r.contact, building: r.building });
+const toRow = (r: { inv: typeof INV.$inferSelect; period: string; paidMinor: string; contact: { id: string; firstName: string; lastName: string }; building: { id: string; name: string } }) => {
+  const paidMinor = Number(r.paidMinor);
+  return { ...r.inv, period: r.period, paidMinor, outstandingMinor: Math.max(0, r.inv.totalMinor - paidMinor), contact: r.contact, building: r.building };
+};
 
 export async function listInvoices(db: Db, ctx: TenantContext, q: { buildingId?: string | undefined; period?: string | undefined; status?: string | undefined; contactId?: string | undefined; page: number; pageSize: number }) {
   const conds = [eq(INV.tenantId, ctx.tenantId)];
@@ -30,12 +37,13 @@ export async function listInvoices(db: Db, ctx: TenantContext, q: { buildingId?:
 export async function getInvoice(db: Db, ctx: TenantContext, id: string) {
   const [r] = await joined(db).where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.id, id))).limit(1);
   if (!r) throw notFound('Invoice');
-  const [contact, building, lines] = await Promise.all([
+  const [contact, building, lines, payments] = await Promise.all([
     db.query.contacts.findFirst({ where: and(eq(C.tenantId, ctx.tenantId), eq(C.id, r.inv.contactId)) }),
     db.query.buildings.findFirst({ where: and(eq(B.tenantId, ctx.tenantId), eq(B.id, r.inv.buildingId)) }),
     db.query.invoiceLines.findMany({ where: and(eq(IL.tenantId, ctx.tenantId), eq(IL.invoiceId, id)), orderBy: [asc(IL.sortOrder)] }),
+    listPayments(db, ctx, { invoiceId: id, page: 1, pageSize: 200 }),
   ]);
-  return { ...toRow(r), contact: contact!, building: building!, lines };
+  return { ...toRow(r), contact: contact!, building: building!, lines, payments: payments.rows };
 }
 
 export async function deleteDraftInvoice(db: Db, ctx: TenantContext, id: string) {

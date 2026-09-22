@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { pageQuery, periodStr } from '../common.js';
+import { paymentOut } from '../payments/schema.js';
 import { fundEnum } from '../reserve-fund/schema.js';
 
 export const invoiceStatusEnum = z.enum(['draft', 'published', 'partially_paid', 'paid', 'cancelled']);
@@ -7,7 +8,8 @@ const dt = () => z.date().or(z.string()).nullable();
 export const invoiceRowOut = z.object({
   id: z.string(), periodId: z.string(), buildingId: z.string(), contactId: z.string(), number: z.string().nullable(), status: invoiceStatusEnum, currency: z.string(),
   unitIds: z.array(z.string()), subtotalMinor: z.number().int(), taxMinor: z.number().int(), totalMinor: z.number().int(), previousBalanceMinor: z.number().int(),
-  amountDueMinor: z.number().int(), reserveFundBuildingBalanceMinor: z.number().int(), issuedAt: dt(), dueAt: dt(), publishedAt: dt(), period: z.string(),
+  amountDueMinor: z.number().int(), reserveFundBuildingBalanceMinor: z.number().int(), paidMinor: z.number().int(), outstandingMinor: z.number().int(),
+  issuedAt: dt(), dueAt: dt(), publishedAt: dt(), period: z.string(),
   contact: z.object({ id: z.string(), firstName: z.string(), lastName: z.string() }), building: z.object({ id: z.string(), name: z.string() }), createdAt: z.date().or(z.string()),
 });
 export const invoiceLineOut = z.object({
@@ -16,6 +18,7 @@ export const invoiceLineOut = z.object({
 });
 export const invoiceDetailOut = invoiceRowOut.extend({
   lines: z.array(invoiceLineOut),
+  payments: z.array(paymentOut),
   contact: z.object({ id: z.string(), kind: z.enum(['person', 'company']), firstName: z.string(), lastName: z.string(), email: z.string().nullable(), address: z.string().nullable(), companyNumber: z.string().nullable(), vatNumber: z.string().nullable() }),
   building: z.object({ id: z.string(), name: z.string(), address: z.string(), city: z.string(), postalCode: z.string(), regularFundAccount: z.string().nullable(), reserveFundAccount: z.string().nullable() }),
 });
