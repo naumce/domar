@@ -75,3 +75,26 @@ export interface PortalFund {
 }
 export interface PortalInvite { code: string; expiresAt: string; emailed: boolean }
 export interface PortalStatus { status: 'none' | 'invited' | 'linked'; expiresAt?: string; linkedAt?: string }
+
+export type ComplianceStatus = 'ok' | 'due' | 'overdue' | 'n/a';
+export type ComplianceDutyKey = 'invoices' | 'reminders' | 'assembly' | 'annual_report' | 'fund_transparency' | 'fund_accounts' | 'handover' | 'extraordinary_costs';
+export interface ComplianceDuty {
+  key: ComplianceDutyKey; article: string; status: ComplianceStatus; dueAt: string | null; lastEvidenceAt: string | null;
+  /** Query string relative to `/app/buildings/<id>`. */
+  howToFix: string; count: number | null; label: string; hint: string;
+}
+export interface ComplianceCounts { ok: number; due: number; overdue: number; na: number }
+export interface BuildingCompliance {
+  building: { id: string; name: string }; status: ComplianceStatus; counts: ComplianceCounts;
+  duties: ComplianceDuty[]; evaluatedAt: string;
+}
+export interface ComplianceOverviewRow {
+  building: { id: string; name: string }; status: ComplianceStatus; counts: ComplianceCounts;
+  duties: { key: ComplianceDutyKey; status: ComplianceStatus }[];
+}
+export interface ComplianceOverview { rows: ComplianceOverviewRow[]; counts: ComplianceCounts; evaluatedAt: string }
+export type LegalEventKind = 'invoice_published' | 'reminder_sent' | 'assembly_invited' | 'assembly_held' | 'annual_report_issued' | 'handover_report_issued' | 'fund_statement_available' | 'extraordinary_cost_distributed';
+export interface LegalEvent {
+  id: string; buildingId: string; kind: LegalEventKind; refType: string; refId: string | null;
+  occurredAt: string; dueAt: string | null; evidence: Record<string, unknown>; createdBy: string | null; createdAt: string;
+}

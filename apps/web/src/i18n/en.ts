@@ -1,6 +1,6 @@
 export default {
   app: { name: 'domar', loading: 'Loading…', save: 'Save', cancel: 'Cancel', create: 'Create', edit: 'Edit', delete: 'Delete', confirmDelete: 'Are you sure?', actions: 'Actions', search: 'Search', empty: 'No data', yes: 'Yes', no: 'No', error: 'Something went wrong' },
-  nav: { dashboard: 'Dashboard', buildings: 'Buildings', services: 'Services', contacts: 'Contacts', invoices: 'Invoices', payments: 'Payments', taxRates: 'Tax rates', settings: 'Settings', logout: 'Log out', portal: 'Owner portal' },
+  nav: { dashboard: 'Dashboard', compliance: 'Compliance', buildings: 'Buildings', services: 'Services', contacts: 'Contacts', invoices: 'Invoices', payments: 'Payments', taxRates: 'Tax rates', settings: 'Settings', logout: 'Log out', portal: 'Owner portal' },
   auth: {
     login: 'Log in', register: 'Create account', tenantSlug: 'Organization (slug)', email: 'Email', password: 'Password', firstName: 'First name', lastName: 'Last name', orgName: 'Company name', noAccount: 'No account?', haveAccount: 'Already have an account?',
     errors: { invalid_credentials: 'Wrong organization, email or password.', slug_taken: 'That slug is already taken.', validation: 'Check the entered data.', generic: 'Something went wrong. Try again.' },
@@ -21,6 +21,19 @@ export default {
   buildings: {
     title: 'Buildings', add: 'Add building', name: 'Name', address: 'Address', city: 'City', postalCode: 'Postal code', representative: 'Representative', none: '— none —', shareBasis: 'Share basis',
     shareBasisOptions: { area: 'By area (m²)', equal: 'Equal', custom: 'Ownership share' }, regularFundAccount: 'Regular fund account', reserveFundAccount: 'Reserve fund account', unitCount: 'Units',
+  },
+  compliance: {
+    title: 'Compliance', overview: 'Compliance by building', openOverview: 'Open the overview',
+    article: 'Art. {article}', lastEvidence: 'Last evidence', dueAt: 'Due', count: 'Count', fix: 'Fix', none: '—',
+    building: 'Building', worst: 'Status', duties: 'Duties', evaluatedAt: 'As of {date}',
+    status: { ok: 'OK', due: 'Due', overdue: 'Overdue', na: 'Not applicable' },
+    fundAccounts: { title: 'Fund bank accounts', regular: 'Regular fund account', reserve: 'Reserve fund account', saved: 'Saved.' },
+    events: 'Recent legal events',
+    eventKinds: {
+      invoice_published: 'Calculation published', reminder_sent: 'Reminder sent', assembly_invited: 'Assembly called',
+      assembly_held: 'Assembly held', annual_report_issued: 'Annual report issued', handover_report_issued: 'Handover report issued',
+      fund_statement_available: 'Fund statement made available', extraordinary_cost_distributed: 'Extraordinary cost distributed',
+    },
   },
   units: {
     title: 'Units', add: 'Add unit', label: 'Label', floor: 'Floor', kind: 'Kind', areaM2: 'Area (m²)', ownershipShare: 'Ownership share (0–1, e.g. 0.0125)', owner: 'Owner', attachedTo: 'Attached to', notAttached: '— billed separately —',

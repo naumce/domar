@@ -33,6 +33,8 @@ test('register, create contact, building, unit, logout and login', async ({ page
   await expect(page.getByTestId('row')).toHaveCount(1);
   await page.getByTestId('building-link').click();
 
+  // The building page now opens on Compliance; the smoke test wants the units tab.
+  await page.getByTestId('tab-units').click();
   await page.getByTestId('add-unit').click();
   await page.getByTestId('label').fill('12');
   await page.getByTestId('floor').fill('3');

@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import type { Building, Contact, Unit } from '@/api/types';
 import BuildingServicesTab from '@/components/building/BuildingServicesTab.vue';
+import ComplianceTab from '@/components/building/ComplianceTab.vue';
 import ImportTab from '@/components/building/ImportTab.vue';
 import OpeningBalancesTab from '@/components/building/OpeningBalancesTab.vue';
 import PeriodsTab from '@/components/building/PeriodsTab.vue';
@@ -25,9 +26,9 @@ const contacts = ref<Contact[]>([]);
 const units = useResource<Unit>(`/api/buildings/${props.id}/units`);
 const open = ref(false); const editing = ref<Unit | null>(null); const formError = ref<string | null>(null);
 const route = useRoute(); const router = useRouter();
-const tabs = ['units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'reminders', 'import'] as const;
-const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'units'));
-const tabLabel = (k: string) => ({ units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), reminders: t('reminders.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
+const tabs = ['compliance', 'units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'reminders', 'import'] as const;
+const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'compliance'));
+const tabLabel = (k: string) => ({ compliance: t('compliance.title'), units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), reminders: t('reminders.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
 
 async function loadContactsAndUnits() {
   contacts.value = (await api.get<{ rows: Contact[] }>('/api/contacts', { pageSize: 200 })).rows;
@@ -56,7 +57,8 @@ async function onSubmit(payload: UnitCreatePayload) {
     <nav class="mb-4 flex gap-2 border-b border-slate-200">
       <button v-for="k in tabs" :key="k" class="-mb-px border-b-2 px-3 py-2 text-sm" :class="tab === k ? 'border-emerald-600 font-medium text-emerald-800' : 'border-transparent text-slate-600'" :data-test="`tab-${k}`" @click="router.replace({ query: { ...route.query, tab: k } })">{{ tabLabel(k) }}</button>
     </nav>
-    <div v-if="tab === 'units'">
+    <ComplianceTab v-if="tab === 'compliance'" :building-id="id" />
+    <div v-else-if="tab === 'units'">
       <div class="mb-3 flex items-center justify-between"><h2 class="text-lg font-semibold">{{ t('units.title') }} <span class="text-slate-500">{{ units.rows.value.length }}</span></h2><AppButton data-test="add-unit" @click="openNew">{{ t('units.add') }}</AppButton></div>
       <p v-if="units.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
       <DataTable :columns="[{ key: 'label', label: t('units.label') }, { key: 'floor', label: t('units.floor') }, { key: 'kind', label: t('units.kind') }, { key: 'areaM2', label: t('units.areaM2') }, { key: 'owner', label: t('units.owner') }]" :rows="units.rows.value">

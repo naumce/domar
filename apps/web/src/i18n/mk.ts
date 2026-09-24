@@ -1,6 +1,6 @@
 export default {
   app: { name: 'domar', loading: 'Вчитување…', save: 'Зачувај', cancel: 'Откажи', create: 'Креирај', edit: 'Измени', delete: 'Избриши', confirmDelete: 'Дали сте сигурни?', actions: 'Акции', search: 'Пребарај', empty: 'Нема податоци', yes: 'Да', no: 'Не', error: 'Настана грешка' },
-  nav: { dashboard: 'Контролна табла', buildings: 'Згради', services: 'Услуги', contacts: 'Контакти', invoices: 'Фактури', payments: 'Плаќања', taxRates: 'Даночни стапки', settings: 'Поставки', logout: 'Одјави се', portal: 'Портал за сопственици' },
+  nav: { dashboard: 'Контролна табла', compliance: 'Усогласеност', buildings: 'Згради', services: 'Услуги', contacts: 'Контакти', invoices: 'Фактури', payments: 'Плаќања', taxRates: 'Даночни стапки', settings: 'Поставки', logout: 'Одјави се', portal: 'Портал за сопственици' },
   auth: {
     login: 'Најави се', register: 'Отвори сметка', tenantSlug: 'Организација (слаг)', email: 'Е-пошта', password: 'Лозинка', firstName: 'Име', lastName: 'Презиме', orgName: 'Име на фирма', noAccount: 'Нема сметка?', haveAccount: 'Веќе имате сметка?',
     errors: { invalid_credentials: 'Погрешна организација, е-пошта или лозинка.', slug_taken: 'Тој слаг е веќе зафатен.', validation: 'Проверете ги внесените податоци.', generic: 'Настана грешка. Обидете се повторно.' },
@@ -21,6 +21,19 @@ export default {
   buildings: {
     title: 'Згради', add: 'Додади зграда', name: 'Име', address: 'Адреса', city: 'Град', postalCode: 'Поштенски број', representative: 'Претставник', none: '— нема —', shareBasis: 'Основ за распределба',
     shareBasisOptions: { area: 'По површина (m²)', equal: 'Рамномерно', custom: 'Сопственички удел' }, regularFundAccount: 'Сметка редовен фонд', reserveFundAccount: 'Сметка резервен фонд', unitCount: 'Единици',
+  },
+  compliance: {
+    title: 'Усогласеност', overview: 'Усогласеност по згради', openOverview: 'Отвори го прегледот',
+    article: 'чл. {article}', lastEvidence: 'Последен доказ', dueAt: 'Рок', count: 'Број', fix: 'Среди', none: '—',
+    building: 'Зграда', worst: 'Статус', duties: 'Обврски', evaluatedAt: 'Состојба на {date}',
+    status: { ok: 'Во ред', due: 'Доспева', overdue: 'Задоцнето', na: 'Не се однесува' },
+    fundAccounts: { title: 'Сметки на фондовите', regular: 'Сметка редовен фонд', reserve: 'Сметка резервен фонд', saved: 'Зачувано.' },
+    events: 'Последни правни настани',
+    eventKinds: {
+      invoice_published: 'Објавена пресметка', reminder_sent: 'Испратена опомена', assembly_invited: 'Свикан собир',
+      assembly_held: 'Одржан собир', annual_report_issued: 'Издаден годишен извештај', handover_report_issued: 'Издаден извештај за примопредавање',
+      fund_statement_available: 'Овозможен увид во фондот', extraordinary_cost_distributed: 'Распределен вонреден трошок',
+    },
   },
   units: {
     title: 'Единици', add: 'Додади единица', label: 'Број', floor: 'Кат', kind: 'Тип', areaM2: 'Површина (m²)', ownershipShare: 'Сопственички удел (0–1, пр. 0.0125)', owner: 'Сопственик', attachedTo: 'Прикачено на', notAttached: '— се фактурира одделно —',

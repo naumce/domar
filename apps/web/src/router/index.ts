@@ -12,6 +12,7 @@ export const router = createRouter({
       path: '/app', component: () => import('@/layouts/AppShell.vue'), meta: { auth: true },
       children: [
         { path: '', component: () => import('@/pages/DashboardPage.vue') },
+        { path: 'compliance', component: () => import('@/pages/CompliancePage.vue') },
         { path: 'tax-rates', component: () => import('@/pages/TaxRatesPage.vue') },
         { path: 'contacts', component: () => import('@/pages/ContactsPage.vue') },
         { path: 'contacts/:id', component: () => import('@/pages/ContactStatementPage.vue'), props: true },

@@ -14,6 +14,10 @@ onMounted(async () => { stats.value = await api.get<DashboardStats>('/api/dashbo
 <template>
   <h1 class="mb-4 text-2xl font-semibold">{{ t('dashboard.welcome', { name: auth.user?.firstName ?? '' }) }}</h1>
   <div v-if="stats" class="grid grid-cols-4 gap-4">
+    <RouterLink to="/app/compliance" class="rounded-xl bg-emerald-50 p-4 shadow-sm ring-1 ring-emerald-200" data-test="dashboard-compliance">
+      <div class="text-sm text-emerald-700">{{ t('compliance.overview') }}</div>
+      <div class="text-lg font-semibold text-emerald-900">{{ t('compliance.openOverview') }}</div>
+    </RouterLink>
     <div class="rounded-xl bg-white p-4 shadow-sm"><div class="text-sm text-slate-500">{{ t('dashboard.buildings') }}</div><div class="text-3xl font-semibold" data-test="stat-buildings">{{ stats.totalProperties }}</div></div>
     <div class="rounded-xl bg-white p-4 shadow-sm"><div class="text-sm text-slate-500">{{ t('dashboard.units') }}</div><div class="text-3xl font-semibold" data-test="stat-units">{{ stats.totalUnits }}</div></div>
     <div class="rounded-xl bg-white p-4 shadow-sm"><div class="text-sm text-slate-500">{{ t('dashboard.owners') }}</div><div class="text-3xl font-semibold" data-test="stat-owners">{{ stats.assignedOwners }}</div></div>
