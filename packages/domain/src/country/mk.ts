@@ -25,6 +25,16 @@ export const mkPack: CountryPack = {
     openingBalance: 'Почетно салдо',
     reminderIntro: 'Според нашата евиденција, следните месечни пресметки за управување и одржување на заедничките делови на зградата не се платени во целост.',
     reminderLegal: 'Оваа опомена е издадена согласно член 28 од Законот за домување. За опомената не се наплатува надоместок. Ве молиме долгот да го платите во најкраток можен рок на сметката наведена подолу.',
+    compliance: {
+      invoices: { title: 'Месечни пресметки', hint: 'Објавете ја пресметката за тековниот месец за сите сопственици.' },
+      reminders: { title: 'Опомени за должници', hint: 'Изгответе опомени за сопствениците што го поминале прагот од член 28.' },
+      assembly: { title: 'Собир на сопственици', hint: 'Свикајте собир најмалку 15 дена однапред и запишете записник.' },
+      annual_report: { title: 'Годишен извештај', hint: 'Изгответе годишен извештај за управувањето и доставете го до сопствениците.' },
+      fund_transparency: { title: 'Увид во состојбата на фондот', hint: 'Издадете код за порталот на барем еден сопственик за да има увид во фондот.' },
+      fund_accounts: { title: 'Одвоени сметки за фондовите', hint: 'Внесете ги броевите на сметките на редовниот и на резервниот фонд.' },
+      handover: { title: 'Примопредавање по истек на договор', hint: 'Во рок од 8 дена по истекот на договорот предајте извештај и целосна документација.' },
+      extraordinary_costs: { title: 'Вонредни трошоци', hint: 'Распределените вонредни трошоци по член 47(5) се евидентираат тука.' },
+    },
   },
   invoiceLayout: {
     showBuildingWideAmountPerLine: true,
@@ -38,6 +48,16 @@ export const mkPack: CountryPack = {
     totalUnpaid: 3,
     feeAllowed: false,
     channels: ['email', 'sms', 'letter'],
+  },
+  complianceRules: {
+    invoiceMaxAgeDays: 35,
+    reminderGraceDays: 30,
+    assemblyMaxAgeMonths: 12,
+    assemblyInvitationMinDays: 15,
+    annualReportMaxAgeMonths: 12,
+    handoverDays: 8,
+    graceDays: 30,
+    graceMonths: 3,
   },
   statementParsers: [mt940Parser, csvParser],
   formatMoney(minor: number): string {

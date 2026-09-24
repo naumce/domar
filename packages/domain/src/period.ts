@@ -52,6 +52,19 @@ export function periodStartDate(p: string, timeZone: string): Date {
   return new Date(guess - offset2);
 }
 
+/**
+ * UTC instant of local midnight of the day that contains `instant`, in the given IANA zone. Same
+ * two-pass offset resolution as `periodStartDate`, and for the same reason: the first pass's offset
+ * is taken at a UTC-midnight guess that can sit on the wrong side of a DST transition.
+ */
+export function localDayStart(instant: Date, timeZone: string): Date {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(instant).split('-').map(Number);
+  const guess = Date.UTC(y!, m! - 1, d!, 0, 0, 0);
+  const candidate = guess - zoneOffsetAt(guess, timeZone);
+  return new Date(guess - zoneOffsetAt(candidate, timeZone));
+}
+
 export interface RecurrenceRule {
   frequency: 'monthly' | 'every_n_months';
   intervalMonths: number;

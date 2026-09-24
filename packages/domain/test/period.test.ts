@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comparePeriods, isServiceDue, isValidPeriod, monthsBetween, nextPeriod, periodStartDate } from '../src/period.js';
+import { comparePeriods, isServiceDue, isValidPeriod, localDayStart, monthsBetween, nextPeriod, periodStartDate } from '../src/period.js';
 
 describe('period helpers', () => {
   it('validates YYYY-MM', () => {
@@ -47,5 +47,19 @@ describe('period helpers', () => {
     const everyZero = { frequency: 'every_n_months' as const, intervalMonths: 0, startsPeriod: '2026-01', endsPeriod: null };
     expect(isServiceDue('2026-01', everyZero)).toBe(true);
     expect(isServiceDue('2026-03', everyZero)).toBe(true); // 0 treated as 1
+  });
+});
+
+describe('localDayStart', () => {
+  it('is the UTC instant of local midnight in the zone', () => {
+    // Skopje is UTC+2 in September (CEST), so local midnight is 22:00 UTC the day before.
+    expect(localDayStart(new Date('2026-09-24T09:30:00.000Z'), 'Europe/Skopje').toISOString()).toBe('2026-09-23T22:00:00.000Z');
+    // ... and UTC+1 in January (CET).
+    expect(localDayStart(new Date('2026-01-15T09:30:00.000Z'), 'Europe/Skopje').toISOString()).toBe('2026-01-14T23:00:00.000Z');
+    expect(localDayStart(new Date('2026-09-24T09:30:00.000Z'), 'UTC').toISOString()).toBe('2026-09-24T00:00:00.000Z');
+  });
+  it('picks the local day, not the UTC day', () => {
+    // 23:30 UTC on the 23rd is already 01:30 on the 24th in Skopje.
+    expect(localDayStart(new Date('2026-09-23T23:30:00.000Z'), 'Europe/Skopje').toISOString()).toBe('2026-09-23T22:00:00.000Z');
   });
 });
