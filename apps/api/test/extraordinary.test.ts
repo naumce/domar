@@ -285,6 +285,29 @@ describe('extraordinary costs', () => {
     expect(regular.statusCode).toBe(409);
   });
 
+  it('two concurrent distributions bill the owners once: one 201, one 409', async () => {
+    const C = await setupPublishedBuilding(t.app, a.cookie);
+    const payload = {
+      description: 'Лифт', amountMinor: 300000, fund: 'regular',
+      distribution: 'equal', appliesTo: ['apartment', 'commercial'], dueDays: 15,
+    };
+    const [r1, r2] = await Promise.all([
+      post(`/api/buildings/${C.buildingId}/extraordinary-costs`, payload),
+      post(`/api/buildings/${C.buildingId}/extraordinary-costs`, payload),
+    ]);
+    expect([r1.statusCode, r2.statusCode].sort()).toEqual([201, 409]);
+    const loser = r1.statusCode === 409 ? r1 : r2;
+    expect(loser.json().error.code).toBe('extraordinary_pending');
+
+    const extra = (await get(`/api/buildings/${C.buildingId}/periods`)).json().rows
+      .filter((p: { kind: string }) => p.kind === 'extraordinary');
+    expect(extra).toHaveLength(1);
+    const invoices = (await get(`/api/invoices?buildingId=${C.buildingId}&pageSize=200`)).json().rows
+      .filter((r: InvoiceRow) => r.periodId === extra[0].id);
+    expect(invoices).toHaveLength(3);
+    expect(invoices.reduce((sum: number, r: InvoiceRow) => sum + r.totalMinor, 0)).toBe(300000);
+  });
+
   it('dates the charge to this month, or the next when this month is already invoiced', async () => {
     const ctx = { tenantId: a.tenantId, userId: a.userId, role: 'owner' as const };
     // The fixture published the regular 2026-09 period, so September is out of reach.

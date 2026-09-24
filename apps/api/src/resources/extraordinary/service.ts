@@ -1,6 +1,6 @@
 import { type Db, schema } from '@domar/db';
 import { nextPeriod } from '@domar/domain';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { badRequest, conflict } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -81,9 +81,13 @@ async function assertDistributable(db: Db, ctx: TenantContext, buildingId: strin
  * An unfinished extraordinary period is in the manager's way: its draft invoices are part of the
  * building's numbers and the next distribution would run beside it. Refuse, and name it, so the
  * manager publishes it or deletes it (`DELETE /buildings/:id/periods/:periodId`) first.
+ *
+ * Always called inside the create transaction, behind the advisory lock: two requests in flight
+ * (a double submit, a retry after a timeout, two accountants) would otherwise both pass a plain
+ * select before either commits, and every owner would be charged twice.
  */
-async function assertNothingPending(db: Db, ctx: TenantContext, buildingId: string): Promise<void> {
-  const [pending] = await db.select({ id: BP.id, status: BP.status }).from(BP)
+async function assertNothingPending(tx: Db, ctx: TenantContext, buildingId: string): Promise<void> {
+  const [pending] = await tx.select({ id: BP.id, status: BP.status }).from(BP)
     .where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.buildingId, buildingId), eq(BP.kind, 'extraordinary'), inArray(BP.status, ['open', 'generated'])))
     .orderBy(asc(BP.createdAt)).limit(1);
   if (pending) {
@@ -101,11 +105,14 @@ async function assertNothingPending(db: Db, ctx: TenantContext, buildingId: stri
 export async function distributeExtraordinaryCost(db: Db, ctx: TenantContext, buildingId: string, input: ExtraordinaryCostCreate, now: Date = new Date()) {
   await getBuilding(db, ctx, buildingId); // 404 across tenants
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  await assertNothingPending(db, ctx, buildingId);
   await assertDistributable(db, ctx, buildingId, input);
   const period = await extraordinaryPeriodFor(db, ctx, buildingId, tenant.timezone, now);
 
   const created = await db.transaction(async (tx) => {
+    // Serialises concurrent distributions for this building on (tenant, building): the second
+    // transaction blocks here until the first commits its `open` period, then sees it and 409s.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${ctx.tenantId}:${buildingId}:extraordinary`}))`);
+    await assertNothingPending(tx, ctx, buildingId);
     await assertDocumentInTenant(tx, ctx, input.documentId);
     const [row] = await tx.insert(BP).values({
       tenantId: ctx.tenantId, buildingId, period, kind: 'extraordinary',
