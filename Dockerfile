@@ -24,6 +24,9 @@ FROM deps AS build
 COPY . .
 # The web bundle the API will serve, and the production compile gate for the API.
 RUN pnpm --filter @domar/web build && pnpm --filter @domar/api build
+# The image serves the bundle from the API's own origin, so a dev API URL left in it would send every
+# request to the visitor's machine. Fail the build instead of shipping that.
+RUN test -d apps/web/dist/assets && ! grep -rl "localhost:3001" apps/web/dist/assets
 
 # The workspace packages ship TypeScript sources, so the runtime keeps the workspace layout and runs
 # the API through tsx (see docs/DEPLOY.md). No `pnpm deploy`: it would copy those packages into

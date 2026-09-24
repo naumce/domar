@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import { api } from '@/api/client';
+import { api, API_BASE } from '@/api/client';
 import type { Invoice, InvoiceLine } from '@/api/types';
 import PaymentForm, { type PaymentPayload } from '@/components/billing/PaymentForm.vue';
 import DataTable from '@/components/DataTable.vue';
@@ -13,7 +13,6 @@ import { formatMoney, percentFromBp } from '@/utils/money';
 const props = defineProps<{ id: string }>();
 const { t } = useI18n();
 const router = useRouter();
-const API = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
 const inv = ref<Invoice | null>(null);
 const error = ref('');
 const payOpen = ref(false);
@@ -41,8 +40,8 @@ async function remove() { try { await api.del(`/api/invoices/${props.id}`); awai
         <p class="text-slate-600">{{ inv.building.name }} · {{ t('billing.period') }} {{ inv.period }} · {{ t(`invoices.status.${inv.status}`) }}</p>
         <p class="text-slate-600">{{ t('invoices.issued') }}: {{ date(inv.issuedAt) }} · {{ t('invoices.due') }}: <span data-test="invoice-due">{{ date(inv.dueAt) }}</span></p></div>
       <div class="flex gap-2">
-        <a :href="`${API}/api/invoices/${inv.id}/html`" target="_blank" rel="noopener" class="rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-300" data-test="open-html">{{ t('invoices.openHtml') }}</a>
-        <a :href="`${API}/api/invoices/${inv.id}/pdf`" target="_blank" rel="noopener" class="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white">{{ t('invoices.downloadPdf') }}</a>
+        <a :href="`${API_BASE}/api/invoices/${inv.id}/html`" target="_blank" rel="noopener" class="rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-300" data-test="open-html">{{ t('invoices.openHtml') }}</a>
+        <a :href="`${API_BASE}/api/invoices/${inv.id}/pdf`" target="_blank" rel="noopener" class="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white">{{ t('invoices.downloadPdf') }}</a>
         <AppButton v-if="inv.status !== 'draft'" data-test="record-payment" @click="payOpen = true">{{ t('payments.record') }}</AppButton>
         <AppButton v-if="inv.status === 'draft'" variant="danger" @click="remove">{{ t('invoices.deleteDraft') }}</AppButton>
       </div>

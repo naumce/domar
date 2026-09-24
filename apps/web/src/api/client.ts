@@ -5,11 +5,17 @@ export class ApiError extends Error {
   }
 }
 
-const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3001';
+/**
+ * The production bundle is served by the API itself, so an unset VITE_API_URL means "same origin".
+ * Vite replaces `import.meta.env.DEV` with a literal, so the dev URL is folded out of that build and
+ * the deployed shell never carries it.
+ */
+export const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)
+  ?? (import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin);
 type Query = Record<string, string | number | boolean | undefined>;
 
 function url(path: string, query?: Query): string {
-  const u = new URL(path, BASE);
+  const u = new URL(path, API_BASE);
   if (query) for (const [k, v] of Object.entries(query)) if (v !== undefined) u.searchParams.set(k, String(v));
   return u.toString();
 }
