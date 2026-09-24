@@ -334,3 +334,44 @@ deliverables; anything else waits for feedback from that month.
    transaction as its audit row. Sending happens after the transaction commits (a failed send
    updates the row to `failed`, never rolls back the reminder). Test transport in Vitest captures
    messages in memory; no test talks to a real SMTP server.
+
+## 19. Sub-plan "Owner portal" (added 2026-09-24, details for §15 item 5 and Art. 45(4))
+
+1. **Accounts are global, links are per tenant.** `owner_accounts` (`email` unique, `password_hash`
+   scrypt, `is_active`, timestamps) has no `tenant_id` (the §10 exception list grows to
+   `owner_accounts`, `owner_sessions`, `portal_invites` is tenant-scoped). `owner_contact_links`
+   (`owner_account_id`, `tenant_id`, `contact_id`, unique on the pair, `linked_at`) is the only bridge
+   between an owner login and a manager's data. Every portal query is constrained by a
+   (`tenant_id`, `contact_id`) pair taken from the caller's links, never from the request.
+2. **Onboarding by invitation code, no email required.** A manager (owner/accountant) issues a code
+   for a contact: `POST /contacts/:id/portal-invite` → `{ code, expiresAt }` (8 characters from the
+   users' unambiguous alphabet, stored as a sha256 hash in `portal_invites` with `tenant_id`,
+   `contact_id`, `expires_at` 14 days, `used_at`, `created_by`); reissuing revokes earlier unused
+   codes for that contact. When the contact has an email and the mailer is configured the code is
+   also emailed (`email_log` template `portal_invite`). The manager sees the code once and the
+   contact's portal status (`none` | `invited` | `linked`) in the UI and on the contact statement page.
+3. **Portal auth.** `POST /api/portal/register { code, email, password }` creates the account (or,
+   when an account with that email exists, requires the password to match) and consumes the code
+   into a link; `POST /api/portal/link { code }` adds a contact to a signed-in account;
+   `POST /api/portal/login`, `POST /api/portal/logout`, `GET /api/portal/me` → account + links with
+   tenant name, contact name, and the buildings the contact owns units in. Sessions live in
+   `owner_sessions` (same token scheme as staff), cookie `domar_owner`, httpOnly, SameSite=Lax,
+   `secure` in production. Rate limits as for staff login. `POST /api/portal/change-password`.
+4. **Read-only data, scoped by link.** All routes take `?contactId=` (must be one of the caller's
+   links; otherwise 404) and derive `tenant_id` from that link: `GET /api/portal/invoices`
+   (published and later, newest first, with `paidMinor`/`outstandingMinor`), `GET /api/portal/invoices/:id`
+   and `/:id/pdf` (same renderer as the manager's), `GET /api/portal/payments`,
+   `GET /api/portal/statement` (the owner statement from §sub-plan 3, running balance),
+   `GET /api/portal/buildings/:id/fund` (Art. 45(4): reserve and regular fund balances of the
+   building plus the fund transactions of the last 12 months: charges, payments, expenses,
+   adjustments — amounts only, no other owners' names). No portal route writes ledger data.
+5. **Web `/portal/*`.** Separate shell (`PortalShell.vue`, no manager nav), pages: login, register
+   (code + email + password), home (one card per linked contact: building(s), balance, unpaid count,
+   last invoice), invoices list + detail with PDF, payments, statement, building fund, settings
+   (change password, add another code). Same i18n files, `portal.*` keys, Macedonian first. Manager
+   side: contact statement page gets a "Portal access" box (status, issue code, code shown once).
+6. **Invariants.** Portal handlers never receive a `TenantContext`; they receive a `PortalContext
+   { ownerAccountId, links }` and build a read-only `TenantContext { tenantId, userId: null }` per
+   resolved link only inside the repo functions that reuse manager repos. A test asserts that every
+   portal route returns 404 for a contact id the account is not linked to, and that a staff session
+   cookie is not accepted on `/api/portal/*` (nor the owner cookie on `/api/*`).
