@@ -16,13 +16,15 @@ export const contractCreate = z.object({
   kind: contractKindEnum, title: z.string().min(1).max(200), startsOn: dateOnly, endsOn: dateOnly.nullable().optional(),
   supplierId: z.string().uuid().nullable().optional(), documentId: z.string().uuid().nullable().optional(),
   noticeDays: z.number().int().min(0).max(365).optional(), amountMinor: z.number().int().min(0).max(1_000_000_000_000).nullable().optional(),
-}).refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'endsOn must not be before startsOn', path: ['endsOn'] });
+}).refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'endsOn must not be before startsOn', path: ['endsOn'] })
+  .refine((v) => !(v.kind === 'management' && v.supplierId), { message: "a management contract is the manager's own", path: ['supplierId'] });
 export const contractPatch = z.object({
   kind: contractKindEnum.optional(), title: z.string().min(1).max(200).optional(), startsOn: dateOnly.optional(),
   endsOn: dateOnly.nullable().optional(), supplierId: z.string().uuid().nullable().optional(),
   documentId: z.string().uuid().nullable().optional(), noticeDays: z.number().int().min(0).max(365).optional(),
   amountMinor: z.number().int().min(0).max(1_000_000_000_000).nullable().optional(),
-});
+}).strict().refine((v) => Object.keys(v).length > 0, 'empty patch')
+  .refine((v) => !(v.kind === 'management' && v.supplierId), { message: "a management contract is the manager's own", path: ['supplierId'] });
 export const contractParam = z.object({ buildingId: z.string().uuid(), id: z.string().uuid() });
 export type ContractCreate = z.infer<typeof contractCreate>;
 export type ContractPatch = z.infer<typeof contractPatch>;

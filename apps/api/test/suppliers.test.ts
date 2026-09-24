@@ -88,6 +88,36 @@ describe('suppliers and contracts', () => {
     expect(rows.find((r: { kind: string }) => r.kind === 'service').supplier.name).toBe('Лифт Сервис ДООЕЛ');
   });
 
+  it('validates contract patches and rejects a management contract with a supplier', async () => {
+    const rows = (await get(`/api/buildings/${A.buildingId}/contracts`)).json().rows;
+    const management = rows.find((r: { kind: string }) => r.kind === 'management');
+    const service = rows.find((r: { kind: string }) => r.kind === 'service');
+
+    const endsBeforeStarts = await patch(`/api/buildings/${A.buildingId}/contracts/${management.id}`, { endsOn: '2025-12-31' });
+    expect(endsBeforeStarts.statusCode).toBe(400);
+    expect(endsBeforeStarts.json().error.code).toBe('validation');
+
+    const startsAfterEnds = await patch(`/api/buildings/${A.buildingId}/contracts/${management.id}`, { startsOn: '2026-09-15' });
+    expect(startsAfterEnds.statusCode).toBe(400);
+    expect(startsAfterEnds.json().error.code).toBe('validation');
+
+    expect((await patch(`/api/buildings/${A.buildingId}/contracts/${service.id}`, { nope: 'x' })).statusCode).toBe(400);
+    expect((await patch(`/api/buildings/${A.buildingId}/contracts/${service.id}`, {})).statusCode).toBe(400);
+
+    const managementWithSupplier = await post(`/api/buildings/${A.buildingId}/contracts`, {
+      kind: 'management', title: 'x', startsOn: '2026-01-01', supplierId,
+    });
+    expect(managementWithSupplier.statusCode).toBe(400);
+    expect(managementWithSupplier.json().error.code).toBe('validation');
+
+    const serviceMadeManagementWithSupplier = await patch(`/api/buildings/${A.buildingId}/contracts/${service.id}`, { kind: 'management' });
+    expect(serviceMadeManagementWithSupplier.statusCode).toBe(400);
+    expect(serviceMadeManagementWithSupplier.json().error.code).toBe('validation');
+
+    expect((await patch(`/api/suppliers/${supplierId}`, { nope: 'x' })).statusCode).toBe(400);
+    expect((await patch(`/api/suppliers/${supplierId}`, {})).statusCode).toBe(400);
+  });
+
   it('refuses a supplier or document from another tenant', async () => {
     const other = (await post('/api/suppliers', { name: 'Туѓ добавувач' }, b.cookie)).json();
     const res = await post(`/api/buildings/${A.buildingId}/contracts`, { kind: 'service', title: 'x', startsOn: '2026-02-01', supplierId: other.id });

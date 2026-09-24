@@ -13,6 +13,6 @@ export const supplierCreate = z.object({
   email: z.string().email().max(200).nullable().optional(), phone: nullableStr(50), iban: nullableStr(50),
   notes: nullableStr(2000), isActive: z.boolean().optional(),
 });
-export const supplierPatch = supplierCreate.partial();
+export const supplierPatch = supplierCreate.partial().strict().refine((v) => Object.keys(v).length > 0, 'empty patch');
 export type SupplierCreate = z.infer<typeof supplierCreate>;
 export type SupplierPatch = z.infer<typeof supplierPatch>;

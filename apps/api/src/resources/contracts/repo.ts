@@ -1,7 +1,7 @@
 import { type Db, schema } from '@domar/db';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
-import { notFound } from '../../errors.js';
+import { badRequest, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { stripUndefined } from '../common.js';
@@ -57,6 +57,12 @@ export async function updateContract(db: Db, ctx: TenantContext, buildingId: str
   return db.transaction(async (tx) => {
     const before = await tx.query.buildingContracts.findFirst({ where: and(eq(BC.tenantId, ctx.tenantId), eq(BC.buildingId, buildingId), eq(BC.id, id)) });
     if (!before) throw notFound('Contract');
+    const startsOn = patch.startsOn ?? before.startsOn;
+    const endsOn = patch.endsOn !== undefined ? patch.endsOn : before.endsOn;
+    if (endsOn && endsOn < startsOn) throw badRequest('validation', 'endsOn must not be before startsOn');
+    const kind = patch.kind ?? before.kind;
+    const supplierId = patch.supplierId !== undefined ? patch.supplierId : before.supplierId;
+    if (kind === 'management' && supplierId) throw badRequest('validation', "a management contract is the manager's own");
     await assertSupplierInTenant(tx, ctx, patch.supplierId);
     await assertDocumentInTenant(tx, ctx, patch.documentId);
     const [row] = await tx.update(BC).set({ ...stripUndefined(patch), updatedAt: new Date() })
