@@ -67,6 +67,26 @@ describe('parseUnitImport', () => {
     expect(errors[2]!.message).toBe('invalid openingBalance: xyz');
   });
 
+  it('rejects an opening balance on a row with no owner', () => {
+    const { rows, errors } = parseUnitImport('label;kind;openingBalance\nA;стан;1.200,00\nB;стан;0\n');
+    expect(rows.map((r) => r.label)).toEqual(['B']);
+    expect(errors).toEqual([{ line: 2, message: 'opening balance requires an owner' }]);
+  });
+
+  it('caps the column lengths the API relies on', () => {
+    const text = 'label;kind;floor;ownerLastName\n'
+      + `${'x'.repeat(51)};стан;1;Марков\n`
+      + `A;стан;${'y'.repeat(21)};Марков\n`
+      + `B;стан;1;${'z'.repeat(201)}\n`;
+    const { rows, errors } = parseUnitImport(text);
+    expect(rows).toEqual([]);
+    expect(errors).toEqual([
+      { line: 2, message: 'label is too long (max 50)' },
+      { line: 3, message: 'floor is too long (max 20)' },
+      { line: 4, message: 'ownerLastName is too long (max 200)' },
+    ]);
+  });
+
   it('reports an empty file instead of throwing', () => {
     expect(parseUnitImport('   \n\n')).toEqual({ rows: [], errors: [{ line: 1, message: 'empty file' }] });
   });

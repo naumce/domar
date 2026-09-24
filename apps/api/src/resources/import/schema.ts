@@ -5,6 +5,7 @@ export const importUnitsBody = z.object({
   content: z.string().min(1).max(3_000_000),
   mode: z.enum(['fail', 'skip']).default('fail'),
   dryRun: z.boolean().default(false),
+  force: z.boolean().default(false),
 });
 export const importRowOut = z.object({
   line: z.number().int(), label: z.string(), floor: z.string().nullable(), kind: unitKindEnum,
@@ -15,6 +16,9 @@ export const importRowOut = z.object({
 });
 export const importResultOut = z.object({
   dryRun: z.boolean(),
+  hasPublishedPeriod: z.boolean(),
+  /** What stops this file from being committed as it stands; a preview reports it, a commit throws it. */
+  blocked: z.enum(['period_published']).nullable(),
   rows: z.array(importRowOut),
   errors: z.array(z.object({ line: z.number().int(), message: z.string() })),
   counts: z.object({

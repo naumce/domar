@@ -43,6 +43,12 @@ const KINDS: Record<string, UnitKind> = {
   other: 'other', 'друго': 'other',
 };
 
+/**
+ * Column length caps, mirroring the unit and contact schemas of the API: the import inserts parsed
+ * rows straight into the database, so an over-long cell has to become a line error here.
+ */
+const LIMITS: Partial<Record<Field, number>> = { label: 50, floor: 20, ownerFirstName: 100, ownerLastName: 200, ownerEmail: 200, ownerPhone: 50 };
+
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const norm = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -77,6 +83,9 @@ export function parseUnitImport(text: string): UnitImportResult {
     const line = i + 1;
     const cells = splitCsvLine(raw, delim);
     const cell = (f: Field): string => { const j = at(f); return j === -1 ? '' : (cells[j] ?? '').trim(); };
+
+    const tooLong = (Object.keys(LIMITS) as Field[]).find((f) => cell(f).length > LIMITS[f]!);
+    if (tooLong) { errors.push({ line, message: `${tooLong} is too long (max ${LIMITS[tooLong]!})` }); continue; }
 
     const label = cell('label');
     if (!label) { errors.push({ line, message: 'label is required' }); continue; }
@@ -121,6 +130,11 @@ export function parseUnitImport(text: string): UnitImportResult {
         errors.push({ line, message: `invalid openingBalance: ${balanceRaw}` });
         continue;
       }
+    }
+
+    if (openingBalanceMinor !== 0 && !ownerLastName) {
+      errors.push({ line, message: 'opening balance requires an owner' });
+      continue;
     }
 
     seen.add(label);

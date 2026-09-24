@@ -29,6 +29,8 @@ describe('unit import', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.dryRun).toBe(true);
+    expect(body.hasPublishedPeriod).toBe(false);
+    expect(body.blocked).toBeNull();
     expect(body.errors).toEqual([]);
     expect(body.conflicts).toEqual([]);
     expect(body.rows).toHaveLength(3);
@@ -79,6 +81,60 @@ describe('unit import', () => {
     expect(res.json().counts.units).toBe(1);
     expect(res.json().errors).toEqual([{ line: 3, message: 'unknown kind: кутија' }]);
     expect((await get(`/api/buildings/${buildingId}/units`)).json().rows).toHaveLength(5);
+  });
+
+  it('matches an existing owner whose name differs only in letter case', async () => {
+    await post('/api/contacts', { firstName: 'Ана', lastName: 'Ангелова' });
+    const before = (await get('/api/contacts')).json().total;
+    const res = await post(importUrl(), { content: 'број;тип;име;презиме\n7;стан;ана;ангелова\n' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().counts).toMatchObject({ units: 1, newContacts: 0, existingContacts: 1 });
+    expect((await get('/api/contacts')).json().total).toBe(before);
+  });
+
+  it('refuses a file with more rows than the cap', async () => {
+    const content = 'број;тип\n' + Array.from({ length: 5001 }, (_, i) => `X${i};стан`).join('\n') + '\n';
+    const res = await post(importUrl(), { content, dryRun: true });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('too_many_rows');
+  });
+
+  it('reports the published-period block on preview and needs force to commit', async () => {
+    const vatId = (await get('/api/tax-rates')).json().rows.find((r: { rateBp: number }) => r.rateBp === 1800).id;
+    const pub = (await post('/api/buildings', { name: 'Илинденска 5' })).json().id;
+    const owner = (await post('/api/contacts', { firstName: 'Петар', lastName: 'Петров' })).json().id;
+    await post(`/api/buildings/${pub}/units`, { label: '1', kind: 'apartment', areaM2: 50, ownerContactId: owner });
+    const svc = (await post('/api/services', { name: 'Чистење', pricing: 'fixed_per_unit', defaultPriceMinor: 30000, taxRateId: vatId, appliesTo: ['apartment'] })).json().id;
+    await post(`/api/buildings/${pub}/services`, { serviceId: svc, startsPeriod: '2026-01' });
+    const periodId = (await post(`/api/buildings/${pub}/periods`, { period: '2026-09' })).json().id;
+    await post(`/api/buildings/${pub}/periods/${periodId}/generate`, {});
+    expect((await post(`/api/buildings/${pub}/periods/${periodId}/publish`, {})).statusCode).toBe(200);
+
+    const url = `/api/buildings/${pub}/import/units`;
+    const file = 'број;тип;име;презиме;почетно салдо\n10;стан;Петар;Петров;500,00\n';
+    const preview = await post(url, { content: file, dryRun: true });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.json().hasPublishedPeriod).toBe(true);
+    expect(preview.json().blocked).toBe('period_published');
+    expect(preview.json().counts).toMatchObject({ units: 1, openingBalances: 1, existingContacts: 1 });
+
+    const refused = await post(url, { content: file });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe('period_published');
+    expect((await get(`/api/buildings/${pub}/units`)).json().rows).toHaveLength(1);
+
+    const forced = await post(url, { content: file, force: true });
+    expect(forced.statusCode).toBe(200);
+    expect(forced.json().blocked).toBeNull();
+    expect(forced.json().hasPublishedPeriod).toBe(true);
+    expect(forced.json().counts).toMatchObject({ units: 1, newContacts: 0, existingContacts: 1, openingBalances: 1 });
+    const balances: { contactId: string; openingMinor: number }[] = (await get(`/api/buildings/${pub}/opening-balances`)).json().rows;
+    expect(balances.find((b) => b.contactId === owner)!.openingMinor).toBe(50000);
+
+    // the refused attempt rolled back with its audit row, so this building has exactly the forced one
+    const audit = (await t.db.query.auditLogs.findMany()).filter((r) => r.action === 'import.units' && r.entityId === pub);
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!.after).toMatchObject({ force: true, afterPublishedPeriod: true });
   });
 
   it('is not found for a building of another organization', async () => {
