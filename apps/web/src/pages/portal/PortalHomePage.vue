@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
 import type { InvoiceRow, OwnerStatement } from '@/api/types';
@@ -25,7 +25,7 @@ async function load() {
     statement.value = st;
   } catch { error.value = t('app.error'); }
 }
-onMounted(() => { void nextTick(load); });
+onMounted(load);
 watch(() => portal.selectedContactId, load);
 
 const unpaidCount = () => invoices.value.filter((i) => i.outstandingMinor > 0).length;

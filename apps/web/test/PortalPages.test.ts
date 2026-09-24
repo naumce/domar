@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { i18n } from '@/i18n';
@@ -38,6 +38,7 @@ describe('PortalHomePage', () => {
       .mockResolvedValueOnce(json(statement));
     await primedStore(fetchMock);
     const w = mount(PortalHomePage, { global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await flushPromises();
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/portal/invoices?contactId=c1&pageSize=12');
     expect(String(fetchMock.mock.calls[2]![0])).toBe('http://localhost:3001/api/portal/statement?contactId=c1');
@@ -53,6 +54,7 @@ describe('PortalHomePage', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(json({ account: { id: 'a1', email: 'x@owner.mk' }, links: [] }));
     await primedStore(fetchMock);
     const w = mount(PortalHomePage, { global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await flushPromises();
     await vi.waitFor(() => expect(w.find('[data-test=portal-no-links]').exists()).toBe(true));
     expect(w.get('[data-test=portal-no-links]').text()).toBe('Сè уште немате поврзан имот. Побарајте код од вашиот управител.');
     expect(fetchMock).toHaveBeenCalledTimes(1); // nothing is fetched without a selected contact
@@ -66,6 +68,7 @@ describe('PortalInvoicesPage', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(json(me)).mockResolvedValueOnce(json({ rows: [invoice], total: 1 }));
     await primedStore(fetchMock);
     const w = mount(PortalInvoicesPage, { global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await flushPromises();
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/portal/invoices?contactId=c1&page=1&pageSize=50');
     expect(w.get('[data-test=portal-invoice-total]').text()).toBe('2.560,99 ден.');
@@ -87,10 +90,12 @@ describe('PortalFundPage', () => {
         { id: 'p1', kind: 'expense', fund: 'regular', amountMinor: -120000, bookedAt: '2026-09-14T00:00:00.000Z', description: 'Поправка на лифт' },
         { id: 'p2', kind: 'opening', fund: 'reserve', amountMinor: 3500000, bookedAt: '2026-09-01T00:00:00.000Z', description: null },
       ],
+      truncated: false,
     };
     const fetchMock = vi.fn().mockResolvedValueOnce(json(me)).mockResolvedValueOnce(json(fund));
     await primedStore(fetchMock);
     const w = mount(PortalFundPage, { global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await flushPromises();
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/portal/buildings/b1/fund?contactId=c1');
     expect(w.get('[data-test=portal-fund-regular]').text()).toBe('810,99 ден.');
@@ -100,5 +105,22 @@ describe('PortalFundPage', () => {
     expect(w.findAll('[data-test=portal-fund-tx]')[0]!.text()).toContain('Поправка на лифт');
     expect(w.findAll('[data-test=portal-fund-tx]')[0]!.text()).toContain('Трошок');
     expect(w.findAll('[data-test=portal-fund-tx]')[1]!.text()).toContain('Почетно салдо');
+    expect(w.find('[data-test=portal-fund-truncated]').exists()).toBe(false);
+  });
+
+  it('shows the truncation notice when the fund history was cut off', async () => {
+    const fund = {
+      building: { id: 'b1', name: 'Партизанска 12' },
+      regular: { balanceMinor: 81099, billedMinor: 839532 },
+      reserve: { balanceMinor: 3550000, billedMinor: 225000 },
+      transactions: [],
+      truncated: true,
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(me)).mockResolvedValueOnce(json(fund));
+    await primedStore(fetchMock);
+    const w = mount(PortalFundPage, { global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await flushPromises();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(w.get('[data-test=portal-fund-truncated]').text()).toBe('Прикажани се последните 500 трансакции; постарите не се вклучени.');
   });
 });

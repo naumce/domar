@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
 import type { PortalFund } from '@/api/types';
@@ -21,7 +21,7 @@ async function load() {
   try { fund.value = await api.get<PortalFund>(`/api/portal/buildings/${id}/fund`, { contactId }); }
   catch { error.value = t('app.error'); }
 }
-onMounted(() => { void nextTick(load); });
+onMounted(load);
 watch(() => portal.selectedContactId, () => { buildingId.value = null; void load(); });
 watch(buildingId, (v, old) => { if (v && old && v !== old) void load(); });
 const date = (d: string) => new Date(d).toLocaleDateString('mk-MK');
@@ -50,6 +50,7 @@ const date = (d: string) => new Date(d).toLocaleDateString('mk-MK');
       </div>
     </div>
     <h2 class="mb-2 mt-6 text-lg font-semibold">{{ t('portal.fundTransactions') }}</h2>
+    <p v-if="fund.truncated" class="mb-2 text-sm text-slate-500" data-test="portal-fund-truncated">{{ t('portal.fundTruncated') }}</p>
     <div class="overflow-x-auto rounded-xl bg-white shadow-sm">
       <table class="w-full text-sm">
         <thead class="bg-slate-50 text-left text-slate-600"><tr><th class="px-4 py-2 font-medium">{{ t('portal.date') }}</th><th class="px-4 py-2 font-medium">{{ t('billing.fund') }}</th><th class="px-4 py-2 font-medium">{{ t('portal.status') }}</th><th class="px-4 py-2 font-medium">{{ t('portal.description') }}</th><th class="px-4 py-2 text-right font-medium">{{ t('portal.amount') }}</th></tr></thead>

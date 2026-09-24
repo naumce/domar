@@ -68,6 +68,7 @@ export interface PortalFund {
   regular: { balanceMinor: number; billedMinor: number };
   reserve: { balanceMinor: number; billedMinor: number };
   transactions: { id: string; kind: FundTransaction['kind']; fund: Fund; amountMinor: number; bookedAt: string; description: string | null }[];
+  truncated: boolean;
 }
 export interface PortalInvite { code: string; expiresAt: string; emailed: boolean }
 export interface PortalStatus { status: 'none' | 'invited' | 'linked'; expiresAt?: string; linkedAt?: string }

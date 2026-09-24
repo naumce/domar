@@ -29,6 +29,7 @@ export default {
     currentPassword: 'Current password', newPassword: 'New password', account: 'Account',
     fundRegular: 'Regular fund', fundReserve: 'Reserve fund', fundBalance: 'Balance', fundBilled: 'Billed to owners',
     fundTransactions: 'Changes in the last 12 months', fundNote: 'Only the building accounts’ movements are shown, with no data about other owners.',
+    fundTruncated: 'Showing the latest 500 transactions; older ones are not included.',
     date: 'Date', amount: 'Amount', description: 'Description', period: 'Period', number: 'Number', total: 'Total', outstanding: 'Outstanding', status: 'Status',
     errors: {
       invalid_code: 'The code is wrong, already used or expired.',

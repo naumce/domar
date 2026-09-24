@@ -29,6 +29,7 @@ export default {
     currentPassword: 'Тековна лозинка', newPassword: 'Нова лозинка', account: 'Сметка',
     fundRegular: 'Редовен фонд', fundReserve: 'Резервен фонд', fundBalance: 'Состојба', fundBilled: 'Фактурирано на сопственици',
     fundTransactions: 'Промени во последните 12 месеци', fundNote: 'Прикажани се само движењата на сметките на зградата, без податоци за другите сопственици.',
+    fundTruncated: 'Прикажани се последните 500 трансакции; постарите не се вклучени.',
     date: 'Датум', amount: 'Износ', description: 'Опис', period: 'Период', number: 'Број', total: 'Вкупно', outstanding: 'Преостанато', status: 'Статус',
     errors: {
       invalid_code: 'Кодот е погрешен, искористен или истечен.',

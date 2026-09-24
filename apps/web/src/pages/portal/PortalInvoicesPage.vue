@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
 import type { InvoiceRow } from '@/api/types';
@@ -19,7 +19,7 @@ async function load() {
   try { rows.value = (await api.get<{ rows: InvoiceRow[]; total: number }>('/api/portal/invoices', { contactId, page: 1, pageSize: 50 })).rows; }
   catch { error.value = t('app.error'); }
 }
-onMounted(() => { void nextTick(load); });
+onMounted(load);
 watch(() => portal.selectedContactId, load);
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString('mk-MK') : '—');
 </script>
