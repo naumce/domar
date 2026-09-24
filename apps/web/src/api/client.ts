@@ -22,7 +22,10 @@ function url(path: string, query?: Query): string {
 
 async function request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
   const init: RequestInit = { method, credentials: 'include' };
-  if (body !== undefined) {
+  if (body instanceof FormData) {
+    // No content-type: the browser must set multipart/form-data with its own boundary.
+    init.body = body;
+  } else if (body !== undefined) {
     init.headers = { 'content-type': 'application/json' };
     init.body = JSON.stringify(body);
   }
@@ -43,4 +46,5 @@ export const api = {
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   del: (path: string) => request<void>('DELETE', path),
+  upload: <T>(path: string, form: FormData) => request<T>('POST', path, form),
 };

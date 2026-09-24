@@ -1,6 +1,6 @@
 export default {
   app: { name: 'domar', loading: 'Вчитување…', save: 'Зачувај', cancel: 'Откажи', create: 'Креирај', edit: 'Измени', delete: 'Избриши', confirmDelete: 'Дали сте сигурни?', actions: 'Акции', search: 'Пребарај', empty: 'Нема податоци', yes: 'Да', no: 'Не', error: 'Настана грешка' },
-  nav: { dashboard: 'Контролна табла', compliance: 'Усогласеност', buildings: 'Згради', services: 'Услуги', contacts: 'Контакти', invoices: 'Фактури', payments: 'Плаќања', taxRates: 'Даночни стапки', settings: 'Поставки', logout: 'Одјави се', portal: 'Портал за сопственици' },
+  nav: { dashboard: 'Контролна табла', compliance: 'Усогласеност', buildings: 'Згради', services: 'Услуги', contacts: 'Контакти', invoices: 'Фактури', payments: 'Плаќања', taxRates: 'Даночни стапки', settings: 'Поставки', logout: 'Одјави се', portal: 'Портал за сопственици', suppliers: 'Добавувачи' },
   auth: {
     login: 'Најави се', register: 'Отвори сметка', tenantSlug: 'Организација (слаг)', email: 'Е-пошта', password: 'Лозинка', firstName: 'Име', lastName: 'Презиме', orgName: 'Име на фирма', noAccount: 'Нема сметка?', haveAccount: 'Веќе имате сметка?',
     errors: { invalid_credentials: 'Погрешна организација, е-пошта или лозинка.', slug_taken: 'Тој слаг е веќе зафатен.', validation: 'Проверете ги внесените податоци.', generic: 'Настана грешка. Обидете се повторно.' },
@@ -82,7 +82,7 @@ export default {
   reserveFund: {
     title: 'Резервен фонд', basis: 'Основ', perUnit: 'По единица', perM2: 'По m²', active: 'Активен', balance: 'Состојба', billed: 'Фактурирано на сопственици',
     openingBalance: 'Почетно салдо', addOpening: 'Внеси почетно салдо', expenses: 'Трошоци', addExpense: 'Евидентирај трошок', supplier: 'Добавувач', paidAt: 'Платено на',
-    void: 'Поништи', voided: 'Поништено', transactions: 'Трансакции', voidReason: 'Причина за поништување',
+    void: 'Поништи', voided: 'Поништено', transactions: 'Трансакции', voidReason: 'Причина за поништување', noSupplier: '— без добавувач —',
     kind: { opening: 'Почетно салдо', expense: 'Трошок', adjustment: 'Корекција', payment: 'Уплата', charge: 'Задолжување' },
   },
   periods: {
@@ -193,5 +193,44 @@ export default {
   },
   ledger: {
     kind: { charge: 'Задолжување', payment: 'Уплата', adjustment: 'Корекција', opening: 'Почетно салдо', expense: 'Трошок' },
+  },
+  documents: {
+    title: 'Документи', upload: 'Прикачи', file: 'Датотека', docTitle: 'Наслов', kind: 'Тип', size: 'Големина',
+    uploadedAt: 'Прикачено', download: 'Преземи', filter: 'Прикажи', allKinds: 'Сите типови',
+    kinds: { contract: 'Договор', minutes: 'Записник', report: 'Извештај', invoice_supplier: 'Фактура од добавувач', photo: 'Фотографија', other: 'Друго' },
+    errors: {
+      file_required: 'Изберете датотека.',
+      unsupported_media_type: 'Тој тип на датотека не е дозволен.',
+      file_too_large: 'Датотеката е поголема од 20 MB.',
+      empty_file: 'Датотеката е празна.',
+      document_referenced: 'Документот е прикачен на договор или трошок и не може да се избрише.',
+      forbidden: 'Немате право да прикачувате документи.',
+    },
+  },
+  suppliers: {
+    title: 'Добавувачи', add: 'Додади добавувач', name: 'Име', iban: 'Сметка',
+    errors: { supplier_referenced: 'Добавувачот се користи во договор или трошок; деактивирајте го наместо да го бришете.' },
+  },
+  contracts: {
+    title: 'Договори', contractTitle: 'Наслов', kind: 'Тип', supplier: 'Добавувач', ownContract: 'Сопствен договор за управување',
+    document: 'Документ', noDocument: '— без документ —', startsOn: 'Од', endsOn: 'До', noticeDays: 'Отказен рок (дена)',
+    kinds: { management: 'Управување', service: 'Услуга', insurance: 'Осигурување', other: 'Друго' },
+    errors: { invalid_reference: 'Избраниот добавувач или документ не постои.', validation: 'Проверете ги датумите.' },
+  },
+  extraordinary: {
+    title: 'Вонредни трошоци',
+    intro: 'Вонредниот трошок по член 47(5) се распределува на сопствениците како посебна пресметка и веднаш се објавува.',
+    distribution: 'Распределба', dueDays: 'Рок на плаќање (дена)', submit: 'Распредели',
+    distributions: { share: 'По сопственички удел', equal: 'Рамномерно по единица', area: 'По површина' },
+    done: 'Создадени се {count} пресметки за {period}, вкупно {total}.',
+    invoices: '{count} пресметки', history: 'Претходни распределби',
+    errors: {
+      no_units: 'Оваа распределба не стигнува до ниту една единица со сопственик.',
+      validation: 'Проверете ги внесените податоци.',
+      missing_owner: 'Секоја единица во оваа распределба мора да има сопственик; немаат: {units}.',
+      missing_unit_data: 'На овие единици им недостасуваат податоци потребни за распределбата: {units}.',
+      extraordinary_pending: 'Постои нераспределен вонреден трошок ({status}); прво објавете го или избришете го.',
+      no_weight: 'Ниту една единица нема тежина за оваа распределба; проверете ги уделите или површините.',
+    },
   },
 } as const;

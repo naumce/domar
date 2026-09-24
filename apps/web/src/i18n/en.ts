@@ -1,6 +1,6 @@
 export default {
   app: { name: 'domar', loading: 'Loading…', save: 'Save', cancel: 'Cancel', create: 'Create', edit: 'Edit', delete: 'Delete', confirmDelete: 'Are you sure?', actions: 'Actions', search: 'Search', empty: 'No data', yes: 'Yes', no: 'No', error: 'Something went wrong' },
-  nav: { dashboard: 'Dashboard', compliance: 'Compliance', buildings: 'Buildings', services: 'Services', contacts: 'Contacts', invoices: 'Invoices', payments: 'Payments', taxRates: 'Tax rates', settings: 'Settings', logout: 'Log out', portal: 'Owner portal' },
+  nav: { dashboard: 'Dashboard', compliance: 'Compliance', buildings: 'Buildings', services: 'Services', contacts: 'Contacts', invoices: 'Invoices', payments: 'Payments', taxRates: 'Tax rates', settings: 'Settings', logout: 'Log out', portal: 'Owner portal', suppliers: 'Suppliers' },
   auth: {
     login: 'Log in', register: 'Create account', tenantSlug: 'Organization (slug)', email: 'Email', password: 'Password', firstName: 'First name', lastName: 'Last name', orgName: 'Company name', noAccount: 'No account?', haveAccount: 'Already have an account?',
     errors: { invalid_credentials: 'Wrong organization, email or password.', slug_taken: 'That slug is already taken.', validation: 'Check the entered data.', generic: 'Something went wrong. Try again.' },
@@ -82,7 +82,7 @@ export default {
   reserveFund: {
     title: 'Reserve fund', basis: 'Basis', perUnit: 'Per unit', perM2: 'Per m²', active: 'Active', balance: 'Balance', billed: 'Billed to owners',
     openingBalance: 'Opening balance', addOpening: 'Enter opening balance', expenses: 'Expenses', addExpense: 'Record expense', supplier: 'Supplier', paidAt: 'Paid on',
-    void: 'Void', voided: 'Voided', transactions: 'Transactions', voidReason: 'Reason for voiding',
+    void: 'Void', voided: 'Voided', transactions: 'Transactions', voidReason: 'Reason for voiding', noSupplier: '— no supplier —',
     kind: { opening: 'Opening balance', expense: 'Expense', adjustment: 'Adjustment', payment: 'Payment', charge: 'Charge' },
   },
   periods: {
@@ -193,5 +193,44 @@ export default {
   },
   ledger: {
     kind: { charge: 'Charge', payment: 'Payment', adjustment: 'Adjustment', opening: 'Opening balance', expense: 'Expense' },
+  },
+  documents: {
+    title: 'Documents', upload: 'Upload', file: 'File', docTitle: 'Title', kind: 'Kind', size: 'Size',
+    uploadedAt: 'Uploaded', download: 'Download', filter: 'Show', allKinds: 'All kinds',
+    kinds: { contract: 'Contract', minutes: 'Minutes', report: 'Report', invoice_supplier: 'Supplier invoice', photo: 'Photo', other: 'Other' },
+    errors: {
+      file_required: 'Choose a file.',
+      unsupported_media_type: 'That file type is not allowed.',
+      file_too_large: 'The file is larger than 20 MB.',
+      empty_file: 'The file is empty.',
+      document_referenced: 'This document is attached to a contract or an expense and cannot be deleted.',
+      forbidden: 'You are not allowed to upload documents.',
+    },
+  },
+  suppliers: {
+    title: 'Suppliers', add: 'Add supplier', name: 'Name', iban: 'Account',
+    errors: { supplier_referenced: 'This supplier is used in a contract or an expense; deactivate it instead of deleting it.' },
+  },
+  contracts: {
+    title: 'Contracts', contractTitle: 'Title', kind: 'Kind', supplier: 'Supplier', ownContract: 'Own management contract',
+    document: 'Document', noDocument: '— no document —', startsOn: 'From', endsOn: 'To', noticeDays: 'Notice period (days)',
+    kinds: { management: 'Management', service: 'Service', insurance: 'Insurance', other: 'Other' },
+    errors: { invalid_reference: 'The selected supplier or document does not exist.', validation: 'Check the dates.' },
+  },
+  extraordinary: {
+    title: 'Extraordinary costs',
+    intro: 'An extraordinary cost under Art. 47(5) is distributed to the owners as a separate charge and published right away.',
+    distribution: 'Distribution', dueDays: 'Due in (days)', submit: 'Distribute',
+    distributions: { share: 'By ownership share', equal: 'Equally per unit', area: 'By area' },
+    done: 'Created {count} charges for {period}, totalling {total}.',
+    invoices: '{count} charges', history: 'Previous distributions',
+    errors: {
+      no_units: 'This distribution reaches no unit with an owner.',
+      validation: 'Check the entered data.',
+      missing_owner: 'Every unit in this distribution needs an owner; these have none: {units}.',
+      missing_unit_data: 'These units are missing data required for the distribution: {units}.',
+      extraordinary_pending: 'An earlier extraordinary cost is still unpublished ({status}); publish or delete it first.',
+      no_weight: 'No unit carries weight for this distribution; check the shares or areas.',
+    },
   },
 } as const;

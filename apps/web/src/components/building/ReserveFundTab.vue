@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
-import type { Expense, FundTransaction, ReserveFundState, UnitKind } from '@/api/types';
+import type { DocumentMeta, Expense, FundTransaction, ReserveFundState, Supplier, UnitKind } from '@/api/types';
 import DataTable from '@/components/DataTable.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppInput from '@/components/ui/AppInput.vue';
@@ -15,16 +15,20 @@ const base = `/api/buildings/${props.buildingId}/reserve-fund`;
 const state = ref<ReserveFundState | null>(null);
 const expenses = ref<Expense[]>([]);
 const transactions = ref<FundTransaction[]>([]);
+const suppliers = ref<Supplier[]>([]);
+const documents = ref<DocumentMeta[]>([]);
 const kinds: UnitKind[] = ['apartment', 'commercial', 'parking', 'storage', 'other'];
 const form = ref({ basis: 'per_unit' as 'per_unit' | 'per_m2', amount: '', appliesTo: [] as UnitKind[], active: false });
 const opening = ref('');
-const expense = ref({ description: '', supplierText: '', amount: '', paidAt: new Date().toISOString().slice(0, 10) });
+const expense = ref({ description: '', supplierText: '', supplierId: null as string | null, documentId: null as string | null, amount: '', paidAt: new Date().toISOString().slice(0, 10) });
 const error = ref('');
 async function load() {
   try {
     state.value = await api.get<ReserveFundState>(base);
     expenses.value = (await api.get<{ rows: Expense[] }>(`${base}/expenses`)).rows;
     transactions.value = (await api.get<{ rows: FundTransaction[] }>(`${base}/transactions`)).rows;
+    suppliers.value = (await api.get<{ rows: Supplier[] }>('/api/suppliers')).rows;
+    documents.value = (await api.get<{ rows: DocumentMeta[] }>(`/api/buildings/${props.buildingId}/documents`)).rows;
     const s = state.value.setting;
     if (s) form.value = { basis: s.basis, amount: (s.amountMinor / 100).toFixed(2).replace('.', ','), appliesTo: [...s.appliesTo], active: s.active };
   } catch { error.value = t('app.error'); }
@@ -46,8 +50,8 @@ async function addExpense() {
   const amountMinor = toMinor(expense.value.amount);
   if (amountMinor === null || !expense.value.description) { error.value = t('auth.errors.validation'); return; }
   try {
-    await api.post(`${base}/expenses`, { fund: 'reserve', description: expense.value.description, supplierText: expense.value.supplierText || null, amountMinor, paidAt: new Date(expense.value.paidAt).toISOString() });
-    expense.value = { description: '', supplierText: '', amount: '', paidAt: new Date().toISOString().slice(0, 10) }; await load();
+    await api.post(`${base}/expenses`, { fund: 'reserve', description: expense.value.description, supplierText: expense.value.supplierText || null, supplierId: expense.value.supplierId || null, documentId: expense.value.documentId || null, amountMinor, paidAt: new Date(expense.value.paidAt).toISOString() });
+    expense.value = { description: '', supplierText: '', supplierId: null, documentId: null, amount: '', paidAt: new Date().toISOString().slice(0, 10) }; await load();
   } catch { error.value = t('app.error'); }
 }
 async function voidExpense(id: string) {
@@ -77,9 +81,10 @@ async function voidExpense(id: string) {
     </form>
     <div>
       <h3 class="mb-2 font-semibold">{{ t('reserveFund.expenses') }}</h3>
-      <form class="mb-3 grid grid-cols-5 items-end gap-3" @submit.prevent="addExpense">
+      <form class="mb-3 grid grid-cols-6 items-end gap-3" @submit.prevent="addExpense">
         <AppInput v-model="expense.description" :label="t('billing.description')" data-test="exp-description" class="col-span-2" />
-        <AppInput v-model="expense.supplierText" :label="t('reserveFund.supplier')" />
+        <AppSelect v-model="expense.supplierId" :label="t('reserveFund.supplier')" :options="[{ value: null, label: t('reserveFund.noSupplier') }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]" data-test="exp-supplier-id" />
+        <AppSelect v-model="expense.documentId" :label="t('contracts.document')" :options="[{ value: null, label: t('contracts.noDocument') }, ...documents.map((d) => ({ value: d.id, label: d.title }))]" data-test="exp-document-id" />
         <AppInput v-model="expense.amount" :label="t('billing.amount')" data-test="exp-amount" />
         <div class="flex items-end gap-2"><AppInput v-model="expense.paidAt" :label="t('reserveFund.paidAt')" type="date" /><AppButton type="submit" variant="secondary" data-test="exp-submit">{{ t('reserveFund.addExpense') }}</AppButton></div>
       </form>

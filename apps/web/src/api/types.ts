@@ -16,7 +16,7 @@ export interface Service { id: string; name: string; category: string | null; de
 export interface BuildingService { id: string; buildingId: string; serviceId: string; priceMinor: number | null; pricing: PricingModel | null; frequency: 'monthly' | 'every_n_months'; intervalMonths: number; startsPeriod: string; endsPeriod: string | null; isActive: boolean; effectivePriceMinor: number; effectivePricing: PricingModel; service: { id: string; name: string; pricing: PricingModel; defaultPriceMinor: number; taxRateBp: number; appliesTo: UnitKind[]; isActive: boolean } }
 export interface ReserveFundSetting { id: string; buildingId: string; basis: 'per_unit' | 'per_m2'; amountMinor: number; appliesTo: UnitKind[]; active: boolean }
 export interface ReserveFundState { setting: ReserveFundSetting | null; balanceMinor: number; contributionsBilledMinor: number }
-export interface Expense { id: string; buildingId: string; fund: Fund; description: string; supplierText: string | null; amountMinor: number; paidAt: string; voidedAt: string | null; voidReason: string | null; createdAt: string }
+export interface Expense { id: string; buildingId: string; fund: Fund; description: string; supplierText: string | null; supplierId: string | null; documentId: string | null; amountMinor: number; paidAt: string; voidedAt: string | null; voidReason: string | null; createdAt: string }
 export interface FundTransaction { id: string; kind: 'charge' | 'payment' | 'expense' | 'adjustment' | 'opening'; fund: Fund; amountMinor: number; refType: string; refId: string | null; bookedAt: string; description: string | null }
 export interface PeriodLine { id: string; serviceId: string | null; description: string; pricing: PricingModel; quantity: number; unitPriceMinor: number; taxRateBp: number; appliesTo: UnitKind[]; fund: Fund; source: 'auto' | 'manual'; note: string | null; sortOrder: number }
 export interface Period { id: string; buildingId: string; period: string; status: 'open' | 'generated' | 'published'; managementFeeMinor: number; managementFeeTaxRateBp: number; managementFeeAppliesTo: UnitKind[]; numberPrefix: string; numberSuffix: string; currency: string; issuedAt: string | null; dueAt: string | null; generatedAt: string | null; publishedAt: string | null; warnings: Record<string, unknown>[]; invoiceCount: number; totalMinor: number; lines?: PeriodLine[] }
@@ -98,3 +98,22 @@ export interface LegalEvent {
   id: string; buildingId: string; kind: LegalEventKind; refType: string; refId: string | null;
   occurredAt: string; dueAt: string | null; evidence: Record<string, unknown>; createdBy: string | null; createdAt: string;
 }
+
+export type DocumentKind = 'contract' | 'minutes' | 'report' | 'invoice_supplier' | 'photo' | 'other';
+export interface DocumentMeta {
+  id: string; buildingId: string | null; kind: DocumentKind; title: string; fileName: string; mime: string;
+  sizeBytes: number; sha256: string; uploadedBy: string | null; createdAt: string;
+}
+export interface Supplier {
+  id: string; name: string; companyNumber: string | null; vatNumber: string | null; email: string | null;
+  phone: string | null; iban: string | null; notes: string | null; isActive: boolean;
+}
+export type ContractKind = 'management' | 'service' | 'insurance' | 'other';
+export interface BuildingContract {
+  id: string; buildingId: string; supplierId: string | null; kind: ContractKind; title: string;
+  startsOn: string; endsOn: string | null; noticeDays: number; amountMinor: number | null; documentId: string | null;
+  supplier: { id: string; name: string } | null;
+  document: { id: string; title: string; fileName: string } | null;
+}
+export type Distribution = 'share' | 'equal' | 'area';
+export interface ExtraordinaryCostResult { periodId: string; period: string; invoiceCount: number; totalMinor: number; invoiceIds: string[] }

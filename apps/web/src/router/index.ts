@@ -20,6 +20,7 @@ export const router = createRouter({
         { path: 'buildings/:id', component: () => import('@/pages/BuildingDetailPage.vue'), props: true },
         { path: 'buildings/:id/periods/:periodId', component: () => import('@/pages/PeriodPage.vue'), props: true },
         { path: 'services', component: () => import('@/pages/ServicesPage.vue') },
+        { path: 'suppliers', component: () => import('@/pages/SuppliersPage.vue') },
         { path: 'invoices', component: () => import('@/pages/InvoicesPage.vue') },
         { path: 'invoices/:id', component: () => import('@/pages/InvoicePage.vue'), props: true },
         { path: 'payments', component: () => import('@/pages/PaymentsPage.vue') },
