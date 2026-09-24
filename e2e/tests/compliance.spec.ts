@@ -68,7 +68,8 @@ test('a manager fixes the fund accounts, files a document and distributes an ext
   await page.getByTestId('extra-distribution').selectOption('equal');
   await page.getByTestId('extra-due-days').fill('30');
   await page.getByTestId('extra-submit').click();
-  await expect(page.getByTestId('extra-result')).toContainText('2');
+  // The exact sentence, not a bare '2': that also matches the period the same line prints.
+  await expect(page.getByTestId('extra-result')).toContainText('Создадени се 2 пресметки');
   await expect(page.getByTestId('extra-history-row')).toHaveCount(1);
 
   const periods = await (await page.request.get(`${API}/api/buildings/${building.id}/periods`)).json();
