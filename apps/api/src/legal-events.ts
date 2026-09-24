@@ -56,7 +56,7 @@ export async function recordLegalEventOnce(tx: Db, ctx: TenantContext, e: NewLeg
 export async function lastEventAt(db: Db, ctx: TenantContext, buildingId: string, kind: LegalEventKind): Promise<Date | null> {
   const [row] = await db.select({ occurredAt: LE.occurredAt }).from(LE)
     .where(and(eq(LE.tenantId, ctx.tenantId), eq(LE.buildingId, buildingId), eq(LE.kind, kind)))
-    .orderBy(desc(LE.occurredAt)).limit(1);
+    .orderBy(desc(LE.occurredAt), desc(LE.seq)).limit(1);
   return row?.occurredAt ?? null;
 }
 
@@ -69,7 +69,7 @@ export async function countEvents(db: Db, ctx: TenantContext, buildingId: string
 export async function listLegalEvents(db: Db, ctx: TenantContext, buildingId: string, q: { page: number; pageSize: number }) {
   const where = and(eq(LE.tenantId, ctx.tenantId), eq(LE.buildingId, buildingId));
   const [rows, [total]] = await Promise.all([
-    db.select().from(LE).where(where).orderBy(desc(LE.occurredAt), desc(LE.createdAt), desc(LE.id))
+    db.select().from(LE).where(where).orderBy(desc(LE.occurredAt), desc(LE.seq))
       .limit(q.pageSize).offset((q.page - 1) * q.pageSize),
     db.select({ n: count() }).from(LE).where(where),
   ]);

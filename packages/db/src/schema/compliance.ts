@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, date, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { bigint, bigserial, boolean, date, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { users } from './auth.js';
 import { buildings } from './building.js';
 import { tenants } from './tenant.js';
@@ -36,6 +36,8 @@ export const legalEvents = pgTable('legal_events', {
   evidence: jsonb('evidence').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** Insertion order: two events written in one transaction share `occurred_at` and `created_at` (now() is per transaction), so the list orders by this. */
+  seq: bigserial('seq', { mode: 'number' }).notNull(),
 }, (t) => [
   index('legal_events_tenant_building_idx').on(t.tenantId, t.buildingId, t.occurredAt),
   index('legal_events_tenant_kind_idx').on(t.tenantId, t.kind, t.occurredAt),

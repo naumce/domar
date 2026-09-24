@@ -1,0 +1,1 @@
+ALTER TABLE "legal_events" ADD COLUMN "seq" bigserial NOT NULL;
