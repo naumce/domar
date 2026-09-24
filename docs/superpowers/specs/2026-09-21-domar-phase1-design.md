@@ -375,3 +375,41 @@ deliverables; anything else waits for feedback from that month.
    resolved link only inside the repo functions that reuse manager repos. A test asserts that every
    portal route returns 404 for a contact id the account is not linked to, and that a staff session
    cookie is not accepted on `/api/portal/*` (nor the owner cookie on `/api/*`).
+
+## 20. Sub-plan "Import and Domexa migration" (added 2026-09-24, details for §15 item 6)
+
+1. **XLSX and free-form headers, without touching the API.** The building "Import" tab accepts
+   `.xlsx`/`.xls` as well as CSV. The browser reads the first sheet with SheetJS (`xlsx` package,
+   web only) into rows, shows a **column mapping** step (one select per target field: label, floor,
+   kind, areaM2, ownershipShare, ownerFirstName, ownerLastName, ownerEmail, ownerPhone,
+   openingBalance; prefilled from the parser's header aliases, exported from `@domar/domain` as
+   `matchImportHeader(name)`), then serialises the mapped rows to the canonical `;` CSV and calls
+   the existing `POST /buildings/:id/import/units` (dry run → commit). Unmapped source columns are
+   ignored and listed; a target mapped twice is an error. Kind values are normalised through the
+   parser's existing aliases. Mapping is remembered per browser in `localStorage` keyed by the
+   sorted source header list.
+2. **Domexa migration is a CLI, read-only against Domexa.** `apps/api/scripts/migrate-from-domexa.ts`
+   (run with `pnpm --filter @domar/api migrate:domexa -- <command>`): `export` logs in to
+   `https://domexa.mk/<org>/api` (credentials from env `DOMEXA_ORG`, `DOMEXA_EMAIL`,
+   `DOMEXA_PASSWORD`, or a captured session via `DOMEXA_COOKIE` when Turnstile blocks the API
+   login) and writes raw JSON for `/api/organization`, `/api/tax-rates`, `/api/services`,
+   `/api/buildings`, `/api/buildings/:id/units`, `/api/buildings/:id/services`,
+   `/api/buildings/:id/reserve-fund` (+ `/balance`), `/api/contacts`, `/api/contacts/:id/statement`
+   into `./domexa-export/` (git-ignored). Only GET requests are ever sent. `transform` reads that
+   folder plus an optional field mapping file and writes `./domexa-export/domar/`: one
+   `units-<building>.csv` in our template (owners and opening balances from the contact
+   statement's closing balance), `services.json`, `building-services.json`, `reserve-fund.json`,
+   `organization.json`, and `report.md` (counts, unknown fields, skipped rows). `apply` posts the
+   transformed data into a domar tenant through our own API (`DOMAR_URL`, `DOMAR_SLUG`,
+   `DOMAR_EMAIL`, `DOMAR_PASSWORD`): tax rates and services first, then buildings with the CSV
+   import (dry run, then commit unless `--dry-run`), building services, reserve fund settings and
+   opening balance. Idempotent by name/label matching: existing services, buildings and units are
+   reused, never duplicated.
+3. **Transforms are pure and tested.** `packages/domain/src/migration/domexa.ts` holds the field
+   mapping defaults and the pure functions (`domexaUnitsToImportRows`, `domexaServicesToDomar`,
+   `domexaReserveFundToDomar`, `statementToOpeningBalance`) with fixture JSON in the tests; because
+   the real Domexa unit and contact shapes were not observable on an empty demo account, every
+   accessor tolerates missing fields, records them in the report, and never throws on a row.
+4. **Safety.** No credentials in the repo or in the export folder; `domexa-export/` is git-ignored
+   and dockerignored; the CLI refuses to run `apply` against a `DOMAR_URL` that is not
+   `http://localhost*` unless `--yes` is passed; every network call is logged with method and path.
