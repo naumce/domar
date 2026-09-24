@@ -3,10 +3,11 @@ import { and, desc, eq, gt, isNull } from 'drizzle-orm';
 import { writeAudit } from '../audit.js';
 import { logEmail } from '../email/log.js';
 import type { Mailer } from '../email/mailer.js';
-import { badRequest } from '../errors.js';
+import { badRequest, notFound } from '../errors.js';
 import { getContact } from '../resources/contacts/repo.js';
 import type { TenantContext } from '../tenant-context.js';
 import { generateInviteCode, hashCode } from './code.js';
+import { deleteOwnerSessionsFor } from './session.js';
 
 const PI = schema.portalInvites; const OCL = schema.ownerContactLinks;
 const INVITE_DAYS = 14;
@@ -106,4 +107,28 @@ export async function issuePortalInvite(db: Db, ctx: TenantContext, contactId: s
     await writeAudit(tx, ctx, { action: 'portal_invite.send', entityType: 'contact', entityId: contactId, after: { status: ok ? 'sent' : 'failed', to } });
   });
   return { code, expiresAt: row.expiresAt, emailed: ok };
+}
+
+/**
+ * Undoes a claim: the manager read the code to the wrong person, or an owner typed a neighbour's
+ * code. Deleting the link is the only recovery path — one contact is one owner login, so a reissued
+ * code cannot be claimed while the wrong account still holds the link (spec §19.2). Ids only in the
+ * audit row, like every other portal write. When the account keeps no link at all, its sessions go
+ * too: nothing is left for them to read, and a dangling cookie would only 404 its way around.
+ */
+export async function deletePortalLink(db: Db, ctx: TenantContext, contactId: string): Promise<void> {
+  await getContact(db, ctx, contactId); // 404 across tenants
+  const ownerAccountId = await db.transaction(async (tx) => {
+    const [deleted] = await tx.delete(OCL)
+      .where(and(eq(OCL.tenantId, ctx.tenantId), eq(OCL.contactId, contactId)))
+      .returning({ id: OCL.id, ownerAccountId: OCL.ownerAccountId });
+    if (!deleted) throw notFound('Portal link');
+    await writeAudit(tx, ctx, {
+      action: 'portal_link.delete', entityType: 'contact', entityId: contactId,
+      before: { linkId: deleted.id, ownerAccountId: deleted.ownerAccountId },
+    });
+    return deleted.ownerAccountId;
+  });
+  const [kept] = await db.select({ id: OCL.id }).from(OCL).where(eq(OCL.ownerAccountId, ownerAccountId)).limit(1);
+  if (!kept) await deleteOwnerSessionsFor(db, ownerAccountId);
 }

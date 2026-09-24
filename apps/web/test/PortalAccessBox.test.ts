@@ -49,11 +49,33 @@ describe('PortalAccessBox', () => {
     expect(writeText).toHaveBeenCalledWith('Ab3kM9xQ');
   });
 
-  it('shows a linked owner and offers a fresh code anyway', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ status: 'linked', linkedAt: '2026-11-20T09:00:00.000Z' })));
+  it('unlinks a linked owner after a confirmation and reloads the status', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ status: 'linked', linkedAt: '2026-11-20T09:00:00.000Z' }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ status: 'none' }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true));
     const w = mount(PortalAccessBox, { props: { contactId: 'c1' }, global: { plugins: [i18n] } });
     await vi.waitFor(() => expect(w.get('[data-test=portal-status]').text()).toBe('Поврзан'));
     expect(w.text()).toContain('20.11.2026 г.');
+    // A fresh code is useless while the wrong account holds the link, so the box offers the undo.
+    expect(w.find('[data-test=portal-issue]').exists()).toBe(false);
+    expect(w.get('[data-test=portal-unlink]').text()).toBe('Откачи');
+
+    await w.get('[data-test=portal-unlink]').trigger('click');
+    await vi.waitFor(() => expect(w.get('[data-test=portal-status]').text()).toBe('Нема пристап'));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/contacts/c1/portal-link');
+    expect(fetchMock.mock.calls[1]![1]).toMatchObject({ method: 'DELETE' });
+    expect(w.find('[data-test=portal-unlink]').exists()).toBe(false);
+  });
+
+  it('keeps the unlink out of the way while nothing is linked', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ status: 'invited', expiresAt: '2026-10-18T09:00:00.000Z' })));
+    const w = mount(PortalAccessBox, { props: { contactId: 'c1' }, global: { plugins: [i18n] } });
+    await vi.waitFor(() => expect(w.get('[data-test=portal-status]').text()).toBe('Испратен код'));
+    expect(w.find('[data-test=portal-unlink]').exists()).toBe(false);
     expect(w.get('[data-test=portal-issue]').text()).toBe('Издади нов код');
   });
 

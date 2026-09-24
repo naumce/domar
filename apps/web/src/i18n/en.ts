@@ -14,6 +14,7 @@ export default {
       issue: 'Issue code', reissue: 'Issue a new code', code: 'Access code', hint: 'Write it down now — it is shown only once.',
       copy: 'Copy', copied: 'Copied', dismiss: 'Close',
       emailed: 'The code was also emailed.', notEmailed: 'This contact has no email — hand the code over in person.',
+      unlink: 'Unlink', confirmUnlink: 'Unlink this owner from the contact? You can issue a new code afterwards.',
       expires: 'Valid until', linkedAt: 'Linked on',
     },
   },

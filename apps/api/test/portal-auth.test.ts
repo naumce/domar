@@ -28,6 +28,8 @@ describe('portal auth', () => {
   const get = (url: string, cookie: string) => t.app.inject({ method: 'GET', url, headers: { cookie } });
   const staffPost = (url: string, payload: Record<string, unknown> = {}, cookie?: string) =>
     t.app.inject({ method: 'POST', url, headers: { cookie: cookie ?? a.cookie }, payload });
+  const del = (contactId: string, cookie?: string) =>
+    t.app.inject({ method: 'DELETE', url: `/api/contacts/${contactId}/portal-link`, headers: { cookie: cookie ?? a.cookie } });
   const codeFor = async (contactId: string, cookie?: string) =>
     (await staffPost(`/api/contacts/${contactId}/portal-invite`, {}, cookie)).json().code as string;
 
@@ -235,6 +237,53 @@ describe('portal auth', () => {
     const [account] = await t.db.select().from(schema.ownerAccounts).where(eq(schema.ownerAccounts.email, 'first@owner.mk'));
     await deleteOwnerSessionsFor(t.db, account!.id);
     for (const cookie of [one, two]) expect((await get('/api/portal/me', cookie)).statusCode).toBe(401);
+  });
+
+  it('unlinks a contact, keeps the account’s other links and 404s that contact’s portal data', async () => {
+    const ip = '10.9.0.6';
+    const one = (await staffPost('/api/contacts', { firstName: 'Прв', lastName: 'Имот' })).json().id;
+    const two = (await staffPost('/api/contacts', { firstName: 'Втор', lastName: 'Имот' })).json().id;
+    const cookie = cookieOf(await post('/api/portal/register', { code: await codeFor(one), email: 'two-links@owner.mk', password: 'correct-horse-1' }, undefined, ip));
+    expect((await post('/api/portal/link', { code: await codeFor(two) }, cookie, ip)).statusCode).toBe(201);
+
+    expect((await del(one)).statusCode).toBe(204);
+    expect((await get(`/api/portal/invoices?contactId=${one}`, cookie)).statusCode).toBe(404);
+    expect((await get(`/api/portal/invoices?contactId=${two}`, cookie)).statusCode).toBe(200);
+    expect((await get('/api/portal/me', cookie)).json().links).toHaveLength(1);
+    expect((await get(`/api/contacts/${one}/portal-status`, a.cookie)).json()).toEqual({ status: 'none' });
+
+    const audit = await t.db.select().from(schema.auditLogs).where(eq(schema.auditLogs.action, 'portal_link.delete'));
+    expect(audit).toHaveLength(1);
+    expect(audit[0]!).toMatchObject({ tenantId: a.tenantId, userId: a.userId, entityType: 'contact', entityId: one });
+    expect(JSON.stringify(audit[0]!.before)).not.toContain('@'); // ids only, never the owner's email
+
+    expect((await del(one)).statusCode).toBe(404); // nothing left to unlink
+  });
+
+  it('drops the owner’s sessions when the unlinked contact was their last link', async () => {
+    const ip = '10.9.0.7';
+    const solo = (await staffPost('/api/contacts', { firstName: 'Сам', lastName: 'Имот' })).json().id;
+    const cookie = cookieOf(await post('/api/portal/register', { code: await codeFor(solo), email: 'solo@owner.mk', password: 'correct-horse-1' }, undefined, ip));
+    expect((await get('/api/portal/me', cookie)).statusCode).toBe(200);
+    const [account] = await t.db.select().from(schema.ownerAccounts).where(eq(schema.ownerAccounts.email, 'solo@owner.mk'));
+
+    expect((await del(solo)).statusCode).toBe(204);
+    expect(await t.db.select().from(schema.ownerSessions).where(eq(schema.ownerSessions.ownerAccountId, account!.id))).toHaveLength(0);
+    expect((await get('/api/portal/me', cookie)).statusCode).toBe(401);
+  });
+
+  it('checks the tenant and the role on the unlink', async () => {
+    const ip = '10.9.0.8';
+    const mine = (await staffPost('/api/contacts', { firstName: 'Рола', lastName: 'Проверка' })).json().id;
+    expect((await post('/api/portal/register', { code: await codeFor(mine), email: 'roles@owner.mk', password: 'correct-horse-1' }, undefined, ip)).statusCode).toBe(201);
+    expect((await del(markoB)).statusCode).toBe(404); // the other manager's contact, linked or not
+
+    const staffCookie = async (email: string, role: string) => {
+      const created = (await staffPost('/api/users', { email, firstName: 'У', lastName: 'Службеник', role })).json();
+      return cookieOf(await t.app.inject({ method: 'POST', url: '/api/auth/login', payload: { tenantSlug: 'firma-pa', email, password: created.temporaryPassword } }));
+    };
+    expect((await del(mine, await staffCookie('tech@firma-pa.mk', 'technician'))).statusCode).toBe(403);
+    expect((await del(mine, await staffCookie('acc@firma-pa.mk', 'accountant'))).statusCode).toBe(204);
   });
 
   it('throttles repeated portal login attempts', async () => {

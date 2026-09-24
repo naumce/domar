@@ -26,6 +26,16 @@ async function issue() {
   } catch { error.value = t('app.error'); } finally { busy.value = false; }
 }
 
+async function unlink() {
+  // One contact is one owner login, so a new code is useless while the wrong account holds the link.
+  if (!window.confirm(t('contacts.portalAccess.confirmUnlink'))) return;
+  busy.value = true; error.value = ''; invite.value = null;
+  try {
+    await api.del(`/api/contacts/${props.contactId}/portal-link`);
+    await loadStatus();
+  } catch { error.value = t('app.error'); } finally { busy.value = false; }
+}
+
 async function copy() {
   if (!invite.value) return;
   try { await navigator.clipboard?.writeText(invite.value.code); copied.value = true; } catch { copied.value = false; }
@@ -37,8 +47,11 @@ const date = (d: string | undefined) => (d ? new Date(d).toLocaleDateString('mk-
   <section class="mb-4 max-w-xl rounded-xl bg-white p-4 shadow-sm">
     <div class="mb-2 flex items-center justify-between">
       <h2 class="font-medium">{{ t('contacts.portalAccess.title') }}</h2>
-      <AppButton variant="secondary" :loading="busy" data-test="portal-issue" @click="issue">
-        {{ status && status.status !== 'none' ? t('contacts.portalAccess.reissue') : t('contacts.portalAccess.issue') }}
+      <AppButton v-if="status?.status === 'linked'" variant="secondary" :loading="busy" data-test="portal-unlink" @click="unlink">
+        {{ t('contacts.portalAccess.unlink') }}
+      </AppButton>
+      <AppButton v-else variant="secondary" :loading="busy" data-test="portal-issue" @click="issue">
+        {{ status?.status === 'invited' ? t('contacts.portalAccess.reissue') : t('contacts.portalAccess.issue') }}
       </AppButton>
     </div>
     <p class="text-sm text-slate-600">
