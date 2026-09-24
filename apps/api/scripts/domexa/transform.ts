@@ -3,8 +3,8 @@ import { join } from 'node:path';
 import {
   buildingKeyOf, DEFAULT_FIELD_MAP, domexaBuildingServicesToDomar, domexaBuildingsToDomar,
   domexaReserveFundToDomar, domexaServicesToDomar, domexaTaxRatesToDomar, domexaUnitsToImportRows,
-  type DomexaFieldMap, type MigrationReport, mergeReports, reportToMarkdown, rowsToCanonicalCsv,
-  separatorsFromOrganization,
+  type DomexaFieldMap, emptyReport, type MigrationReport, mergeReports, reportToMarkdown,
+  rowsToCanonicalCsv, separatorsFromOrganization,
 } from '@domar/domain';
 
 export interface TransformOptions {
@@ -105,14 +105,20 @@ export async function runTransform(o: TransformOptions): Promise<void> {
   reports.push(buildings.report);
   await writeJson('buildings.json', buildings.rows);
 
-  const contacts = await readJson<unknown[]>('contacts.json', []);
+  // `null` in the export means the GET failed, not that there is nothing there (docs/MIGRATION.md).
+  const contacts = await readJson<unknown[] | null>('contacts.json', []);
   const contactsById: Record<string, unknown> = {};
-  for (const c of contacts) { const id = idOf(c); if (id) contactsById[id] = c; }
-  const statements = await readJson<Record<string, unknown>>('statements.json', {});
-  const unitsByBuilding = await readJson<Record<string, unknown[]>>('units.json', {});
-  const servicesByBuilding = await readJson<Record<string, unknown[]>>('building-services.json', {});
+  for (const c of contacts ?? []) { const id = idOf(c); if (id) contactsById[id] = c; }
+  const statements = await readJson<Record<string, unknown> | null>('statements.json', {});
+  const unitsByBuilding = await readJson<Record<string, unknown[] | null>>('units.json', {});
+  const servicesByBuilding = await readJson<Record<string, unknown[] | null>>('building-services.json', {});
   const fundsByBuilding = await readJson<Record<string, unknown>>('reserve-funds.json', {});
   const fundBalances = await readJson<Record<string, unknown>>('reserve-fund-balances.json', {});
+
+  const exportGaps = emptyReport();
+  if (contacts === null) exportGaps.notes.push('contacts.json is null: the export could not read the contacts, so no owner name is available');
+  if (statements === null) exportGaps.notes.push('statements.json is null: the export could not read the statements, so no opening balance is available');
+  reports.push(exportGaps);
 
   const buildingServicePlans: unknown[] = [];
   const reserveFundPlans: unknown[] = [];
@@ -126,13 +132,26 @@ export async function runTransform(o: TransformOptions): Promise<void> {
     if (taken !== undefined) throw new Error(`buildings ${taken} and ${id} both become the key "${key}"; give them distinct ids before transforming`);
     idByKey.set(key, id);
 
-    const units = domexaUnitsToImportRows(unitsByBuilding[id] ?? [], contactsById, statements, map, sep);
-    reports.push(units.report);
-    await write(`units-${key}.csv`, rowsToCanonicalCsv(units.rows));
+    const gaps = emptyReport();
+    reports.push(gaps);
 
-    const bs = domexaBuildingServicesToDomar(servicesByBuilding[id] ?? [], key, serviceNamesById, o.fromPeriod, map, sep);
-    reports.push(bs.report);
-    buildingServicePlans.push(...bs.rows);
+    // No CSV at all for a building whose units never came out of Domexa: `apply` then counts it as
+    // `missingCsv` instead of creating the building with no units and no owners.
+    const rawUnits = unitsByBuilding[id];
+    if (rawUnits === null) gaps.skipped.push({ entity: 'building', id, reason: 'units were not exported' });
+    else {
+      const units = domexaUnitsToImportRows(rawUnits ?? [], contactsById, statements ?? {}, map, sep);
+      reports.push(units.report);
+      await write(`units-${key}.csv`, rowsToCanonicalCsv(units.rows));
+    }
+
+    const rawBuildingServices = servicesByBuilding[id];
+    if (rawBuildingServices === null) gaps.skipped.push({ entity: 'building', id, reason: 'building services were not exported' });
+    else {
+      const bs = domexaBuildingServicesToDomar(rawBuildingServices ?? [], key, serviceNamesById, o.fromPeriod, map, sep);
+      reports.push(bs.report);
+      buildingServicePlans.push(...bs.rows);
+    }
 
     const fund = domexaReserveFundToDomar(key, fundsByBuilding[id] ?? null, fundBalances[id] ?? null, map, sep);
     reports.push(fund.report);

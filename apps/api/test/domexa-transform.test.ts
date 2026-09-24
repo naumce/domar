@@ -76,6 +76,25 @@ describe('runTransform', () => {
     expect(await readFile(join(other, 'domar', 'units-b1.csv'), 'utf8')).toContain('\n7;;apartment;');
   });
 
+  it('skips a building whose sub-resources the export could not read, and writes no CSV for it', async () => {
+    const gap = await mkdtemp(join(tmpdir(), 'domexa-raw-'));
+    for (const [name, data] of Object.entries(RAW)) await writeFile(join(gap, name), JSON.stringify(data), 'utf8');
+    await writeFile(join(gap, 'units.json'), JSON.stringify({ b1: null }), 'utf8');
+    await writeFile(join(gap, 'building-services.json'), JSON.stringify({ b1: null }), 'utf8');
+    await writeFile(join(gap, 'contacts.json'), 'null', 'utf8');
+    await writeFile(join(gap, 'statements.json'), 'null', 'utf8');
+
+    await runTransform({ dir: gap, fromPeriod: '2026-09', log: () => {} });
+    const md = await readFile(join(gap, 'domar', 'report.md'), 'utf8');
+    expect(md).toContain('- building b1: units were not exported');
+    expect(md).toContain('- building b1: building services were not exported');
+    expect(md).toContain('contacts.json is null');
+    expect(md).toContain('statements.json is null');
+    // No CSV at all, so `apply` counts the building as missingCsv instead of importing it empty.
+    await expect(readFile(join(gap, 'domar', 'units-b1.csv'), 'utf8')).rejects.toThrow(/ENOENT/);
+    expect(JSON.parse(await readFile(join(gap, 'domar', 'building-services.json'), 'utf8'))).toEqual([]);
+  });
+
   it('survives a folder with nothing but buildings in it', async () => {
     const bare = await mkdtemp(join(tmpdir(), 'domexa-raw-'));
     await writeFile(join(bare, 'buildings.json'), JSON.stringify([{ id: 'b9', name: 'Само зграда' }]), 'utf8');

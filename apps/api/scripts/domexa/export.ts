@@ -26,12 +26,17 @@ export async function runExport(client: DomexaClient, dir: string, log: (l: stri
   await write('services.json', (await soft('/api/services', () => client.getAll('/api/services'))) ?? []);
   await write('service-categories.json', (await soft('/api/service-categories', () => client.getAll('/api/service-categories'))) ?? []);
 
-  const contacts = (await soft('/api/contacts', () => client.getAll('/api/contacts'))) ?? [];
+  // A sub-resource that failed is written as null, never as an empty list: `transform` must be able
+  // to tell "this building has no units" from "the units were never exported" (docs/MIGRATION.md).
+  const contacts = await soft('/api/contacts', () => client.getAll('/api/contacts'));
   await write('contacts.json', contacts);
-  const statements: Record<string, unknown> = {};
-  for (const c of contacts) {
-    const id = idOf(c);
-    if (id) statements[id] = await soft(`/api/contacts/${id}/statement`, () => client.get(`/api/contacts/${id}/statement`));
+  let statements: Record<string, unknown> | null = null;
+  if (contacts !== null) {
+    statements = {};
+    for (const c of contacts) {
+      const id = idOf(c);
+      if (id) statements[id] = await soft(`/api/contacts/${id}/statement`, () => client.get(`/api/contacts/${id}/statement`));
+    }
   }
   await write('statements.json', statements);
 
@@ -44,8 +49,8 @@ export async function runExport(client: DomexaClient, dir: string, log: (l: stri
   for (const b of buildings) {
     const id = idOf(b);
     if (!id) continue;
-    units[id] = (await soft(`/api/buildings/${id}/units`, () => client.getAll(`/api/buildings/${id}/units`))) ?? [];
-    buildingServices[id] = (await soft(`/api/buildings/${id}/services`, () => client.getAll(`/api/buildings/${id}/services`))) ?? [];
+    units[id] = await soft(`/api/buildings/${id}/units`, () => client.getAll(`/api/buildings/${id}/units`));
+    buildingServices[id] = await soft(`/api/buildings/${id}/services`, () => client.getAll(`/api/buildings/${id}/services`));
     reserveFunds[id] = await soft(`/api/buildings/${id}/reserve-fund`, () => client.get(`/api/buildings/${id}/reserve-fund`));
     reserveFundBalances[id] = await soft(`/api/buildings/${id}/reserve-fund/balance`, () => client.get(`/api/buildings/${id}/reserve-fund/balance`));
   }
