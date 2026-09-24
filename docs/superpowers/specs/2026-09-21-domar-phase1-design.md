@@ -290,3 +290,47 @@ deliverables; anything else waits for feedback from that month.
    `scripts/backup.sh` (pg_dump to a dated file, keeps 14); `docs/DEPLOY.md`. Session cookie
    `secure` follows `isProduction`. Chrome for PDFs comes from the `mcr.microsoft.com/playwright`
    base image.
+
+## 18. Sub-plan "Reminders and email" (added 2026-09-24, details for §9 and §15 item 4)
+
+1. **Evaluation is pure.** `packages/domain/src/reminders/evaluate.ts` `evaluateOwner(input, rules, today)`:
+   input is the owner's unpaid published invoices (`period`, `dueAt`, `outstandingMinor`) and the
+   dates of reminders already sent for this owner in this building; returns
+   `{ due: boolean; reason: 'consecutive' | 'total' | null; invoiceIds: string[] }`. Due when
+   `rules.consecutiveUnpaid` consecutive periods are unpaid and past due, or `rules.totalUnpaid` in
+   total, and no reminder covering the same set of invoices exists within the last 30 days. Only
+   invoices past `dueAt` count. The rule object's `feeAllowed: false` is enforced: the reminder
+   document never carries a fee line, and there is no code path that books one.
+2. **Storage.** `reminders` table: `tenant_id`, `building_id`, `contact_id`, `reason`,
+   `invoice_ids uuid[]`, `total_outstanding_minor`, `channel` (`email` | `letter`), `status`
+   (`pending` | `sent` | `failed` | `printed`), `sent_at`, `error`, `document_html`, `created_at`.
+   One row per evaluation hit; the letter PDF is rendered from `document_html` on demand
+   (`GET /reminders/:id/pdf`), never stored.
+3. **Job.** `POST /buildings/:id/reminders/run` (owner/accountant) evaluates one building now and
+   returns the created reminders; `POST /jobs/reminders` with header `x-job-token` equal to
+   `JOB_TOKEN` (env, required in production) evaluates every tenant, for external cron
+   (documented in DEPLOY.md with a compose `cron` example using `curl`). No in-process scheduler.
+   The job is idempotent within 30 days by rule 1.
+4. **Document.** `renderReminderHtml` in `apps/api/src/pdf/reminder-html.ts`, same shell as the
+   invoice HTML: tenant header, owner, building, table of unpaid invoices (number, period, due date,
+   outstanding), total, the Art. 28 sentence from the country pack labels (`labels.reminderIntro`,
+   `labels.reminderLegal`), bank account for payment, no fee. Macedonian text first; locale from the
+   tenant.
+5. **Email.** `apps/api/src/email/mailer.ts` wraps `nodemailer` with SMTP from env
+   (`SMTP_URL` like `smtp://user:pass@host:587`, `EMAIL_FROM`). When `SMTP_URL` is unset the mailer
+   is a no-op that logs and marks reminders `failed` with `error 'smtp_not_configured'` — the app
+   never crashes for lack of email. Dev compose gains a `mailpit` service (SMTP 1025, UI 8025) and
+   `.env.example` points `SMTP_URL` at it. Each send creates an `email_log` row (`to`, `subject`,
+   `template`, `ref_type`, `ref_id`, `status`, `error`, `sent_at`) inside the reminder transaction.
+   The reminder email carries the letter as a PDF attachment and a plain-text body.
+6. **Invoice email.** Because the mailer now exists: `POST /invoices/:id/send` emails the invoice
+   PDF to the owner contact's email (409 `no_email` when missing) and logs it; the invoice page
+   gets a "Send by email" button. Bulk `POST /buildings/:id/periods/:periodId/send` sends every
+   published invoice of the period whose owner has an email and reports counts.
+7. **Web.** Building tab "Reminders": run button, list (owner, reason, invoices, total, channel,
+   status, sent at), PDF link, "mark printed" for letter delivery. Settings page shows email
+   status (configured or not) read from `GET /tenant` (`emailConfigured: boolean`).
+8. **Invariants.** Every reminder and email log row is tenant-scoped and written inside the same
+   transaction as its audit row. Sending happens after the transaction commits (a failed send
+   updates the row to `failed`, never rolls back the reminder). Test transport in Vitest captures
+   messages in memory; no test talks to a real SMTP server.
