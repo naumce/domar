@@ -87,19 +87,26 @@ export function separatorsFromOrganization(org: unknown): DomexaSeparators {
   };
 }
 
+const sepEqualsDefault = (sep: DomexaSeparators): boolean =>
+  sep.thousandSeparator === DEFAULT_SEPARATORS.thousandSeparator && sep.decimalSeparator === DEFAULT_SEPARATORS.decimalSeparator;
+
 /**
  * Domexa sends amounts as JSON numbers and as strings. `"18.00"` and `"1234.56"` (observed on
- * /api/tax-rates) are already canonical; anything else is normalised with the organization's own
- * separators before the mk parser reads it. Unreadable → null, never an exception.
+ * /api/tax-rates) are already canonical *only* when the organization uses the mk default
+ * separators — those fields bypass the org's display settings entirely. Any other value, or any
+ * value under a non-default separator pair, is normalised first: the thousand separator is
+ * stripped and the decimal separator is rewritten as `,` (never `.`) before the mk parser reads
+ * it, because the parser only treats a lone `,` as unambiguously decimal — a lone `.` with a
+ * 3-digit tail is still read as a thousands group. Unreadable → null, never an exception.
  */
 export function domexaAmountToMinor(value: unknown, sep: DomexaSeparators = DEFAULT_SEPARATORS): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value * 100) : null;
   if (typeof value !== 'string') return null;
   const raw = value.trim();
   if (raw === '') return null;
-  const canonical = /^-?\d+(\.\d+)?$/.test(raw)
+  const canonical = sepEqualsDefault(sep) && /^-?\d+(\.\d+)?$/.test(raw)
     ? raw
-    : raw.split(sep.thousandSeparator).join('').split(sep.decimalSeparator).join('.');
+    : raw.split(sep.thousandSeparator).join('').split(sep.decimalSeparator).join(',');
   try {
     return mkPack.parseAmountToMinor(canonical);
   } catch {
@@ -243,6 +250,7 @@ export function domexaUnitsToImportRows(
   const known = consumedRoots(map);
   const balanceOn = new Map<string, string>();
   const owners = new Set<string>();
+  const labelFirstSeenId = new Map<string, string>();
   let openingBalances = 0;
 
   for (const unit of units) {
@@ -268,6 +276,13 @@ export function domexaUnitsToImportRows(
     row.ownerLastName = text(firstOf(unit, map.unit.ownerLastName)) || text(firstOf(contact, map.contact.lastName));
     row.ownerEmail = text(firstOf(unit, map.unit.ownerEmail)) || text(firstOf(contact, map.contact.email));
     row.ownerPhone = text(firstOf(unit, map.unit.ownerPhone)) || text(firstOf(contact, map.contact.phone));
+    if (ownerId && contact === undefined && !row.ownerLastName) {
+      report.notes.push(`contact ${ownerId} is not in the export; owner name left empty`);
+    }
+
+    const firstLabelId = labelFirstSeenId.get(label);
+    if (firstLabelId) report.notes.push(`unit ${id}: label "${label}" is already used by unit ${firstLabelId} in this building — the parser will reject the duplicate`);
+    else labelFirstSeenId.set(label, id);
 
     const key = ownerId || (row.ownerLastName ? `${row.ownerFirstName}|${row.ownerLastName}` : '');
     row.openingBalance = '0';
@@ -277,7 +292,7 @@ export function domexaUnitsToImportRows(
       if (carrier) report.notes.push(`unit ${label}: the owner's opening balance is on unit ${carrier}`);
       else {
         balanceOn.set(key, label);
-        const minor = row.ownerLastName ? statementToOpeningBalance(statementsByContactId[key], map, sep) : 0;
+        const minor = key === ownerId ? statementToOpeningBalance(statementsByContactId[key], map, sep) : 0;
         row.openingBalance = (minor / 100).toFixed(2);
         if (minor !== 0) openingBalances++;
       }

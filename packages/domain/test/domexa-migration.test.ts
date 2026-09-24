@@ -48,6 +48,14 @@ describe('domexaAmountToMinor', () => {
     expect(separatorsFromOrganization({})).toEqual(DEFAULT_SEPARATORS);
     expect(separatorsFromOrganization(null)).toEqual(DEFAULT_SEPARATORS);
   });
+
+  it('always honours a non-default separator pair, even on a value that looks canonical', () => {
+    const us = { thousandSeparator: ',', decimalSeparator: '.' };
+    // A lone '.' with a 3-digit tail reads as a thousands group under the mk defaults; under US
+    // separators it must read as three decimal digits, rounded half-up to cents.
+    expect(domexaAmountToMinor('12.345', us)).toBe(1235);
+    expect(domexaAmountToMinor('1,234.50', us)).toBe(123450);
+  });
 });
 
 describe('statementToOpeningBalance', () => {
@@ -96,6 +104,31 @@ describe('domexaUnitsToImportRows', () => {
     expect(odd.rows[0]!.kind).toBe('other');
     expect(odd.report.skipped).toHaveLength(2);
     expect(odd.report.notes).toEqual(['unit 5: kind "кутија" is unknown → other']);
+  });
+
+  it('still books the opening balance when the owner contact is missing from the export', () => {
+    const units: unknown[] = [{ id: 'u9', number: '9', type: 'apartment', ownerContactId: 'missing-id' }];
+    const statements = { 'missing-id': { closingBalance: '500.00' } };
+    const { rows, report } = domexaUnitsToImportRows(units, {}, statements);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.openingBalance).toBe('500.00');
+    expect(rows[0]!.ownerFirstName).toBe('');
+    expect(rows[0]!.ownerLastName).toBe('');
+    expect(report.notes).toContain('contact missing-id is not in the export; owner name left empty');
+    expect(report.counts.openingBalances).toBe(1);
+
+    // The row still has no owner name, so our own parser rejects it visibly rather than silently.
+    const parsed = parseUnitImport(rowsToCanonicalCsv(rows));
+    expect(parsed.errors).toEqual([{ line: 2, message: 'opening balance requires an owner' }]);
+  });
+
+  it('notes a duplicate label within the same building', () => {
+    const units: unknown[] = [
+      { id: 'ua', number: '7', type: 'apartment' },
+      { id: 'ub', number: '7', type: 'apartment' },
+    ];
+    const { report } = domexaUnitsToImportRows(units, {}, {});
+    expect(report.notes).toContain('unit ub: label "7" is already used by unit ua in this building — the parser will reject the duplicate');
   });
 });
 
