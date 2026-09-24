@@ -71,6 +71,31 @@ export default {
     confirm: 'Confirm', ignore: 'Ignore', unmatch: 'Unmatch', suggested: 'Suggested invoice', chooseInvoice: 'Choose invoice', warnings: 'Import warnings', counterparty: 'Counterparty',
     unknownFormat: 'File format not recognised (MT940 or CSV with date and amount columns).',
   },
+  openingBalances: {
+    title: 'Opening balances', owner: 'Owner', regular: 'Regular fund', reserve: 'Reserve fund', balance: 'Balance',
+    alreadyEntered: 'Already entered', amount: 'New amount', fund: 'Fund', save: 'Save balances', saved: 'Opening balances booked.',
+    publishedWarning: 'This building already has a published period. Entering opening balances rewrites history — confirm below.',
+    force: 'Book anyway', empty: 'This building has no units with an owner.',
+    errors: {
+      period_published: 'This building has a published period. Tick “Book anyway”.',
+      invalid_reference: 'The selected owner does not exist in this organization.',
+    },
+  },
+  imports: {
+    title: 'Import', file: 'CSV file', mode: 'Existing labels', modeFail: 'Stop', modeSkip: 'Skip',
+    preview: 'Preview', commit: 'Import', template: 'Download template', errors: 'File errors', line: 'Line',
+    conflicts: 'Existing labels', chooseFile: 'Choose a file.',
+    counts: { units: 'Units', contacts: 'New / existing contacts', balances: 'Opening balances', conflicts: 'Conflicts' },
+    done: 'Imported {units} units, {contacts} new contacts and {balances} opening balances.',
+    failure: {
+      label_conflict: 'Some unit labels already exist. Choose “Skip” or change them in the file.',
+      period_published: 'This building has a published period, so opening balances cannot be imported.',
+    },
+  },
+  import: {
+    force: 'Enter opening balances despite a published period',
+    errors: { period_published: 'The building has a published period; opening balances need confirmation.' },
+  },
   settings: {
     title: 'Organization settings', timezone: 'Timezone', bankName: 'Bank', bankAccount: 'Account', companyNumber: 'Company number', vatNumber: 'VAT number', saved: 'Saved.',
   },

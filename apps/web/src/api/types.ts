@@ -45,3 +45,7 @@ export interface OwnerStatement {
   rows: { id: string; bookedAt: string; kind: FundTransaction['kind']; fund: Fund; amountMinor: number; balanceMinor: number; refType: string; refId: string | null; label: string }[];
   balanceMinor: number;
 }
+export interface OwnerOpeningBalance { contactId: string; firstName: string; lastName: string; regularMinor: number; reserveMinor: number; balanceMinor: number; openingMinor: number }
+export interface OpeningBalanceList { rows: OwnerOpeningBalance[]; hasPublishedPeriod: boolean }
+export interface UnitImportRow { line: number; label: string; floor: string | null; kind: UnitKind; areaM2: number | null; ownershipShare: number | null; ownerFirstName: string | null; ownerLastName: string | null; ownerEmail: string | null; ownerPhone: string | null; openingBalanceMinor: number }
+export interface UnitImportResult { dryRun: boolean; rows: UnitImportRow[]; errors: { line: number; message: string }[]; counts: { units: number; newContacts: number; existingContacts: number; openingBalances: number; conflicts: number }; conflicts: string[]; hasPublishedPeriod: boolean; blocked: 'period_published' | null }
