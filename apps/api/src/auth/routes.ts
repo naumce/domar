@@ -7,18 +7,11 @@ import { z } from 'zod';
 import { AppError, conflict, isUniqueViolation, unauthorized } from '../errors.js';
 import { changeOwnPassword } from '../resources/users/repo.js';
 import { changePasswordBody, userOut } from '../resources/users/schema.js';
-import { hashPassword, verifyPassword } from './password.js';
+import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.js';
 import { createSession, deleteSession, SESSION_COOKIE } from './session.js';
 
 const publicTenant = z.object({ id: z.string(), slug: z.string(), name: z.string(), countryCode: z.string(), currency: z.string(), locale: z.string(), timezone: z.string() });
 const meResponse = z.object({ user: userOut, tenant: publicTenant });
-
-/**
- * A valid scrypt hash of a fixed throwaway string, verified when no user matches so that an unknown
- * email costs the same time as a wrong password. A literal, not a call: hashing at module load would
- * pay the full scrypt cost on every boot.
- */
-const DUMMY_PASSWORD_HASH = 'scrypt$131072$__eKji6dtUjRjS7WEtNFcA$QAXfu0bP0eMWJxlBTJLWPKi0pjL9X9WcBkNcdJAhjGJ_vMfmV1ybdlb8yxB9NeMzeV8LjRVkcFne7z00BVBhOA';
 
 const slug = z.string().min(2).max(64).regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lowercase letters, digits and hyphens');
 const password = z.string().min(10).max(200);

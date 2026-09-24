@@ -18,21 +18,32 @@ export async function verifyPassword(plain: string, stored: string): Promise<boo
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-/** No I, O, l, 0 or 1: a temporary password gets read off a screen and typed by hand. */
-const TEMP_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+/** No I, O, l, 0 or 1: a code or temporary password gets read off a screen and typed by hand. */
+export const UNAMBIGUOUS_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 const TEMP_LENGTH = 16;
 
-/** 16 characters drawn uniformly from TEMP_ALPHABET (rejection sampling, so no modulo bias). */
-export function generateTemporaryPassword(): string {
-  const n = TEMP_ALPHABET.length;
+/** `length` characters drawn uniformly from UNAMBIGUOUS_ALPHABET (rejection sampling, so no modulo bias). */
+export function randomCode(length: number): string {
+  const n = UNAMBIGUOUS_ALPHABET.length;
   const limit = 256 - (256 % n);
   let out = '';
-  while (out.length < TEMP_LENGTH) {
-    for (const b of randomBytes(TEMP_LENGTH)) {
+  while (out.length < length) {
+    for (const b of randomBytes(length)) {
       if (b >= limit) continue;
-      out += TEMP_ALPHABET[b % n];
-      if (out.length === TEMP_LENGTH) break;
+      out += UNAMBIGUOUS_ALPHABET[b % n];
+      if (out.length === length) break;
     }
   }
   return out;
 }
+
+export function generateTemporaryPassword(): string {
+  return randomCode(TEMP_LENGTH);
+}
+
+/**
+ * A valid scrypt hash of a fixed throwaway string, verified when no user or owner account matches so
+ * that an unknown email costs the same time as a wrong password. A literal, not a call: hashing at
+ * module load would pay the full scrypt cost on every boot.
+ */
+export const DUMMY_PASSWORD_HASH = 'scrypt$131072$__eKji6dtUjRjS7WEtNFcA$QAXfu0bP0eMWJxlBTJLWPKi0pjL9X9WcBkNcdJAhjGJ_vMfmV1ybdlb8yxB9NeMzeV8LjRVkcFne7z00BVBhOA';

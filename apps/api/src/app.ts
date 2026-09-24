@@ -15,6 +15,7 @@ import { authRoutes } from './auth/routes.js';
 import { AppError } from './errors.js';
 import { createMailer, type Mailer } from './email/mailer.js';
 import { pdfRoutes } from './pdf/routes.js';
+import { contactPortalRoutes } from './portal/invite-routes.js';
 import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
@@ -107,6 +108,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(dashboardRoutes, { prefix: '/dashboard' });
     await api.register(taxRateRoutes, { prefix: '/tax-rates' });
     await api.register(contactRoutes, { prefix: '/contacts' });
+    await api.register(contactPortalRoutes, { prefix: '/contacts' });
     await api.register(serviceRoutes, { prefix: '/services' });
     await api.register(buildingRoutes, { prefix: '/buildings' });
     await api.register(unitRoutes, { prefix: '/buildings/:buildingId/units' });
