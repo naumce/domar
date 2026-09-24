@@ -3,13 +3,13 @@ import {
   type ComplianceSnapshot, type CountryCode, evaluateBuildingCompliance, evaluateOwner,
   getCountryPack, localDayStart,
 } from '@domar/domain';
-import { and, asc, countDistinct, desc, eq, max } from 'drizzle-orm';
+import { and, asc, count, countDistinct, desc, eq, isNotNull, max, ne } from 'drizzle-orm';
 import { countEvents, lastEventAt } from '../../legal-events.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { overdueByOwner, priorRemindersByOwner } from '../reminders/repo.js';
 
-const B = schema.buildings; const BP = schema.billingPeriods; const BC = schema.buildingContracts;
+const B = schema.buildings; const BP = schema.billingPeriods; const BC = schema.buildingContracts; const AS = schema.assemblies;
 const OCL = schema.ownerContactLinks; const U = schema.units; const T = schema.tenants;
 
 /** One day wider than the 30-day suppression rule, exactly as `runBuildingReminders` reads it. */
@@ -60,7 +60,7 @@ async function reminderState(db: Db, ctx: TenantContext, buildingId: string, now
 /** Spec §11: nothing but legal events plus dates the system already holds. */
 export async function buildComplianceSnapshot(db: Db, ctx: TenantContext, building: typeof B.$inferSelect, now: Date): Promise<ComplianceSnapshot> {
   const { pack } = await tenantPack(db, ctx);
-  const [[published], [linked], [contract], reminders, assemblyCount, lastAssemblyHeldAt, lastAssemblyInvitedAt, lastAnnualReportAt, lastHandoverReportAt, fundStatementAvailableAt, extraordinaryCostCount] = await Promise.all([
+  const [[published], [linked], [contract], reminders, [assemblyCount], [lastHeld], [lastInvited], lastAnnualReportAt, lastHandoverReportAt, fundStatementAvailableAt, extraordinaryCostCount] = await Promise.all([
     // Regular periods only: an extraordinary one-off must not satisfy the monthly Art. 19/33 duty.
     db.select({ at: max(BP.publishedAt) }).from(BP)
       .where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.buildingId, building.id), eq(BP.status, 'published'), eq(BP.kind, 'regular'))),
@@ -71,9 +71,17 @@ export async function buildComplianceSnapshot(db: Db, ctx: TenantContext, buildi
       .where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.buildingId, building.id), eq(BC.kind, 'management')))
       .orderBy(desc(BC.startsOn), desc(BC.createdAt)).limit(1),
     reminderState(db, ctx, building.id, now, pack.reminderRules),
-    countEvents(db, ctx, building.id, 'assembly_held'),
-    lastEventAt(db, ctx, building.id, 'assembly_held'),
-    lastEventAt(db, ctx, building.id, 'assembly_invited'),
+    // The assemblies table, not the event log (plan addendum 9): a scheduled assembly already lifts
+    // the duty out of `n/a`, and the held/invited pair comes off one row so the Art. 37
+    // late-invitation flag compares an assembly's own invitation with its own date.
+    db.select({ n: count() }).from(AS)
+      .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), ne(AS.status, 'cancelled'))),
+    db.select({ heldAt: AS.heldAt, invitedAt: AS.invitedAt }).from(AS)
+      .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), eq(AS.status, 'held')))
+      .orderBy(desc(AS.heldAt)).limit(1),
+    db.select({ invitedAt: AS.invitedAt }).from(AS)
+      .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), ne(AS.status, 'cancelled'), isNotNull(AS.invitedAt)))
+      .orderBy(desc(AS.invitedAt)).limit(1),
     lastEventAt(db, ctx, building.id, 'annual_report_issued'),
     lastEventAt(db, ctx, building.id, 'handover_report_issued'),
     lastEventAt(db, ctx, building.id, 'fund_statement_available'),
@@ -85,9 +93,11 @@ export async function buildComplianceSnapshot(db: Db, ctx: TenantContext, buildi
     ownersOverThreshold: reminders.ownersOverThreshold,
     oldestThresholdSince: reminders.oldestThresholdSince,
     lastReminderAt: reminders.lastReminderAt,
-    assemblyCount,
-    lastAssemblyHeldAt: lastAssemblyHeldAt?.toISOString() ?? null,
-    lastAssemblyInvitedAt: lastAssemblyInvitedAt?.toISOString() ?? null,
+    assemblyCount: Number(assemblyCount?.n ?? 0),
+    lastAssemblyHeldAt: lastHeld?.heldAt?.toISOString() ?? null,
+    // The invitation of the assembly that was held, so a punctual assembly is never flagged because
+    // a *later* one was called late; only when nothing was ever held does the newest one stand in.
+    lastAssemblyInvitedAt: (lastHeld ? lastHeld.invitedAt : (lastInvited?.invitedAt ?? null))?.toISOString() ?? null,
     lastAnnualReportAt: lastAnnualReportAt?.toISOString() ?? null,
     portalLinkedOwners: Number(linked?.n ?? 0),
     fundStatementAvailableAt: fundStatementAvailableAt?.toISOString() ?? null,

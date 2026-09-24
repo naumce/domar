@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
 import { type Db, schema } from '@domar/db';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
@@ -104,4 +104,15 @@ export async function deleteDocument(db: Db, ctx: TenantContext, store: Document
   } catch (err) {
     log?.warn({ err, documentId: id }, 'document row deleted but its file could not be removed');
   }
+}
+
+/**
+ * A document this process produced rather than received: the assembly minutes today, the Art. 31 and
+ * Art. 30 reports in sub-plan 3. Everything past the stream — the mime allowlist, the storage key,
+ * the sha256 and the audit row — is `createDocument`'s existing path, so a generated document is
+ * indistinguishable from an uploaded one and the portal's kind filter already covers it.
+ */
+export async function createDocumentFromBuffer(db: Db, ctx: TenantContext, store: DocumentStore, input: Omit<NewDocument, 'stream' | 'isTruncated'> & { content: Buffer }) {
+  const { content, ...rest } = input;
+  return createDocument(db, ctx, store, { ...rest, stream: Readable.from(content), isTruncated: () => false });
 }

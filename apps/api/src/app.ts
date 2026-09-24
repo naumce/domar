@@ -17,6 +17,7 @@ import { LocalDiskStore, MAX_DOCUMENT_BYTES, type DocumentStore } from './docume
 import { AppError } from './errors.js';
 import { createMailer, type Mailer } from './email/mailer.js';
 import { pdfRoutes } from './pdf/routes.js';
+import { portalAssemblyRoutes } from './portal/assembly-routes.js';
 import { portalAuthRoutes } from './portal/auth-routes.js';
 import { portalDataRoutes } from './portal/data-routes.js';
 import { contactPortalRoutes } from './portal/invite-routes.js';
@@ -124,6 +125,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(authRoutes, { prefix: '/auth' });
     await api.register(portalAuthRoutes, { prefix: '/portal' });
     await api.register(portalDataRoutes, { prefix: '/portal' });
+    await api.register(portalAssemblyRoutes, { prefix: '/portal' });
     await api.register(tenantRoutes, { prefix: '/tenant' });
     await api.register(userRoutes, { prefix: '/users' });
     await api.register(dashboardRoutes, { prefix: '/dashboard' });

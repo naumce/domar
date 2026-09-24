@@ -70,3 +70,18 @@ export type AssemblyPatch = z.infer<typeof assemblyPatch>;
 export type DecisionCreate = z.infer<typeof decisionCreate>;
 export type DecisionPatch = z.infer<typeof decisionPatch>;
 export type AgendaItemIn = z.infer<typeof agendaItemIn>;
+
+export const assemblyOwnersOut = z.object({
+  rows: z.array(z.object({ contactId: z.string(), contactName: z.string(), email: z.string().nullable(), weightBp: z.number().int() })),
+  basisTotal: z.number().int(),
+  quorumBasis: quorumBasisEnum,
+});
+export const paperVoteBody = z.object({ contactId: z.string().uuid(), choice: voteChoiceEnum });
+export const holdBody = z.object({
+  /** Defaults to the assembly's `scheduledAt` (plan addendum 15). */
+  heldAt: z.string().datetime().optional(),
+  attendance: z.array(z.object({
+    contactId: z.string().uuid(), present: z.boolean(), proxyName: z.string().max(200).nullable().optional(),
+  })).max(500).default([]),
+});
+export type HoldBody = z.infer<typeof holdBody>;

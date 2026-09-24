@@ -5,9 +5,11 @@ import { AppError } from '../../errors.js';
 import { htmlToPdf } from '../../pdf/html-to-pdf.js';
 import { idParam } from '../common.js';
 import { buildingParam } from '../units/schema.js';
+import { holdAssembly } from './hold.js';
 import { createAssembly, createDecision, deleteAssembly, deleteDecision, getAssembly, listAssemblies, updateAssembly, updateDecision } from './repo.js';
-import { assemblyCreate, assemblyDecisionParam, assemblyListOut, assemblyOut, assemblyPatch, cancelBody, decisionCreate, decisionPatch, inviteBody } from './schema.js';
+import { assemblyCreate, assemblyDecisionParam, assemblyListOut, assemblyOut, assemblyOwnersOut, assemblyPatch, cancelBody, decisionCreate, decisionPatch, holdBody, inviteBody, paperVoteBody } from './schema.js';
 import { assemblyInvitationHtml, cancelAssembly, inviteAssembly, markInvitationPrinted, type AssemblyRuntime } from './service.js';
+import { castPaperVote, listAssemblyOwners } from './votes.js';
 
 export const assemblyRuntime = (app: FastifyInstance): AssemblyRuntime => ({
   mailer: app.mailer, pdfBrowserChannel: app.config.pdfBrowserChannel, documents: app.documents, log: app.log,
@@ -42,6 +44,13 @@ export const assemblyRoutes: FastifyPluginAsyncZod = async (app) => {
     await deleteDecision(req.db, req.ctx!, req.params.id, req.params.decisionId);
     return reply.status(204).send();
   });
+
+  app.get('/:id/owners', { schema: { params: idParam, response: { 200: assemblyOwnersOut } } }, async (req) =>
+    listAssemblyOwners(req.db, req.ctx!, req.params.id));
+  app.post('/:id/decisions/:decisionId/votes', { ...write, schema: { params: assemblyDecisionParam, body: paperVoteBody, response: { 200: assemblyOut } } }, async (req) =>
+    castPaperVote(req.db, req.ctx!, req.params.id, req.params.decisionId, req.body));
+  app.post('/:id/hold', { ...write, schema: { params: idParam, body: holdBody, response: { 200: assemblyOut } } }, async (req) =>
+    holdAssembly(req.db, req.ctx!, req.params.id, req.body, assemblyRuntime(app)));
 
   app.post('/:id/invite', { ...write, schema: { params: idParam, body: inviteBody, response: { 200: assemblyOut } } }, async (req) =>
     inviteAssembly(req.db, req.ctx!, req.params.id, { ...(req.body?.override ? { override: req.body.override } : {}) }, assemblyRuntime(app)));

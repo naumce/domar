@@ -68,3 +68,26 @@ export const portalDocumentOut = z.object({
 });
 export const portalDocumentListOut = z.object({ rows: z.array(portalDocumentOut) });
 export const portalDocumentListQuery = portalContactQuery.extend({ buildingId: z.string().uuid() });
+
+const voteChoice = z.enum(['for', 'against', 'abstain']);
+
+export const portalAssemblyRowOut = z.object({
+  id: z.string(), buildingId: z.string(), buildingName: z.string(), scheduledAt: z.date().or(z.string()),
+  location: z.string(), status: z.enum(['invited', 'held']), heldAt: z.date().or(z.string()).nullable(),
+  minutesDocumentId: z.string().nullable(), agendaCount: z.number().int(),
+});
+export const portalAssemblyListOut = z.object({ rows: z.array(portalAssemblyRowOut) });
+export const portalAssemblyDecisionOut = z.object({
+  id: z.string(), title: z.string(), text: z.string().nullable(), myChoice: voteChoice.nullable(),
+  forWeight: z.number().int().nullable(), againstWeight: z.number().int().nullable(), abstainWeight: z.number().int().nullable(),
+  presentWeight: z.number().int().nullable(), basisTotal: z.number().int().nullable(), quorumReached: z.boolean().nullable(),
+  result: z.enum(['pending', 'passed', 'rejected', 'no_quorum']).nullable(),
+});
+export const portalAssemblyOut = portalAssemblyRowOut.omit({ agendaCount: true }).extend({
+  agenda: z.array(z.object({ id: z.string(), title: z.string(), text: z.string() })),
+  votingOpen: z.boolean(),
+  decisions: z.array(portalAssemblyDecisionOut),
+});
+/** `contactId` travels in the body here, not the query: this is the portal's one POST. */
+export const portalVoteBody = z.object({ contactId: z.string().uuid(), choice: voteChoice });
+export const portalAssemblyDecisionParam = z.object({ id: z.string().uuid(), decisionId: z.string().uuid() });
