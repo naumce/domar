@@ -1,6 +1,6 @@
 import type { ParsedStatementLine, StatementParser } from './types.js';
 
-function splitCsvLine(line: string, delim: string): string[] {
+export function splitCsvLine(line: string, delim: string): string[] {
   const out: string[] = []; let cur = ''; let q = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i]!;
