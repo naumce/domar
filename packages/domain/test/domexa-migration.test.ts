@@ -169,6 +169,12 @@ describe('domexaBuildingsToDomar, building services and the reserve fund', () =>
     expect(buildingKeyOf('b 1/2')).toBe('b-1-2');
   });
 
+  it('keeps non-ASCII letters so two Cyrillic ids do not collapse onto one key', () => {
+    expect(buildingKeyOf('А1')).toBe('а1');
+    expect(buildingKeyOf('Б1')).toBe('б1');
+    expect(buildingKeyOf('А1')).not.toBe(buildingKeyOf('Б1'));
+  });
+
   it('turns a start date into a period and an interval into a frequency', () => {
     const { rows } = domexaBuildingServicesToDomar(
       [

@@ -53,13 +53,16 @@ describe('runApply', () => {
       taxRates: { created: 2, existing: 0 },
       services: { created: 1, existing: 0 },
       buildings: { created: 1, existing: 0 },
-      units: { imported: 3, skipped: 0, contacts: 2, openingBalances: 2 },
-      buildingServices: { created: 1, existing: 0 },
-      reserveFund: { settings: 1, openingBalances: 1 },
+      units: { imported: 3, skipped: 0, contacts: 2, openingBalances: 2, estimated: 0, missingCsv: 0, errors: [], conflicts: [] },
+      buildingServices: { created: 1, existing: 0, duplicates: 0 },
+      reserveFund: { settings: { written: 1, kept: 0 }, openingBalances: 1 },
     });
 
     // 4 tax rates come with a fresh mk tenant; the two Domexa ones are added by name.
-    expect((await get('/api/tax-rates')).json().rows).toHaveLength(6);
+    const rates = (await get('/api/tax-rates')).json().rows;
+    expect(rates).toHaveLength(6);
+    // Domexa's ДДВ is flagged isDefault, but the tenant already had a default: it keeps it.
+    expect(rates.find((r: { isDefault: boolean }) => r.isDefault)).toMatchObject({ name: 'ДДВ 18%' });
     const services = (await get('/api/services')).json().rows;
     expect(services).toHaveLength(1);
     expect(services[0]).toMatchObject({ name: 'Чистење', pricing: 'fixed_per_unit', defaultPriceMinor: 30000, taxRateBp: 1800, appliesTo: ['apartment'] });
@@ -93,9 +96,9 @@ describe('runApply', () => {
       taxRates: { created: 0, existing: 2 },
       services: { created: 0, existing: 1 },
       buildings: { created: 0, existing: 1 },
-      units: { imported: 0, skipped: 3, contacts: 0, openingBalances: 0 },
-      buildingServices: { created: 0, existing: 1 },
-      reserveFund: { settings: 1, openingBalances: 0 },
+      units: { imported: 0, skipped: 3, contacts: 0, openingBalances: 0, estimated: 0, missingCsv: 0, errors: [], conflicts: ['b1:1', 'b1:2', 'b1:P-1'] },
+      buildingServices: { created: 0, existing: 1, duplicates: 0 },
+      reserveFund: { settings: { written: 0, kept: 1 }, openingBalances: 0 },
     });
 
     expect((await get('/api/tax-rates')).json().rows).toHaveLength(6);
@@ -113,11 +116,30 @@ describe('runApply', () => {
     expect(summary.dryRun).toBe(true);
     expect(summary.taxRates).toEqual({ created: 2, existing: 0 });
     expect(summary.buildings).toEqual({ created: 1, existing: 0 });
-    expect(summary.units).toEqual({ imported: 3, skipped: 0, contacts: 0, openingBalances: 0 });
+    expect(summary.units).toMatchObject({ imported: 3, estimated: 3, skipped: 0, contacts: 0, openingBalances: 0, missingCsv: 0 });
 
     const dry = (url: string) => t.app.inject({ method: 'GET', url, headers: { cookie: b.cookie } });
     expect((await dry('/api/tax-rates')).json().rows).toHaveLength(4);
     expect((await dry('/api/services')).json().rows).toHaveLength(0);
     expect((await dry('/api/buildings')).json().rows).toHaveLength(0);
+  });
+
+  it('previews against the real building when the tenant already has one', async () => {
+    const before = (await get('/api/buildings')).json().rows[0];
+    const summary = await runApply({ dir, baseUrl: base, ...creds('firma-mig'), dryRun: true, log: () => {} });
+    // A real preview, not a line count: the three labels are known conflicts.
+    expect(summary.units).toMatchObject({ imported: 0, skipped: 3, estimated: 0, conflicts: ['b1:1', 'b1:2', 'b1:P-1'] });
+    expect(summary.reserveFund).toEqual({ settings: { written: 0, kept: 1 }, openingBalances: 0 });
+
+    expect((await get('/api/buildings')).json().rows[0]).toMatchObject({ id: before.id, unitCount: 3 });
+    expect((await get('/api/tax-rates')).json().rows).toHaveLength(6);
+    expect((await get(`/api/buildings/${before.id}/reserve-fund`)).json().balanceMinor).toBe(3500000);
+  });
+
+  it('rethrows a broken plan file instead of skipping it, before it logs in', async () => {
+    const broken = await mkdtemp(join(tmpdir(), 'domexa-domar-'));
+    await writeFile(join(broken, 'buildings.json'), '[{"key": "b1",', 'utf8');
+    await expect(runApply({ dir: broken, baseUrl: base, ...creds('firma-mig'), log: () => {} }))
+      .rejects.toThrow(/buildings\.json is not valid JSON/);
   });
 });

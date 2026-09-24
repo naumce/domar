@@ -87,4 +87,35 @@ describe('runTransform', () => {
   it('copies the organization row through for the operator to retype into Settings', async () => {
     expect(JSON.parse(await read('organization.json'))).toMatchObject({ name: 'Test kompanija', decimalSeparator: ',' });
   });
+
+  it('fails on a broken export file instead of treating it as a missing one', async () => {
+    const bad = await mkdtemp(join(tmpdir(), 'domexa-raw-'));
+    await writeFile(join(bad, 'buildings.json'), '[{"id": "b1",', 'utf8');
+    await expect(runTransform({ dir: bad, fromPeriod: '2026-09', log: () => {} }))
+      .rejects.toThrow(/buildings\.json is not valid JSON/);
+  });
+
+  it('fails when two building ids would share one key', async () => {
+    const clash = await mkdtemp(join(tmpdir(), 'domexa-raw-'));
+    await writeFile(join(clash, 'buildings.json'), JSON.stringify([{ id: 'A 1', name: 'Прва' }, { id: 'A/1', name: 'Втора' }]), 'utf8');
+    await expect(runTransform({ dir: clash, fromPeriod: '2026-09', log: () => {} }))
+      .rejects.toThrow(/buildings A 1 and A\/1 both become the key "a-1"/);
+  });
+
+  it('warns about an unknown map section and an override that is not a list of paths', async () => {
+    const mapped = await mkdtemp(join(tmpdir(), 'domexa-raw-'));
+    await writeFile(join(mapped, 'buildings.json'), JSON.stringify([{ id: 'b1', naziv: 'Прва' }]), 'utf8');
+    const mapFile = join(mapped, 'map.json');
+    await writeFile(mapFile, JSON.stringify({ zgrada: { name: ['naziv'] }, building: { name: ['naziv'], nope: ['x'], city: 'grad' } }), 'utf8');
+
+    const lines: string[] = [];
+    await runTransform({ dir: mapped, fromPeriod: '2026-09', mapFile, log: (l) => lines.push(l) });
+    expect(lines).toContain('--map: unknown section "zgrada"; ignoring it');
+    expect(lines).toContain('--map: unknown field "building.nope"; ignoring it');
+    expect(lines).toContain('--map: "building.city" must be an array of field paths; ignoring it');
+    // The one good override still applied.
+    expect(JSON.parse(await readFile(join(mapped, 'domar', 'buildings.json'), 'utf8'))).toEqual([
+      { key: 'b1', name: 'Прва', address: '', city: '', postalCode: '' },
+    ]);
+  });
 });

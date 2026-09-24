@@ -19,13 +19,33 @@ export interface TransformOptions {
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const idOf = (v: unknown): string => (isRecord(v) && (typeof v.id === 'string' || typeof v.id === 'number') ? String(v.id) : '');
 
-/** One level of subtree merging: `{ unit: { label: [...] } }` replaces only `unit.label`. */
-function mergeMap(base: DomexaFieldMap, override: unknown): DomexaFieldMap {
-  if (!isRecord(override)) return base;
-  const out: Record<string, unknown> = { ...(base as unknown as Record<string, unknown>) };
+const isPathList = (v: unknown): v is string[] => Array.isArray(v) && v.every((p) => typeof p === 'string');
+
+/**
+ * One level of subtree merging: `{ unit: { label: [...] } }` replaces only `unit.label`. A section
+ * or a leaf the default map does not know is reported and dropped — a typo in the map file must not
+ * pass for a mapping that silently does nothing.
+ */
+function mergeMap(base: DomexaFieldMap, override: unknown, warn: (line: string) => void): DomexaFieldMap {
+  if (!isRecord(override)) { warn('the --map file is not a JSON object; ignoring it'); return base; }
+  const known = base as unknown as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...known };
   for (const [k, v] of Object.entries(override)) {
-    const current = out[k];
-    out[k] = Array.isArray(v) || !isRecord(current) || !isRecord(v) ? v : { ...current, ...v };
+    const current = known[k];
+    if (current === undefined) { warn(`--map: unknown section "${k}"; ignoring it`); continue; }
+    if (Array.isArray(current)) {
+      if (!isPathList(v)) { warn(`--map: "${k}" must be an array of field paths; ignoring it`); continue; }
+      out[k] = v;
+      continue;
+    }
+    if (!isRecord(v)) { warn(`--map: "${k}" must be an object of field paths; ignoring it`); continue; }
+    const section: Record<string, unknown> = { ...(current as Record<string, unknown>) };
+    for (const [leaf, paths] of Object.entries(v)) {
+      if (!(leaf in section)) { warn(`--map: unknown field "${k}.${leaf}"; ignoring it`); continue; }
+      if (!isPathList(paths)) { warn(`--map: "${k}.${leaf}" must be an array of field paths; ignoring it`); continue; }
+      section[leaf] = paths;
+    }
+    out[k] = section;
   }
   return out as unknown as DomexaFieldMap;
 }
@@ -35,8 +55,17 @@ export async function runTransform(o: TransformOptions): Promise<void> {
   const outDir = join(o.dir, 'domar');
   await mkdir(outDir, { recursive: true });
 
+  /** A missing file is a fallback; anything else — a permission error, broken JSON — is fatal. */
   const readJson = async <T>(name: string, fallback: T): Promise<T> => {
-    try { return JSON.parse(await readFile(join(o.dir, name), 'utf8')) as T; } catch { log(`no ${name} in the export`); return fallback; }
+    const path = join(o.dir, name);
+    let body: string;
+    try {
+      body = await readFile(path, 'utf8');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') { log(`no ${name} in the export`); return fallback; }
+      throw new Error(`cannot read ${path}: ${(e as Error).message}`);
+    }
+    try { return JSON.parse(body) as T; } catch (e) { throw new Error(`${path} is not valid JSON: ${(e as Error).message}`); }
   };
   const write = async (name: string, body: string): Promise<void> => {
     await writeFile(join(outDir, name), body, 'utf8');
@@ -44,7 +73,13 @@ export async function runTransform(o: TransformOptions): Promise<void> {
   };
   const writeJson = (name: string, data: unknown) => write(name, `${JSON.stringify(data, null, 2)}\n`);
 
-  const map = o.mapFile ? mergeMap(DEFAULT_FIELD_MAP, JSON.parse(await readFile(o.mapFile, 'utf8'))) : DEFAULT_FIELD_MAP;
+  let map = DEFAULT_FIELD_MAP;
+  if (o.mapFile) {
+    const body = await readFile(o.mapFile, 'utf8');
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch (e) { throw new Error(`${o.mapFile} is not valid JSON: ${(e as Error).message}`); }
+    map = mergeMap(DEFAULT_FIELD_MAP, parsed, log);
+  }
   const organization = await readJson<unknown>('organization.json', null);
   const sep = separatorsFromOrganization(organization);
   const reports: MigrationReport[] = [];
@@ -81,10 +116,15 @@ export async function runTransform(o: TransformOptions): Promise<void> {
 
   const buildingServicePlans: unknown[] = [];
   const reserveFundPlans: unknown[] = [];
+  const idByKey = new Map<string, string>();
   for (const b of rawBuildings) {
     const id = idOf(b);
     if (!id) continue;
     const key = buildingKeyOf(id);
+    // The key names the CSV and ties it to the JSON plans, so a collision would merge two buildings.
+    const taken = idByKey.get(key);
+    if (taken !== undefined) throw new Error(`buildings ${taken} and ${id} both become the key "${key}"; give them distinct ids before transforming`);
+    idByKey.set(key, id);
 
     const units = domexaUnitsToImportRows(unitsByBuilding[id] ?? [], contactsById, statements, map, sep);
     reports.push(units.report);

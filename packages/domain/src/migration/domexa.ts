@@ -392,9 +392,12 @@ export function domexaServicesToDomar(
 
 export interface DomarBuildingPlan { key: string; name: string; address: string; city: string; postalCode: string }
 
-/** A Domexa id as a file-name-safe key; it ties `units-<key>.csv` to the JSON plans. */
+/**
+ * A Domexa id as a file-name-safe key; it ties `units-<key>.csv` to the JSON plans. Letters and
+ * digits of any script survive — Cyrillic ids must not all collapse onto the same key.
+ */
 export function buildingKeyOf(id: string): string {
-  return id.replace(/[^A-Za-z0-9_-]/g, '-');
+  return id.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '-');
 }
 
 export function domexaBuildingsToDomar(buildings: unknown[], map: DomexaFieldMap = DEFAULT_FIELD_MAP): { rows: DomarBuildingPlan[]; report: MigrationReport } {

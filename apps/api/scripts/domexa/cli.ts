@@ -5,16 +5,20 @@ import { runTransform } from './transform.js';
 
 const args = process.argv.slice(2);
 const command = args[0] ?? '';
+/** `--dir --yes` is a missing value, not a directory named `--yes`. */
 const flag = (name: string): string | undefined => {
   const i = args.indexOf(`--${name}`);
-  return i >= 0 ? args[i + 1] : undefined;
+  if (i < 0) return undefined;
+  const value = args[i + 1];
+  if (value === undefined || value.startsWith('--')) throw new Error(`--${name} needs a value`);
+  return value;
 };
 const has = (name: string): boolean => args.includes(`--${name}`);
 const env = (name: string): string => process.env[name] ?? '';
-const dir = flag('dir') ?? 'domexa-export';
 const thisMonth = (): string => new Date().toISOString().slice(0, 7);
 
 try {
+  const dir = flag('dir') ?? 'domexa-export';
   if (command === 'export') {
     const client = new DomexaClient({
       baseUrl: env('DOMEXA_BASE_URL') || 'https://domexa.mk',
@@ -41,10 +45,11 @@ try {
       password: env('DOMAR_PASSWORD'),
       dryRun: has('dry-run'),
       yes: has('yes'),
+      forceSettings: has('force-settings'),
     });
     console.log(JSON.stringify(summary, null, 2));
   } else {
-    console.error('usage: pnpm --filter @domar/api migrate:domexa -- <export|transform|apply> [--dir domexa-export] [--from 2026-09] [--map map.json] [--dry-run] [--yes]');
+    console.error('usage: pnpm --filter @domar/api migrate:domexa -- <export|transform|apply> [--dir domexa-export] [--from 2026-09] [--map map.json] [--dry-run] [--yes] [--force-settings]');
     process.exit(1);
   }
 } catch (e) {
