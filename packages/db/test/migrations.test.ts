@@ -18,7 +18,7 @@ describe('migrations', () => {
     const names = rows.map((r) => r.table_name);
     for (const n of ['tenants', 'users', 'sessions', 'contacts', 'buildings', 'units', 'tax_rates', 'audit_logs',
       'services', 'building_services', 'reserve_fund_settings', 'expenses', 'billing_periods', 'period_lines', 'invoices', 'invoice_lines', 'postings', 'invoice_sequences',
-      'payments', 'bank_statements', 'statement_lines'])
+      'payments', 'bank_statements', 'statement_lines', 'reminders', 'email_log'])
       expect(names).toContain(n);
   });
 
@@ -71,5 +71,26 @@ describe('migrations', () => {
         and column_name like '%_minor'`;
     expect(cols.length).toBeGreaterThan(10);
     for (const c of cols) expect(c.data_type, `${c.table_name}.${c.column_name}`).toBe('bigint');
+  });
+
+  it('reminders store the covered invoice ids and the rendered document', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable from information_schema.columns where table_name = 'reminders'`;
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['invoice_ids']!.data_type).toBe('ARRAY');
+    expect(by['total_outstanding_minor']!.data_type).toBe('bigint');
+    expect(by['document_html']!.is_nullable).toBe('NO');
+    expect(by['sent_at']!.is_nullable).toBe('YES');
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'reminders' and indexname = 'reminders_tenant_building_idx'`;
+    expect(idx[0]!.indexdef).toContain('(tenant_id, building_id, created_at)');
+  });
+
+  it('email_log records every delivery attempt', async () => {
+    const cols = await t!.sql<{ column_name: string }[]>`
+      select column_name from information_schema.columns where table_name = 'email_log' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(
+      ['created_at', 'error', 'id', 'ref_id', 'ref_type', 'sent_at', 'status', 'subject', 'template', 'tenant_id', 'to_address']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'email_log' and indexname = 'email_log_tenant_created_idx'`;
+    expect(idx[0]!.indexdef).toContain('(tenant_id, created_at)');
   });
 });
