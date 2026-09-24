@@ -15,7 +15,9 @@ import { authRoutes } from './auth/routes.js';
 import { AppError } from './errors.js';
 import { createMailer, type Mailer } from './email/mailer.js';
 import { pdfRoutes } from './pdf/routes.js';
+import { portalAuthRoutes } from './portal/auth-routes.js';
 import { contactPortalRoutes } from './portal/invite-routes.js';
+import { portalAuthPlugin } from './portal/plugin.js';
 import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
@@ -53,6 +55,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(swaggerUi, { routePrefix: '/api/docs' });
   await app.register(dbPlugin, { db: opts.db, sql: opts.sql });
   await app.register(authPlugin);
+  await app.register(portalAuthPlugin);
   app.decorate('config', opts.config);
   const mailer = createMailer(opts.config);
   app.decorate('mailer', mailer);
@@ -103,6 +106,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(async (api) => {
     await api.register(healthRoutes);
     await api.register(authRoutes, { prefix: '/auth' });
+    await api.register(portalAuthRoutes, { prefix: '/portal' });
     await api.register(tenantRoutes, { prefix: '/tenant' });
     await api.register(userRoutes, { prefix: '/users' });
     await api.register(dashboardRoutes, { prefix: '/dashboard' });
