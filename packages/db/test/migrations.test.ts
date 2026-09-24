@@ -141,7 +141,7 @@ describe('migrations', () => {
     const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }[]>`
       select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'legal_events' order by 1`;
     expect(cols.map((c) => c.column_name)).toEqual(
-      ['building_id', 'created_at', 'created_by', 'due_at', 'evidence', 'id', 'kind', 'occurred_at', 'ref_id', 'ref_type', 'tenant_id']);
+      ['building_id', 'created_at', 'created_by', 'due_at', 'evidence', 'id', 'kind', 'occurred_at', 'ref_id', 'ref_type', 'seq', 'tenant_id']);
     const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
     expect(by['evidence']!.data_type).toBe('jsonb');
     expect(by['evidence']!.is_nullable).toBe('NO');
