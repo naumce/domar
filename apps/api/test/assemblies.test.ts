@@ -12,6 +12,7 @@ vi.mock('playwright-core', () => {
 });
 
 import { schema } from '@domar/db';
+import { eq } from 'drizzle-orm';
 import { hashPassword } from '../src/auth/password.js';
 import { setupAssemblyBuilding } from './billing-fixture.js';
 import { registerTenant } from './fixtures.js';
@@ -236,6 +237,22 @@ describe('assemblies', () => {
     expect(removed.statusCode).toBe(409);
     expect(removed.json().error.code).toBe('assembly_locked');
     expect((await patch(`/api/assemblies/${assembly.id}/decisions/${withDecision.decisions[0]!.id}`, { text: 'Образложение' })).statusCode).toBe(200);
+  });
+
+  it('keeps the invitation document readable once the assembly has been held', async () => {
+    const assembly = await create({ scheduledAt: inDays(20), agenda: [{ title: 'Точка за одржан собир' }] });
+    const called: Assembly = (await post(`/api/assemblies/${assembly.id}/invite`)).json();
+    const letter = called.invitations.find((i) => i.contactId === A.owners.C)!;
+    // `held` arrives with the hold endpoint in the next task; the flip stands in for it here.
+    await t.db.update(schema.assemblies).set({ status: 'held' }).where(eq(schema.assemblies.id, assembly.id));
+    const html = await get(`/api/assemblies/${assembly.id}/invitation/html`);
+    expect(html.statusCode).toBe(200);
+    expect(html.body).toContain('Точка за одржан собир');
+    expect((await get(`/api/assemblies/${assembly.id}/invitation/pdf`)).statusCode).toBe(200);
+    // Printing a letter after the meeting delivers nothing, so that stays refused.
+    const printed = await post(`/api/assembly-invitations/${letter.id}/printed`);
+    expect(printed.statusCode).toBe(409);
+    expect(printed.json().error.code).toBe('not_invited');
   });
 
   it('lets only one of two simultaneous invitations through', async () => {

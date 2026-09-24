@@ -220,8 +220,14 @@ export async function cancelAssembly(db: Db, ctx: TenantContext, id: string, rea
   });
 }
 
+/**
+ * The notice as it went out, for as long as it is evidence of anything: a called assembly, and a
+ * held one — what the owners were summoned with outlives the meeting. A draft was never sent and a
+ * cancelled one summons nobody, so neither has a document to serve.
+ */
 export async function assemblyInvitationHtml(db: Db, ctx: TenantContext, id: string): Promise<string> {
   const row = await getAssemblyRow(db, ctx, id); // 404 across tenants
-  if (row.status !== 'invited' || !row.invitationHtml) throw conflict('not_invited', 'This assembly is not currently a called one');
+  const served = row.status === 'invited' || row.status === 'held';
+  if (!served || !row.invitationHtml) throw conflict('not_invited', 'This assembly has no invitation on file');
   return row.invitationHtml;
 }
