@@ -105,7 +105,8 @@ export default {
     title: 'Users', add: 'Add user', role: 'Role', active: 'Active', inactive: 'Inactive',
     activate: 'Activate', deactivate: 'Deactivate', resetPassword: 'Reset password',
     tempPassword: 'Temporary password', tempPasswordHint: 'Write it down now — it will not be shown again.',
-    copy: 'Copy', copied: 'Copied',
+    copy: 'Copy', copied: 'Copied', dismiss: 'Close', self: 'You',
+    confirmReset: 'A new temporary password will be generated and the user signed out. Continue?',
     roles: { owner: 'Owner', accountant: 'Accountant', technician: 'Technician', readonly: 'Read only' },
     errors: {
       email_taken: 'A user with that email already exists.',

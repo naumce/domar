@@ -7,8 +7,10 @@ import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppInput from '@/components/ui/AppInput.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const { t } = useI18n();
+const auth = useAuthStore();
 const roles = ['owner', 'accountant', 'technician', 'readonly'] as const;
 const rows = ref<User[]>([]);
 const open = ref(false); const busy = ref(false); const error = ref(''); const copied = ref(false);
@@ -17,6 +19,8 @@ const form = ref({ email: '', firstName: '', lastName: '', role: 'accountant' as
 
 async function load() { rows.value = (await api.get<{ rows: User[] }>('/api/users')).rows; }
 onMounted(async () => { try { await load(); } catch { error.value = t('app.error'); } });
+
+function openCreate() { temp.value = null; open.value = true; }
 
 function fail(e: unknown) {
   const code = (e as { code?: string }).code;
@@ -44,6 +48,7 @@ async function toggle(u: User) {
 }
 
 async function reset(u: User) {
+  if (!window.confirm(t('users.confirmReset'))) return;
   error.value = ''; copied.value = false;
   try {
     const res = await api.post<CreatedUser>(`/api/users/${u.id}/reset-password`, {});
@@ -55,12 +60,14 @@ async function copy() {
   if (!temp.value) return;
   try { await navigator.clipboard?.writeText(temp.value.password); copied.value = true; } catch { copied.value = false; }
 }
+
+function dismissTemp() { temp.value = null; }
 </script>
 <template>
   <section class="mt-8 max-w-3xl">
     <div class="mb-3 flex items-center justify-between">
       <h2 class="text-lg font-semibold">{{ t('users.title') }}</h2>
-      <AppButton data-test="users-add" @click="open = true">{{ t('users.add') }}</AppButton>
+      <AppButton data-test="users-add" @click="openCreate">{{ t('users.add') }}</AppButton>
     </div>
     <p v-if="error" class="mb-2 text-sm text-red-600" data-test="users-error">{{ error }}</p>
     <div v-if="temp" class="mb-3 rounded-xl bg-emerald-50 p-4 text-sm">
@@ -69,14 +76,18 @@ async function copy() {
       <div class="mt-1 text-slate-600">{{ t('users.tempPasswordHint') }}</div>
       <AppButton variant="secondary" class="mt-2" data-test="temp-copy" @click="copy">{{ t('users.copy') }}</AppButton>
       <span v-if="copied" class="ml-2 text-emerald-700" data-test="temp-copied">{{ t('users.copied') }}</span>
+      <AppButton variant="secondary" class="ml-2 mt-2" data-test="temp-dismiss" @click="dismissTemp">{{ t('users.dismiss') }}</AppButton>
     </div>
     <DataTable :columns="[{ key: 'name', label: t('auth.firstName') }, { key: 'email', label: t('auth.email') }, { key: 'role', label: t('users.role') }, { key: 'isActive', label: t('users.active') }]" :rows="rows">
       <template #cell-name="{ row }">{{ row.firstName }} {{ row.lastName }}</template>
       <template #cell-role="{ row }">{{ t(`users.roles.${row.role}`) }}</template>
       <template #cell-isActive="{ row }">{{ row.isActive ? t('users.active') : t('users.inactive') }}</template>
       <template #actions="{ row }">
-        <AppButton variant="secondary" data-test="user-toggle" @click="toggle(row)">{{ row.isActive ? t('users.deactivate') : t('users.activate') }}</AppButton>
-        <AppButton variant="secondary" class="ml-2" data-test="user-reset" @click="reset(row)">{{ t('users.resetPassword') }}</AppButton>
+        <span v-if="row.id === auth.user?.id" class="text-slate-500" data-test="user-self">{{ t('users.self') }}</span>
+        <template v-else>
+          <AppButton variant="secondary" data-test="user-toggle" @click="toggle(row)">{{ row.isActive ? t('users.deactivate') : t('users.activate') }}</AppButton>
+          <AppButton variant="secondary" class="ml-2" data-test="user-reset" @click="reset(row)">{{ t('users.resetPassword') }}</AppButton>
+        </template>
       </template>
     </DataTable>
     <ModalDialog :open="open" :title="t('users.add')" @close="open = false">

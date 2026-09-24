@@ -105,7 +105,8 @@ export default {
     title: 'Корисници', add: 'Додади корисник', role: 'Улога', active: 'Активен', inactive: 'Неактивен',
     activate: 'Активирај', deactivate: 'Деактивирај', resetPassword: 'Ресетирај лозинка',
     tempPassword: 'Привремена лозинка', tempPasswordHint: 'Запишете ја сега — нема да се прикаже повторно.',
-    copy: 'Копирај', copied: 'Копирано',
+    copy: 'Копирај', copied: 'Копирано', dismiss: 'Затвори', self: 'Вие',
+    confirmReset: 'Ќе се генерира нова привремена лозинка и корисникот ќе биде одјавен. Продолжи?',
     roles: { owner: 'Сопственик', accountant: 'Сметководител', technician: 'Техничар', readonly: 'Само читање' },
     errors: {
       email_taken: 'Корисник со таа е-пошта веќе постои.',
