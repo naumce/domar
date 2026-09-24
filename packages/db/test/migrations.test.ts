@@ -119,11 +119,12 @@ describe('migrations', () => {
   it('portal_invites store a hashed code with an expiry', async () => {
     const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
       select column_name, is_nullable from information_schema.columns where table_name = 'portal_invites' order by 1`;
-    expect(cols.map((c) => c.column_name)).toEqual(['code_hash', 'contact_id', 'created_at', 'created_by', 'expires_at', 'id', 'tenant_id', 'used_at']);
+    expect(cols.map((c) => c.column_name)).toEqual(['code_hash', 'contact_id', 'created_at', 'created_by', 'expires_at', 'failed_attempts', 'id', 'tenant_id', 'used_at']);
     const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
     expect(by['used_at']!.is_nullable).toBe('YES');
     expect(by['created_by']!.is_nullable).toBe('YES');
     expect(by['expires_at']!.is_nullable).toBe('NO');
+    expect(by['failed_attempts']!.is_nullable).toBe('NO');
     const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'portal_invites'`;
     expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(code_hash)'))).toBe(true);
     expect(idx.some((i) => i.indexdef.includes('(tenant_id, contact_id, created_at)'))).toBe(true);

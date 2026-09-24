@@ -5,7 +5,7 @@ import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from '../auth/passw
 import { AppError, conflict, isUniqueViolation } from '../errors.js';
 import type { TenantContext } from '../tenant-context.js';
 import type { PortalContext } from './context.js';
-import { assertLiveInvite, claimInvite } from './invites.js';
+import { assertLiveInvite, claimInvite, countInviteFailure } from './invites.js';
 import { deleteOtherOwnerSessions, listLinks } from './session.js';
 
 const OA = schema.ownerAccounts; const OCL = schema.ownerContactLinks; const C = schema.contacts;
@@ -57,14 +57,20 @@ async function linkContact(tx: Db, ownerAccountId: string, tenantId: string, con
  * already have an account. Only then does the email matter — an address that already has an account
  * must prove it with that account's password (spec §19.3), and that check too runs *before* the
  * transaction, so a wrong password never consumes the code. The claiming UPDATE inside the
- * transaction stays the atomic gate: the read-only peek is a courtesy, never the guarantee.
+ * transaction stays the atomic gate: the read-only peek is a courtesy, never the guarantee. Failures
+ * are counted per code and the fifth one expires it, so the residual oracle cannot be worked.
  */
 export async function registerPortalAccount(db: Db, input: { code: string; email: string; password: string }) {
   await assertLiveInvite(db, input.code); // 400 invalid_code, before the account is even looked up
   const email = input.email.toLowerCase();
   const existing = (await db.query.ownerAccounts.findFirst({ where: eq(OA.email, email) })) ?? null;
   const ok = await verifyPassword(input.password, existing?.passwordHash ?? DUMMY_PASSWORD_HASH);
-  if (existing && (!ok || !existing.isActive)) throw invalid();
+  if (existing && (!ok || !existing.isActive)) {
+    // The 401-vs-201 split still tells a code holder whether an address is registered; the counter
+    // caps that probing at five tries per code (design addendum 3).
+    await countInviteFailure(db, input.code);
+    throw invalid();
+  }
   const passwordHash = existing ? existing.passwordHash : await hashPassword(input.password);
 
   return db.transaction(async (tx) => {

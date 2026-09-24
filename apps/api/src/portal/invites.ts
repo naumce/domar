@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { and, desc, eq, gt, isNull } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
 import { writeAudit } from '../audit.js';
 import { logEmail } from '../email/log.js';
 import type { Mailer } from '../email/mailer.js';
@@ -11,6 +11,8 @@ import { deleteOwnerSessionsFor } from './session.js';
 
 const PI = schema.portalInvites; const OCL = schema.ownerContactLinks;
 const INVITE_DAYS = 14;
+/** Wrong passwords a single code may collect before it is burned (plan addendum 3). */
+const MAX_FAILED_ATTEMPTS = 5;
 
 export interface PortalInviteRuntime {
   mailer: Mailer;
@@ -43,6 +45,22 @@ export async function assertLiveInvite(db: Db, code: string): Promise<void> {
     .where(and(eq(PI.codeHash, hashCode(code)), isNull(PI.usedAt), gt(PI.expiresAt, new Date())))
     .limit(1);
   if (!row) throw badRequest('invalid_code', 'The code is wrong, already used or expired');
+}
+
+/**
+ * Counts a wrong password offered against a live code and expires the code at the fifth. Registering
+ * with a valid code answers `401` for a known email and `201` for an unknown one, which makes a code
+ * a slow oracle over `owner_accounts` for its fourteen days; five tries is enough for an owner who
+ * mistypes their own password and far too few to enumerate anything. Its own statement, outside the
+ * failed request's transaction, so the count survives the 401.
+ */
+export async function countInviteFailure(db: Db, code: string): Promise<void> {
+  const codeHash = hashCode(code);
+  const [row] = await db.update(PI).set({ failedAttempts: sql`${PI.failedAttempts} + 1` })
+    .where(eq(PI.codeHash, codeHash)).returning({ failedAttempts: PI.failedAttempts });
+  if (row && row.failedAttempts >= MAX_FAILED_ATTEMPTS) {
+    await db.update(PI).set({ expiresAt: new Date() }).where(eq(PI.codeHash, codeHash));
+  }
 }
 
 /** `none` | `invited` | `linked` for one contact, plus the one date that matters for that state. */

@@ -1,0 +1,1 @@
+ALTER TABLE "portal_invites" ADD COLUMN "failed_attempts" integer DEFAULT 0 NOT NULL;

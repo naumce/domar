@@ -50,6 +50,13 @@
       "when": 1790250395929,
       "tag": "0006_same_photon",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790256588793,
+      "tag": "0007_mysterious_loa",
+      "breakpoints": true
     }
   ]
 }

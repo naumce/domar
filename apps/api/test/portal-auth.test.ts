@@ -239,6 +239,24 @@ describe('portal auth', () => {
     for (const cookie of [one, two]) expect((await get('/api/portal/me', cookie)).statusCode).toBe(401);
   });
 
+  it('burns the code after five wrong passwords, so it cannot be worked as an email oracle', async () => {
+    const ip = '10.9.0.9';
+    const contact = (await staffPost('/api/contacts', { firstName: 'Пет', lastName: 'Обиди' })).json().id;
+    const code = await codeFor(contact);
+    for (let i = 0; i < 5; i++) {
+      const res = await post('/api/portal/register', { code, email: 'marko@owner.mk', password: 'nope-nope-nope' }, undefined, ip);
+      expect(res.statusCode, `attempt ${i + 1}`).toBe(401);
+      expect(res.json().error.code).toBe('invalid_credentials');
+    }
+    // The fifth failure expired the code, so even the right password no longer gets past it.
+    const sixth = await post('/api/portal/register', { code, email: 'marko@owner.mk', password: 'correct-horse-1' }, undefined, ip);
+    expect(sixth.statusCode).toBe(400);
+    expect(sixth.json().error.code).toBe('invalid_code');
+    const [invite] = await t.db.select().from(schema.portalInvites).where(eq(schema.portalInvites.contactId, contact));
+    expect(invite!.failedAttempts).toBe(5);
+    expect(invite!.usedAt).toBeNull(); // burned by expiry, never marked as claimed
+  });
+
   it('unlinks a contact, keeps the account’s other links and 404s that contact’s portal data', async () => {
     const ip = '10.9.0.6';
     const one = (await staffPost('/api/contacts', { firstName: 'Прв', lastName: 'Имот' })).json().id;

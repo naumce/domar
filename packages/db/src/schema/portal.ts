@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { users } from './auth.js';
 import { contacts } from './contact.js';
 import { tenants } from './tenant.js';
@@ -55,6 +55,8 @@ export const portalInvites = pgTable('portal_invites', {
   codeHash: text('code_hash').notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
+  /** Wrong passwords offered against this code; at five the code expires (plan addendum 3). */
+  failedAttempts: integer('failed_attempts').notNull().default(0),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
