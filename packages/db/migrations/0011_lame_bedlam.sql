@@ -1,0 +1,1 @@
+ALTER TYPE "public"."assembly_invitation_status" ADD VALUE 'cancelled';

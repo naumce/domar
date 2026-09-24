@@ -13,7 +13,8 @@ export const assemblyStatus = pgEnum('assembly_status', ['draft', 'invited', 'he
 export const quorumBasis = pgEnum('quorum_basis', ['share', 'count']);
 /** Deliberately not `reminder_channel`: an invitation is not a reminder (plan addendum 19). */
 export const assemblyChannel = pgEnum('assembly_channel', ['email', 'letter']);
-export const assemblyInvitationStatus = pgEnum('assembly_invitation_status', ['pending', 'sent', 'failed', 'printed']);
+/** `cancelled`: the assembly was called off before this invitation was ever delivered. */
+export const assemblyInvitationStatus = pgEnum('assembly_invitation_status', ['pending', 'sent', 'failed', 'printed', 'cancelled']);
 export const voteChoice = pgEnum('vote_choice', ['for', 'against', 'abstain']);
 export const voteVia = pgEnum('vote_via', ['portal', 'paper']);
 /** `pending` until the assembly is held; the other three are what `tallyDecision` returns. */

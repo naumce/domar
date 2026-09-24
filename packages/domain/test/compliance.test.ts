@@ -125,6 +125,22 @@ describe('Art. 37 — assembly', () => {
     expect(statusOf(late, 'assembly')).toBe('due');
     expect(dutyOf(late, 'assembly').flags).toEqual(['late_invitation']);
   });
+  it('counts the fifteen days in civil days, so a later clock time on the fifteenth day is not late', () => {
+    // 18:00 on the 17th to 09:00 on the 1st is 14 days and 15 hours: fourteen 24-hour spans, but
+    // fifteen days of the calendar, which is what Art. 37 asks for.
+    const d = dutyOf({ assemblyCount: 1, lastAssemblyHeldAt: '2026-09-01T09:00:00.000Z', lastAssemblyInvitedAt: '2026-08-17T18:00:00.000Z' }, 'assembly');
+    expect(d.flags).toEqual([]);
+    // One civil day later it is fourteen days and late, whatever the clock says.
+    expect(dutyOf({ assemblyCount: 1, lastAssemblyHeldAt: '2026-09-01T09:00:00.000Z', lastAssemblyInvitedAt: '2026-08-18T00:30:00.000Z' }, 'assembly').flags).toEqual(['late_invitation']);
+  });
+  it('counts those civil days in the tenant timezone, not in UTC', () => {
+    // 2026-08-17T23:30Z is already the 18th in Skopje (+02:00), so the same pair of instants is
+    // fifteen days in UTC and fourteen days — late — for a tenant in Skopje.
+    const s = { ...base, assemblyCount: 1 as number, lastAssemblyHeldAt: '2026-09-01T09:00:00.000Z', lastAssemblyInvitedAt: '2026-08-17T23:30:00.000Z' };
+    const flags = (tz: string) => evaluateBuildingCompliance(s, localDayStart(TODAY, tz), RULES, tz).duties.find((d) => d.key === 'assembly')!.flags;
+    expect(flags('UTC')).toEqual([]);
+    expect(flags('Europe/Skopje')).toEqual(['late_invitation']);
+  });
   it('ignores an invitation dated after the last held assembly — that is a future assembly, not a late one', () => {
     const d = dutyOf({ assemblyCount: 1, lastAssemblyHeldAt: '2026-03-01T00:00:00.000Z', lastAssemblyInvitedAt: '2026-09-20T00:00:00.000Z' }, 'assembly');
     expect(d.status).toBe('ok');

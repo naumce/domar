@@ -112,7 +112,8 @@ describe('assemblies', () => {
     const refused = await post(`/api/assemblies/${soon.id}/invite`);
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error.code).toBe('invitation_too_late');
-    expect(refused.json().error.details).toEqual({ days: 13, minDays: 15 });
+    // Civil days in the tenant's zone: fourteen days out is fourteen, whatever the clock says.
+    expect(refused.json().error.details).toEqual({ days: 14, minDays: 15 });
     // Still a draft: the claim rolled back with the throw.
     expect(((await get(`/api/assemblies/${soon.id}`)).json() as Assembly).status).toBe('draft');
 
@@ -190,14 +191,90 @@ describe('assemblies', () => {
     expect(pdf.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
   });
 
-  it('cancels a called assembly and refuses to call it again', async () => {
+  it('cancels a called assembly, closes its undelivered invitations and refuses to call it again', async () => {
     const assembly = await create({ scheduledAt: inDays(25), agenda: [{ title: 'Точка' }] });
-    await post(`/api/assemblies/${assembly.id}/invite`);
+    const called: Assembly = (await post(`/api/assemblies/${assembly.id}/invite`)).json();
+    const letter = called.invitations.find((i) => i.contactId === A.owners.C)!;
+    expect(letter.status).toBe('pending');
     const cancelled: Assembly = (await post(`/api/assemblies/${assembly.id}/cancel`, { reason: 'Нема доволно интерес' })).json();
     expect(cancelled.status).toBe('cancelled');
+    // The letter nobody printed is closed with the assembly; the two emails already out stay evidence.
+    expect(cancelled.invitations.find((i) => i.contactId === A.owners.C)!.status).toBe('cancelled');
+    expect(cancelled.invitations.filter((i) => i.status === 'sent')).toHaveLength(2);
+    expect((await post(`/api/assembly-invitations/${letter.id}/printed`)).statusCode).toBe(409);
+    // The notice of an assembly nobody will hold is no longer served.
+    const html = await get(`/api/assemblies/${assembly.id}/invitation/html`);
+    expect(html.statusCode).toBe(409);
+    expect(html.json().error.code).toBe('not_invited');
+    expect((await get(`/api/assemblies/${assembly.id}/invitation/pdf`)).statusCode).toBe(409);
     expect((await post(`/api/assemblies/${assembly.id}/invite`)).statusCode).toBe(409);
     expect((await post(`/api/assemblies/${assembly.id}/cancel`, { reason: 'Повторно' })).statusCode).toBe(409);
     expect((await del(`/api/assemblies/${assembly.id}`)).statusCode).toBe(409);
+  });
+
+  it('freezes the date, the place, the agenda and the ballot once the invitations are out', async () => {
+    const assembly = await create({ scheduledAt: inDays(20), location: 'Влез А', agenda: [{ title: 'Точка' }] });
+    const moved = inDays(21);
+    // A draft is moved freely.
+    expect((await patch(`/api/assemblies/${assembly.id}`, { scheduledAt: moved })).statusCode).toBe(200);
+    expect((await post(`/api/assemblies/${assembly.id}/invite`)).statusCode).toBe(200);
+
+    const refused = await patch(`/api/assemblies/${assembly.id}`, { scheduledAt: inDays(22) });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error.code).toBe('schedule_locked');
+    expect(refused.json().error.details).toEqual({ fields: ['scheduledAt'] });
+    expect((await patch(`/api/assemblies/${assembly.id}`, { location: 'Влез Б' })).json().error.code).toBe('schedule_locked');
+    expect((await patch(`/api/assemblies/${assembly.id}`, { agenda: [{ title: 'Друга точка' }] })).json().error.code).toBe('schedule_locked');
+    // The owners were called to this date and this agenda, and that is what they still find.
+    const after: Assembly = (await get(`/api/assemblies/${assembly.id}`)).json();
+    expect(new Date(after.scheduledAt).toISOString()).toBe(new Date(moved).toISOString());
+    expect(after.location).toBe('Влез А');
+    expect(after.agenda.map((x) => x.title)).toEqual(['Точка']);
+    // A decision can still be put on the ballot, but one already on it cannot be taken off.
+    const withDecision: Assembly = (await post(`/api/assemblies/${assembly.id}/decisions`, { title: 'Одлука' })).json();
+    const removed = await del(`/api/assemblies/${assembly.id}/decisions/${withDecision.decisions[0]!.id}`);
+    expect(removed.statusCode).toBe(409);
+    expect(removed.json().error.code).toBe('assembly_locked');
+    expect((await patch(`/api/assemblies/${assembly.id}/decisions/${withDecision.decisions[0]!.id}`, { text: 'Образложение' })).statusCode).toBe(200);
+  });
+
+  it('lets only one of two simultaneous invitations through', async () => {
+    const assembly = await create({ scheduledAt: inDays(30), agenda: [{ title: 'Точка' }] });
+    const both = await Promise.all([post(`/api/assemblies/${assembly.id}/invite`), post(`/api/assemblies/${assembly.id}/invite`)]);
+    expect(both.map((r) => r.statusCode).sort()).toEqual([200, 409]);
+    // One set of invitations, one legal event: the claim is what serialises the two clicks.
+    const body: Assembly = (await get(`/api/assemblies/${assembly.id}`)).json();
+    expect(body.invitations).toHaveLength(3);
+    expect((await events(A.buildingId)).filter((e) => e.kind === 'assembly_invited' && e.refId === assembly.id)).toHaveLength(1);
+  });
+
+  it('refuses to invite a building with no owners, or an assembly already past', async () => {
+    const empty = (await post('/api/buildings', { name: 'Празна 2' })).json().id;
+    const none = (await post(`/api/buildings/${empty}/assemblies`, { scheduledAt: inDays(20) })).json();
+    const res = await post(`/api/assemblies/${none.id}/invite`);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('no_owners');
+    // Still a draft: the claim rolled back with the throw.
+    expect(((await get(`/api/assemblies/${none.id}`)).json() as Assembly).status).toBe('draft');
+    // A date in the past is not something an override can buy.
+    const past = await create({ scheduledAt: inDays(-2) });
+    const late = await post(`/api/assemblies/${past.id}/invite`, { override: { reason: 'Сепак ја праќаме' } });
+    expect(late.statusCode).toBe(400);
+    expect(late.json().error.code).toBe('assembly_in_the_past');
+  });
+
+  it('invites the owner of two units once', async () => {
+    const buildingId = (await post('/api/buildings', { name: 'Двоен сопственик 3' })).json().id;
+    const owner = (await post('/api/contacts', { firstName: 'Двоен', lastName: 'Сопственик' })).json().id;
+    for (const [label, share] of [['1', 0.6], ['2', 0.4]] as [string, number][]) {
+      await post(`/api/buildings/${buildingId}/units`, { label, kind: 'apartment', areaM2: 40, ownershipShare: share, ownerContactId: owner });
+    }
+    const assembly = (await post(`/api/buildings/${buildingId}/assemblies`, { scheduledAt: inDays(20), quorumBasis: 'share' })).json();
+    const body: Assembly = (await post(`/api/assemblies/${assembly.id}/invite`)).json();
+    expect(body.invitations).toHaveLength(1);
+    expect(body.invitations[0]!.contactId).toBe(owner);
+    const invited = (await events(buildingId)).filter((e) => e.kind === 'assembly_invited');
+    expect(invited[0]!.evidence).toMatchObject({ contacts: 1, channels: { email: 0, letter: 1 } });
   });
 
   it('refuses a share quorum while a unit has no ownership share', async () => {

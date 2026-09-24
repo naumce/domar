@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const assemblyStatusEnum = z.enum(['draft', 'invited', 'held', 'cancelled']);
 export const quorumBasisEnum = z.enum(['share', 'count']);
 export const assemblyChannelEnum = z.enum(['email', 'letter']);
-export const assemblyInvitationStatusEnum = z.enum(['pending', 'sent', 'failed', 'printed']);
+export const assemblyInvitationStatusEnum = z.enum(['pending', 'sent', 'failed', 'printed', 'cancelled']);
 export const voteChoiceEnum = z.enum(['for', 'against', 'abstain']);
 export const voteViaEnum = z.enum(['portal', 'paper']);
 export const decisionResultEnum = z.enum(['pending', 'passed', 'rejected', 'no_quorum']);

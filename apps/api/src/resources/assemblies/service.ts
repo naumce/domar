@@ -1,4 +1,5 @@
 import { type Db, schema } from '@domar/db';
+import { localDayStart } from '@domar/domain';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import type { DocumentStore } from '../../documents/store.js';
@@ -23,7 +24,15 @@ export interface AssemblyRuntime {
   log: { warn(obj: unknown, msg: string): void };
 }
 
-const wholeDaysUntil = (from: Date, to: Date) => Math.floor((to.getTime() - from.getTime()) / DAY_MS);
+/**
+ * Art. 37 counts civil days, not 24-hour spans: both ends are put onto local midnight in the
+ * tenant's zone first, so an assembly fifteen days away at an earlier hour of the day is still
+ * fifteen days away. Same measure as the `late_invitation` flag in `evaluateBuildingCompliance`,
+ * so the invitation this endpoint accepts is never the one compliance calls late. Rounded, not
+ * floored: a DST transition inside the span makes it 23 or 25 hours long.
+ */
+const civilDaysUntil = (from: Date, to: Date, timeZone: string) =>
+  Math.round((localDayStart(to, timeZone).getTime() - localDayStart(from, timeZone).getTime()) / DAY_MS);
 
 interface InvitationTextInput {
   buildingName: string;
@@ -64,7 +73,7 @@ export async function inviteAssembly(db: Db, ctx: TenantContext, id: string, inp
     const building = await getBuilding(tx, ctx, claimed.buildingId);
     const { tenant, pack } = await tenantPack(tx, ctx);
     const now = new Date();
-    const days = wholeDaysUntil(now, claimed.scheduledAt);
+    const days = civilDaysUntil(now, claimed.scheduledAt, tenant.timezone);
     if (days < 0) throw badRequest('assembly_in_the_past', 'This assembly is scheduled in the past');
     const minDays = pack.complianceRules.assemblyInvitationMinDays;
     const late = days < minDays;
@@ -95,7 +104,8 @@ export async function inviteAssembly(db: Db, ctx: TenantContext, id: string, inp
     };
     await tx.update(A).set({
       status: 'invited', invitedAt: now, lateInvitation: late,
-      lateReason: input.override?.reason ?? null, invitationHtml, updatedAt: now,
+      // Only a late invitation has a reason to give: an override sent with a timely one explains nothing.
+      lateReason: late ? input.override!.reason : null, invitationHtml, updatedAt: now,
     }).where(and(eq(A.tenantId, ctx.tenantId), eq(A.id, id)));
     await recordLegalEvent(tx, ctx, {
       buildingId: claimed.buildingId, kind: 'assembly_invited', refType: 'assembly', refId: id,
@@ -109,7 +119,7 @@ export async function inviteAssembly(db: Db, ctx: TenantContext, id: string, inp
     await writeAudit(tx, ctx, {
       action: 'assembly.invite', entityType: 'assembly', entityId: id,
       before: publicAssembly(claimed),
-      after: { contacts: invitations.length, channels, late, lateReason: input.override?.reason ?? null, daysAhead: days },
+      after: { contacts: invitations.length, channels, late, lateReason: late ? input.override!.reason : null, daysAhead: days },
     });
     return {
       invitations, contacts, buildingName: building.name, timeZone: tenant.timezone, invitationHtml, labels,
@@ -183,6 +193,11 @@ export async function markInvitationPrinted(db: Db, ctx: TenantContext, invitati
       if (!row) throw notFound('Invitation'); // 404 across tenants
       throw conflict('not_pending', 'Only a pending or failed invitation can be marked printed');
     }
+    // A printed letter is evidence of delivery, so it is only evidence while the assembly is still
+    // called: printing the notice of a cancelled or a finished assembly delivers nothing. The throw
+    // rolls the claim back with it.
+    const assembly = await getAssemblyRow(tx, ctx, claimed.assemblyId);
+    if (assembly.status !== 'invited') throw conflict('not_invited', 'This assembly is not currently a called one');
     await writeAudit(tx, ctx, { action: 'assembly_invitation.printed', entityType: 'assembly_invitation', entityId: invitationId, after: { status: 'printed' } });
     return getAssembly(tx, ctx, claimed.assemblyId);
   });
@@ -194,14 +209,19 @@ export async function cancelAssembly(db: Db, ctx: TenantContext, id: string, rea
     const now = new Date();
     await tx.update(A).set({ status: 'cancelled', cancelledAt: now, cancelReason: reason, updatedAt: now })
       .where(and(eq(A.tenantId, ctx.tenantId), eq(A.id, id)));
+    // An invitation that was never delivered is closed with the assembly: it can no longer be
+    // printed, and it must not sit in the pending-letters queue of an assembly nobody will hold.
+    // The delivered ones (`sent`, `printed`) keep their status: they are evidence of what happened.
+    const closed = await tx.update(AI).set({ status: 'cancelled' })
+      .where(and(eq(AI.tenantId, ctx.tenantId), eq(AI.assemblyId, id), eq(AI.status, 'pending'))).returning({ id: AI.id });
     // No legal event: a cancelled assembly discharged nothing, and the audit row records who and why.
-    await writeAudit(tx, ctx, { action: 'assembly.cancel', entityType: 'assembly', entityId: id, before: publicAssembly(before), after: { status: 'cancelled', cancelReason: reason } });
+    await writeAudit(tx, ctx, { action: 'assembly.cancel', entityType: 'assembly', entityId: id, before: publicAssembly(before), after: { status: 'cancelled', cancelReason: reason, invitationsCancelled: closed.length } });
     return getAssembly(tx, ctx, id);
   });
 }
 
 export async function assemblyInvitationHtml(db: Db, ctx: TenantContext, id: string): Promise<string> {
   const row = await getAssemblyRow(db, ctx, id); // 404 across tenants
-  if (!row.invitationHtml) throw conflict('not_invited', 'This assembly has not been called yet');
+  if (row.status !== 'invited' || !row.invitationHtml) throw conflict('not_invited', 'This assembly is not currently a called one');
   return row.invitationHtml;
 }

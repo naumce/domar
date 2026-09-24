@@ -125,8 +125,8 @@ export async function listAssemblies(db: Db, ctx: TenantContext, buildingId: str
   // renders single-table select columns unqualified inside raw sql, so a bare `id` would bind wrong.
   const rows = await db.select({
     a: A,
-    decisionCount: sql<number>`(select count(*) from ${AD} d where d.assembly_id = "assemblies"."id")`.mapWith(Number),
-    invitationCount: sql<number>`(select count(*) from ${AI} i where i.assembly_id = "assemblies"."id")`.mapWith(Number),
+    decisionCount: sql<number>`(select count(*) from ${AD} d where d.assembly_id = "assemblies"."id" and d.tenant_id = ${ctx.tenantId})`.mapWith(Number),
+    invitationCount: sql<number>`(select count(*) from ${AI} i where i.assembly_id = "assemblies"."id" and i.tenant_id = ${ctx.tenantId})`.mapWith(Number),
   }).from(A).where(and(eq(A.tenantId, ctx.tenantId), eq(A.buildingId, buildingId)))
     .orderBy(desc(A.scheduledAt), desc(A.createdAt));
   return { rows: rows.map((r) => ({ ...publicAssembly(r.a), decisionCount: r.decisionCount, invitationCount: r.invitationCount })) };
@@ -158,9 +158,17 @@ export async function createAssembly(db: Db, ctx: TenantContext, buildingId: str
 export async function updateAssembly(db: Db, ctx: TenantContext, id: string, input: AssemblyPatch) {
   return db.transaction(async (tx) => {
     const before = await claimAssembly(tx, ctx, id, ['draft', 'invited']);
-    // The basis the invitations announced is the basis the assembly decides by (plan addendum 2).
-    if (input.quorumBasis && input.quorumBasis !== before.quorumBasis && before.status !== 'draft') {
-      throw conflict('quorum_basis_locked', 'The quorum basis is frozen once the invitations have gone out');
+    if (before.status !== 'draft') {
+      // What the invitation announced is what the owners were called to: a new date, a new place or
+      // a new agenda is a new assembly, reached by cancelling this one and calling that one.
+      const frozen = (['scheduledAt', 'location', 'agenda'] as const).filter((k) => input[k] !== undefined);
+      if (frozen.length > 0) {
+        throw conflict('schedule_locked', 'The date, the place and the agenda are frozen once the invitations have gone out', { fields: frozen });
+      }
+      // The basis the invitations announced is the basis the assembly decides by (plan addendum 2).
+      if (input.quorumBasis && input.quorumBasis !== before.quorumBasis) {
+        throw conflict('quorum_basis_locked', 'The quorum basis is frozen once the invitations have gone out');
+      }
     }
     const set: Partial<typeof A.$inferInsert> = { updatedAt: new Date() };
     if (input.scheduledAt !== undefined) set.scheduledAt = new Date(input.scheduledAt);
@@ -210,9 +218,10 @@ export async function updateDecision(db: Db, ctx: TenantContext, id: string, dec
   });
 }
 
+/** Only a draft loses a decision: one the invitation already listed stays on the ballot. */
 export async function deleteDecision(db: Db, ctx: TenantContext, id: string, decisionId: string) {
   return db.transaction(async (tx) => {
-    await claimAssembly(tx, ctx, id, ['draft', 'invited']);
+    await claimAssembly(tx, ctx, id, ['draft']);
     const before = await tx.query.assemblyDecisions.findFirst({ where: and(eq(AD.tenantId, ctx.tenantId), eq(AD.assemblyId, id), eq(AD.id, decisionId)) });
     if (!before) throw notFound('Decision');
     // The votes cast on it go with it (`assembly_votes.decision_id` cascades).

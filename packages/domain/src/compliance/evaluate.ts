@@ -80,7 +80,14 @@ export interface ComplianceResult {
 const DAY_MS = 86_400_000;
 const parse = (s: string | null): Date | null => (s === null ? null : new Date(s));
 const addDays = (d: Date, n: number): Date => new Date(d.getTime() + n * DAY_MS);
-const wholeDaysBetween = (from: Date, to: Date): number => Math.floor((to.getTime() - from.getTime()) / DAY_MS);
+/**
+ * Whole **civil** days between two instants, counted in `timeZone`: both ends are put onto local
+ * midnight first, so an invitation sent on the 17th at 18:00 for an assembly on the 1st at 09:00 is
+ * fifteen days, not fourteen. Art. 37 counts days of the calendar, not 24-hour spans. Rounded, not
+ * floored: a DST transition inside the span makes it 23 or 25 hours long.
+ */
+const civilDaysBetween = (from: Date, to: Date, timeZone: string): number =>
+  Math.round((localDayStart(to, timeZone).getTime() - localDayStart(from, timeZone).getTime()) / DAY_MS);
 
 /**
  * A `YYYY-MM-DD` snapshot field onto the UTC instant of local midnight of that same civil day in
@@ -126,7 +133,7 @@ function remindersDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules): 
   return duty('reminders', today.getTime() <= deadline.getTime() ? 'due' : 'overdue', deadline, s.lastReminderAt, s.ownersOverThreshold);
 }
 
-function assemblyDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules): ComplianceDuty {
+function assemblyDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules, timeZone: string): ComplianceDuty {
   // The assembly module arrives in sub-plan 2. Until a building has had one, domar knows nothing
   // about its assemblies and must not claim a breach it cannot evidence (plan addendum 5).
   if (s.assemblyCount === 0) return duty('assembly', 'n/a', null, null, 0);
@@ -136,10 +143,10 @@ function assemblyDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules): C
   let status = windowStatus(deadline, addMonths(deadline, r.graceMonths), today);
   const invited = parse(s.lastAssemblyInvitedAt);
   const flags: string[] = [];
-  // Art. 37: the invitation must go out at least 15 days before the assembly it precedes. An
+  // Art. 37: the invitation must go out at least 15 civil days before the assembly it precedes. An
   // invitation timestamped after the last held assembly belongs to the next one, not this one, and
   // says nothing about whether this assembly's invitation was timely.
-  if (invited !== null && invited.getTime() < held.getTime() && wholeDaysBetween(invited, held) < r.assemblyInvitationMinDays) {
+  if (invited !== null && invited.getTime() < held.getTime() && civilDaysBetween(invited, held, timeZone) < r.assemblyInvitationMinDays) {
     flags.push('late_invitation');
     // Elevates `ok` to `due`, but a late invitation on an already `due`/`overdue` assembly (stale
     // from age) still needs the flag recorded, so it isn't checked only when status is `ok`.
@@ -194,7 +201,7 @@ function extraordinaryDuty(s: ComplianceSnapshot): ComplianceDuty {
 const EVALUATORS: Record<ComplianceDutyKey, (s: ComplianceSnapshot, today: Date, rules: ComplianceRules, timeZone: string) => ComplianceDuty> = {
   invoices: (s, today, rules) => invoicesDuty(s, today, rules),
   reminders: (s, today, rules) => remindersDuty(s, today, rules),
-  assembly: (s, today, rules) => assemblyDuty(s, today, rules),
+  assembly: (s, today, rules, timeZone) => assemblyDuty(s, today, rules, timeZone),
   annual_report: (s, today, rules) => annualReportDuty(s, today, rules),
   fund_transparency: (s) => fundTransparencyDuty(s),
   fund_accounts: (s) => fundAccountsDuty(s),
