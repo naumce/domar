@@ -34,6 +34,7 @@ import { invoiceEmailRoutes, periodEmailRoutes } from './email/routes.js';
 import { invoiceRoutes } from './resources/invoices/routes.js';
 import { importRoutes } from './resources/import/routes.js';
 import { invoicingRoutes } from './resources/invoicing/routes.js';
+import { assemblyInvitationRoutes, assemblyRoutes, buildingAssemblyRoutes } from './resources/assemblies/routes.js';
 import { legalEventRoutes } from './resources/legal-events/routes.js';
 import { openingBalanceRoutes } from './resources/opening-balances/routes.js';
 import { buildingPaymentRoutes, invoicePaymentRoutes, paymentRoutes } from './resources/payments/routes.js';
@@ -151,6 +152,9 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(statementLineRoutes, { prefix: '/statement-lines' });
     await api.register(buildingReminderRoutes, { prefix: '/buildings/:buildingId/reminders' });
     await api.register(legalEventRoutes, { prefix: '/buildings/:buildingId/legal-events' });
+    await api.register(buildingAssemblyRoutes, { prefix: '/buildings/:buildingId/assemblies' });
+    await api.register(assemblyRoutes, { prefix: '/assemblies' });
+    await api.register(assemblyInvitationRoutes, { prefix: '/assembly-invitations' });
     await api.register(buildingComplianceRoutes, { prefix: '/buildings/:buildingId/compliance' });
     await api.register(complianceRoutes, { prefix: '/compliance' });
     await api.register(buildingDocumentRoutes, { prefix: '/buildings/:buildingId/documents' });

@@ -46,3 +46,24 @@ export async function setupPublishedBuilding(app: FastifyInstance, cookie: strin
   }
   return { buildingId, periodId, owners, invoices };
 }
+
+export type AssemblyOwnerKey = 'A' | 'B' | 'C';
+export interface AssemblyBuilding { buildingId: string; owners: Record<AssemblyOwnerKey, string> }
+
+/**
+ * A building for Art. 37: three owners with explicit ownership shares — 0.5 / 0.3 / 0.2, i.e.
+ * 5000 / 3000 / 2000 basis points out of 10000 — so a quorum can be tested exactly on 50 % (A alone)
+ * and clearly above it (A + B). `emails` decides who gets an email invitation and who gets a letter.
+ */
+export async function setupAssemblyBuilding(app: FastifyInstance, cookie: string, emails: Partial<Record<AssemblyOwnerKey, string>> = {}): Promise<AssemblyBuilding> {
+  const h = { cookie };
+  const post = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url, headers: h, payload });
+  const people: [AssemblyOwnerKey, string, number, number][] = [['A', 'Анастасова', 0.5, 50], ['B', 'Богданов', 0.3, 30], ['C', 'Цветков', 0.2, 20]];
+  const buildingId = (await post('/api/buildings', { name: 'Востаничка 7', address: 'Востаничка 7', city: 'Скопје', postalCode: '1000' })).json().id;
+  const owners = {} as Record<AssemblyOwnerKey, string>;
+  for (const [k, lastName, share, area] of people) {
+    owners[k] = (await post('/api/contacts', { firstName: 'Тест', lastName, ...(emails[k] ? { email: emails[k] } : {}) })).json().id;
+    await post(`/api/buildings/${buildingId}/units`, { label: k, kind: 'apartment', areaM2: area, ownershipShare: share, ownerContactId: owners[k] });
+  }
+  return { buildingId, owners };
+}
