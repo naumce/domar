@@ -96,6 +96,8 @@ export default {
       target_no_owner: 'Unit {unit} is attached to a unit without an owner — not invoiced.', no_units: 'A line applies to no unit — omitted.',
     },
     status: { open: 'Open', generated: 'Drafts', published: 'Published' },
+    kind: { extraordinary: 'Extraordinary' },
+    deletePeriod: 'Delete period', deleteConfirm: 'The period and its draft invoices will be deleted. Continue?',
     invoices: 'Invoices', locked: 'The period is published and can no longer be changed.',
   },
   invoices: {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { api } from '@/api/client';
 import type { EmailBulkResult, InvoiceRow, Period, PeriodLine, Service, TaxRate, Unit } from '@/api/types';
 import PeriodLineForm, { type LinePayload } from '@/components/billing/PeriodLineForm.vue';
@@ -13,6 +14,7 @@ import { formatMoney, percentFromBp, toMinor } from '@/utils/money';
 
 const props = defineProps<{ id: string; periodId: string }>();
 const { t } = useI18n();
+const router = useRouter();
 const base = `/api/buildings/${props.id}/periods/${props.periodId}`;
 const period = ref<Period | null>(null);
 const invoices = ref<InvoiceRow[]>([]);
@@ -21,6 +23,9 @@ const services = ref<Service[]>([]);
 const taxRates = ref<TaxRate[]>([]);
 const open = ref(false); const editing = ref<PeriodLine | null>(null); const busy = ref(false); const error = ref('');
 const editable = computed(() => period.value?.status !== 'published');
+// Addendum 19: an extraordinary period whose publish died is the manager's to clear from here —
+// the `extraordinary_pending` message on the distribution form points at exactly this button.
+const deletable = computed(() => period.value?.kind === 'extraordinary' && period.value.status !== 'published');
 async function load() {
   period.value = await api.get<Period>(base);
   invoices.value = (await api.get<{ rows: InvoiceRow[] }>('/api/invoices', { buildingId: props.id, period: period.value.period, pageSize: 200 })).rows;
@@ -45,6 +50,12 @@ async function onLine(payload: LinePayload) {
   if (!error.value) open.value = false;
 }
 async function publish() { if (window.confirm(t('periods.publishConfirm'))) await run(() => api.post(`${base}/publish`)); }
+async function removePeriod() {
+  if (!window.confirm(t('periods.deleteConfirm'))) return;
+  busy.value = true; error.value = '';
+  try { await api.del(base); await router.push(`/app/buildings/${props.id}?tab=periods`); }
+  catch { error.value = t('app.error'); } finally { busy.value = false; }
+}
 const bulk = ref<EmailBulkResult | null>(null);
 async function sendAll() {
   busy.value = true; error.value = ''; bulk.value = null;
@@ -90,6 +101,7 @@ async function saveSettings() {
         <AppButton v-if="period.status === 'generated'" variant="secondary" :loading="busy" data-test="delete-drafts" @click="run(() => api.del(`${base}/drafts`))">{{ t('periods.deleteDrafts') }}</AppButton>
         <AppButton v-if="period.status === 'generated'" :loading="busy" data-test="publish" @click="publish">{{ t('periods.publish') }}</AppButton>
         <AppButton v-if="period.status === 'published'" variant="secondary" :loading="busy" data-test="send-period" @click="sendAll">{{ t('emails.sendPeriod') }}</AppButton>
+        <AppButton v-if="deletable" variant="danger" :loading="busy" data-test="period-delete" @click="removePeriod">{{ t('periods.deletePeriod') }}</AppButton>
       </div>
     </div>
     <p v-if="bulk" class="mb-2 text-sm text-emerald-700" data-test="send-period-result">{{ t('emails.result', bulk) }}</p>

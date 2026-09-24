@@ -44,7 +44,7 @@ async function create() {
   </form>
   <p v-if="res.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
   <DataTable :columns="[{ key: 'period', label: t('billing.period') }, { key: 'status', label: t('billing.status') }, { key: 'invoiceCount', label: t('periods.invoices') }, { key: 'totalMinor', label: t('billing.total') }]" :rows="res.rows.value">
-    <template #cell-period="{ row }"><RouterLink :to="`/app/buildings/${buildingId}/periods/${row.id}`" class="text-emerald-700 underline" data-test="period-link">{{ row.period }}</RouterLink></template>
+    <template #cell-period="{ row }"><RouterLink :to="`/app/buildings/${buildingId}/periods/${row.id}`" class="text-emerald-700 underline" data-test="period-link">{{ row.period }}</RouterLink><span v-if="row.kind === 'extraordinary'" class="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800" data-test="period-kind">{{ t('periods.kind.extraordinary') }}</span></template>
     <template #cell-status="{ row }"><span class="rounded-full px-2 py-0.5 text-xs" :class="{ 'bg-slate-100': row.status === 'open', 'bg-amber-100 text-amber-800': row.status === 'generated', 'bg-emerald-100 text-emerald-800': row.status === 'published' }">{{ t(`periods.status.${row.status}`) }}</span></template>
     <template #cell-totalMinor="{ row }">{{ formatMoney(row.totalMinor) }}</template>
   </DataTable>
