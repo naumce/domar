@@ -17,3 +17,22 @@ export async function verifyPassword(plain: string, stored: string): Promise<boo
   const actual = await scryptAsync(plain, Buffer.from(saltB64, 'base64url'), expected.length, { N: Number(nStr), r: R, p: P, maxmem: MAXMEM });
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
+
+/** No I, O, l, 0 or 1: a temporary password gets read off a screen and typed by hand. */
+const TEMP_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+const TEMP_LENGTH = 16;
+
+/** 16 characters drawn uniformly from TEMP_ALPHABET (rejection sampling, so no modulo bias). */
+export function generateTemporaryPassword(): string {
+  const n = TEMP_ALPHABET.length;
+  const limit = 256 - (256 % n);
+  let out = '';
+  while (out.length < TEMP_LENGTH) {
+    for (const b of randomBytes(TEMP_LENGTH)) {
+      if (b >= limit) continue;
+      out += TEMP_ALPHABET[b % n];
+      if (out.length === TEMP_LENGTH) break;
+    }
+  }
+  return out;
+}

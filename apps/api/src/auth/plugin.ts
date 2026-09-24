@@ -23,7 +23,7 @@ const plugin: FastifyPluginAsync = async (app) => {
     const token = req.cookies[SESSION_COOKIE];
     if (!token) return;
     const found = await resolveSession(req.db, token);
-    if (!found) return;
+    if (!found || !found.user.isActive) return;
     req.ctx = { tenantId: found.tenant.id, userId: found.user.id, role: found.user.role };
     req.session = { token, user: found.user, tenant: found.tenant };
   });

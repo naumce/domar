@@ -5,12 +5,13 @@ import type { FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { AppError, conflict, isUniqueViolation, unauthorized } from '../errors.js';
+import { changeOwnPassword } from '../resources/users/repo.js';
+import { changePasswordBody, userOut } from '../resources/users/schema.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { createSession, deleteSession, SESSION_COOKIE } from './session.js';
 
-const publicUser = z.object({ id: z.string(), email: z.string(), firstName: z.string(), lastName: z.string(), role: z.enum(schema.userRole.enumValues) });
 const publicTenant = z.object({ id: z.string(), slug: z.string(), name: z.string(), countryCode: z.string(), currency: z.string(), locale: z.string(), timezone: z.string() });
-const meResponse = z.object({ user: publicUser, tenant: publicTenant });
+const meResponse = z.object({ user: userOut, tenant: publicTenant });
 
 const slug = z.string().min(2).max(64).regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lowercase letters, digits and hyphens');
 const password = z.string().min(10).max(200);
@@ -65,6 +66,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     if (!tenant) throw invalid();
     const user = await req.db.query.users.findFirst({ where: and(eq(schema.users.tenantId, tenant.id), eq(schema.users.email, req.body.email.toLowerCase())) });
     if (!user || !(await verifyPassword(req.body.password, user.passwordHash))) throw invalid();
+    if (!user.isActive) throw invalid();
     const session = await createSession(req.db, user.id, { userAgent: req.headers['user-agent'], ip: req.ip });
     setSessionCookie(reply, session.token, session.expiresAt, app.config.isProduction);
     return { user, tenant };
@@ -73,6 +75,12 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post('/logout', async (req, reply) => {
     if (req.session) await deleteSession(req.db, req.session.token);
     reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    return reply.status(204).send();
+  });
+
+  app.post('/change-password', { ...limited, schema: { body: changePasswordBody } }, async (req, reply) => {
+    if (!req.session) throw unauthorized();
+    await changeOwnPassword(req.db, req.ctx!, req.body.currentPassword, req.body.newPassword, req.session.token);
     return reply.status(204).send();
   });
 

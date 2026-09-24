@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { type Db, schema } from '@domar/db';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, ne } from 'drizzle-orm';
 
 export const SESSION_COOKIE = 'domar_session';
 const SESSION_DAYS = 14;
@@ -29,4 +29,14 @@ export async function resolveSession(db: Db, token: string) {
 
 export async function deleteSession(db: Db, token: string): Promise<void> {
   await db.delete(schema.sessions).where(eq(schema.sessions.tokenHash, hashToken(token)));
+}
+
+/** Every session of a user: used when the user is deactivated or their password is reset by an owner. */
+export async function deleteSessionsForUser(db: Db, userId: string): Promise<void> {
+  await db.delete(schema.sessions).where(eq(schema.sessions.userId, userId));
+}
+
+/** Every session of a user except the caller's own: used after a self-service password change. */
+export async function deleteOtherSessionsForUser(db: Db, userId: string, keepToken: string): Promise<void> {
+  await db.delete(schema.sessions).where(and(eq(schema.sessions.userId, userId), ne(schema.sessions.tokenHash, hashToken(keepToken))));
 }

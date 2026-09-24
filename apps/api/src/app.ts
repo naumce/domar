@@ -28,6 +28,7 @@ import { buildingStatementRoutes, statementLineRoutes, statementRoutes } from '.
 import { taxRateRoutes } from './resources/tax-rates/routes.js';
 import { tenantRoutes } from './resources/tenant/routes.js';
 import { unitRoutes } from './resources/units/routes.js';
+import { userRoutes } from './resources/users/routes.js';
 import { healthRoutes } from './routes/health.js';
 
 export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config }): Promise<FastifyInstance> {
@@ -73,6 +74,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(healthRoutes);
     await api.register(authRoutes, { prefix: '/auth' });
     await api.register(tenantRoutes, { prefix: '/tenant' });
+    await api.register(userRoutes, { prefix: '/users' });
     await api.register(dashboardRoutes, { prefix: '/dashboard' });
     await api.register(taxRateRoutes, { prefix: '/tax-rates' });
     await api.register(contactRoutes, { prefix: '/contacts' });
