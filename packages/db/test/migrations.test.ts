@@ -129,4 +129,88 @@ describe('migrations', () => {
     expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(code_hash)'))).toBe(true);
     expect(idx.some((i) => i.indexdef.includes('(tenant_id, contact_id, created_at)'))).toBe(true);
   });
+
+  it('creates the compliance, document, supplier and contract tables', async () => {
+    const rows = await t!.sql<{ table_name: string }[]>`
+      select table_name from information_schema.tables where table_schema = 'public' order by 1`;
+    const names = rows.map((r) => r.table_name);
+    for (const n of ['legal_events', 'documents', 'suppliers', 'building_contracts']) expect(names).toContain(n);
+  });
+
+  it('legal_events are append-only rows with evidence', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }[]>`
+      select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'legal_events' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(
+      ['building_id', 'created_at', 'created_by', 'due_at', 'evidence', 'id', 'kind', 'occurred_at', 'ref_id', 'ref_type', 'tenant_id']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['evidence']!.data_type).toBe('jsonb');
+    expect(by['evidence']!.is_nullable).toBe('NO');
+    expect(by['due_at']!.is_nullable).toBe('YES');
+    expect(by['ref_id']!.is_nullable).toBe('YES');
+    expect(by['created_by']!.is_nullable).toBe('YES');
+    const kinds = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'legal_event_kind' order by e.enumsortorder`;
+    expect(kinds.map((k) => k.enumlabel)).toEqual([
+      'invoice_published', 'reminder_sent', 'assembly_invited', 'assembly_held',
+      'annual_report_issued', 'handover_report_issued', 'fund_statement_available', 'extraordinary_cost_distributed']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'legal_events'`;
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, building_id, occurred_at)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, kind, occurred_at)'))).toBe(true);
+  });
+
+  it('documents carry a sha256, a size and a storage key', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable from information_schema.columns where table_name = 'documents' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(
+      ['building_id', 'created_at', 'file_name', 'id', 'kind', 'mime', 'sha256', 'size_bytes', 'storage_key', 'tenant_id', 'title', 'uploaded_by']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['building_id']!.is_nullable).toBe('YES');
+    expect(by['size_bytes']!.data_type).toBe('bigint');
+    expect(by['sha256']!.is_nullable).toBe('NO');
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'documents'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(storage_key)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, building_id, created_at)'))).toBe(true);
+  });
+
+  it('building_contracts hold the dates the Art. 30 clock reads', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable from information_schema.columns where table_name = 'building_contracts' order by 1`;
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['starts_on']!.data_type).toBe('date');
+    expect(by['ends_on']!.data_type).toBe('date');
+    expect(by['ends_on']!.is_nullable).toBe('YES');
+    expect(by['supplier_id']!.is_nullable).toBe('YES');
+    expect(by['amount_minor']!.data_type).toBe('bigint');
+    const kinds = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'contract_kind' order by e.enumsortorder`;
+    expect(kinds.map((k) => k.enumlabel)).toEqual(['management', 'service', 'insurance', 'other']);
+  });
+
+  it('expenses can name a supplier and a document', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'expenses' and column_name in ('supplier_id', 'document_id')`;
+    expect(cols.length).toBe(2);
+    expect(cols.every((c) => c.is_nullable === 'YES')).toBe(true);
+  });
+
+  it('billing periods carry a kind and only one regular period per month', async () => {
+    const [kind] = await t!.sql<{ column_default: string; is_nullable: string }[]>`
+      select column_default, is_nullable from information_schema.columns where table_name = 'billing_periods' and column_name = 'kind'`;
+    expect(kind!.is_nullable).toBe('NO');
+    expect(kind!.column_default).toContain('regular');
+    const kinds = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'period_kind' order by e.enumsortorder`;
+    expect(kinds.map((k) => k.enumlabel)).toEqual(['regular', 'extraordinary']);
+    const idx = await t!.sql<{ indexname: string; indexdef: string }[]>`select indexname, indexdef from pg_indexes where tablename = 'billing_periods'`;
+    expect(idx.some((i) => i.indexname === 'billing_periods_building_period_idx')).toBe(false);
+    const partial = idx.find((i) => i.indexname === 'billing_periods_building_regular_period_idx');
+    expect(partial).toBeDefined();
+    expect(partial!.indexdef).toContain('UNIQUE');
+    expect(partial!.indexdef).toContain('(building_id, period)');
+    expect(partial!.indexdef).toContain("WHERE (kind = 'regular'::period_kind)");
+    const [basis] = await t!.sql<{ udt_name: string; is_nullable: string }[]>`
+      select udt_name, is_nullable from information_schema.columns where table_name = 'billing_periods' and column_name = 'distribution_basis'`;
+    expect(basis!.udt_name).toBe('share_basis');
+    expect(basis!.is_nullable).toBe('YES');
+  });
 });

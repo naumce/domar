@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { bigint, boolean, char, index, integer, jsonb, numeric, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { buildings, units } from './building.js';
+import { buildings, shareBasis, units } from './building.js';
+import { documents, suppliers } from './compliance.js';
 import { contacts } from './contact.js';
 import { taxRates } from './tax-rate.js';
 import { tenants } from './tenant.js';
@@ -15,6 +16,7 @@ export const invoiceStatus = pgEnum('invoice_status', ['draft', 'published', 'pa
 export const lineKind = pgEnum('line_kind', ['service', 'manual', 'reserve_fund', 'management_fee']);
 export const postingAccount = pgEnum('posting_account', ['owner', 'fund']);
 export const postingKind = pgEnum('posting_kind', ['charge', 'payment', 'expense', 'adjustment', 'opening']);
+export const periodKind = pgEnum('period_kind', ['regular', 'extraordinary']);
 
 const money = (name: string) => bigint(name, { mode: 'number' });
 const tenantRef = () => uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' });
@@ -71,6 +73,8 @@ export const expenses = pgTable('expenses', {
   fund: fund('fund').notNull(),
   description: text('description').notNull(),
   supplierText: text('supplier_text'),
+  supplierId: uuid('supplier_id').references(() => suppliers.id, { onDelete: 'set null' }),
+  documentId: uuid('document_id').references(() => documents.id, { onDelete: 'set null' }),
   amountMinor: money('amount_minor').notNull(),
   paidAt: timestamp('paid_at', { withTimezone: true }).notNull(),
   voidedAt: timestamp('voided_at', { withTimezone: true }),
@@ -84,6 +88,10 @@ export const billingPeriods = pgTable('billing_periods', {
   buildingId: uuid('building_id').notNull().references(() => buildings.id, { onDelete: 'cascade' }),
   period: char('period', { length: 7 }).notNull(),
   status: periodStatus('status').notNull().default('open'),
+  /** `extraordinary` = an Art. 47(5) one-off; it carries a single manual line and no automatic ones. */
+  kind: periodKind('kind').notNull().default('regular'),
+  /** Set only on extraordinary periods: the basis the engine splits that one line by (plan addendum 17). */
+  distributionBasis: shareBasis('distribution_basis'),
   managementFeeMinor: money('management_fee_minor').notNull().default(0),
   managementFeeTaxRateBp: integer('management_fee_tax_rate_bp').notNull().default(0),
   managementFeeAppliesTo: text('management_fee_applies_to').array().notNull().default(sql`'{apartment,commercial}'::text[]`),
@@ -96,7 +104,11 @@ export const billingPeriods = pgTable('billing_periods', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
   warnings: jsonb('warnings').notNull().default(sql`'[]'::jsonb`),
   ...ts(),
-}, (t) => [index('billing_periods_tenant_idx').on(t.tenantId, t.buildingId, t.period), uniqueIndex('billing_periods_building_period_idx').on(t.buildingId, t.period)]);
+}, (t) => [
+  index('billing_periods_tenant_idx').on(t.tenantId, t.buildingId, t.period),
+  // Partial: one *regular* period per building per month, any number of extraordinary ones (addendum 15).
+  uniqueIndex('billing_periods_building_regular_period_idx').on(t.buildingId, t.period).where(sql`${t.kind} = 'regular'`),
+]);
 
 export const periodLines = pgTable('period_lines', {
   id: uuid('id').primaryKey().defaultRandom(),
