@@ -1,6 +1,6 @@
 export * from './types.js';
 export { mt940Parser } from './mt940.js';
-export { csvParser } from './csv.js';
+export { csvParser, splitCsvLine } from './csv.js';
 export * from './matching.js';
 import type { CountryPack } from '../country/types.js';
 import type { StatementParser } from './types.js';

@@ -18,11 +18,17 @@ export interface UnitImportRow {
 export interface UnitImportError { line: number; message: string }
 export interface UnitImportResult { rows: UnitImportRow[]; errors: UnitImportError[] }
 
-type Field =
+export type ImportField =
   | 'label' | 'floor' | 'kind' | 'areaM2' | 'ownershipShare'
   | 'ownerFirstName' | 'ownerLastName' | 'ownerEmail' | 'ownerPhone' | 'openingBalance';
 
-const HEADERS: Record<string, Field> = {
+/** The ten target columns, in the order the canonical template writes them. */
+export const IMPORT_FIELDS: readonly ImportField[] = [
+  'label', 'floor', 'kind', 'areaM2', 'ownershipShare',
+  'ownerFirstName', 'ownerLastName', 'ownerEmail', 'ownerPhone', 'openingBalance',
+];
+
+const HEADERS: Record<string, ImportField> = {
   label: 'label', 'број': 'label',
   floor: 'floor', 'кат': 'floor',
   kind: 'kind', 'тип': 'kind',
@@ -47,10 +53,23 @@ const KINDS: Record<string, UnitKind> = {
  * Column length caps, mirroring the unit and contact schemas of the API: the import inserts parsed
  * rows straight into the database, so an over-long cell has to become a line error here.
  */
-const LIMITS: Partial<Record<Field, number>> = { label: 50, floor: 20, ownerFirstName: 100, ownerLastName: 200, ownerEmail: 200, ownerPhone: 50 };
+const LIMITS: Partial<Record<ImportField, number>> = { label: 50, floor: 20, ownerFirstName: 100, ownerLastName: 200, ownerEmail: 200, ownerPhone: 50 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const norm = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * The target column a source header names, or null when the template does not know it. Exported so
+ * the web's mapping step can prefill itself from the same aliases the parser accepts (spec §20.1).
+ */
+export function matchImportHeader(name: string): ImportField | null {
+  return HEADERS[norm(name)] ?? null;
+}
+
+/** The unit kind a source value names, in either locale, or null. */
+export function normaliseKind(value: string): UnitKind | null {
+  return KINDS[norm(value)] ?? null;
+}
 
 /**
  * "54,5" or "54.5" → 54.5, and the grouped forms a spreadsheet exports — "1.054,5" and "1,054.5" →
@@ -76,8 +95,8 @@ export function parseUnitImport(text: string): UnitImportResult {
   const headerLine = lines[headerIdx]!;
   const delim = headerLine.split(';').length >= headerLine.split(',').length ? ';' : ',';
   const headerCells = splitCsvLine(headerLine, delim);
-  const cols = headerCells.map((c) => HEADERS[norm(c)] ?? null);
-  const at = (f: Field): number => cols.indexOf(f);
+  const cols = headerCells.map((c) => matchImportHeader(c));
+  const at = (f: ImportField): number => cols.indexOf(f);
   for (const required of ['label', 'kind'] as const) {
     if (at(required) === -1) errors.push({ line: headerIdx + 1, message: `missing required column: ${required}` });
   }
@@ -87,7 +106,7 @@ export function parseUnitImport(text: string): UnitImportResult {
   // book every balance as 0), so name it while still parsing the rows.
   for (const c of headerCells) {
     const name = c.trim();
-    if (name !== '' && HEADERS[norm(c)] === undefined) errors.push({ line: headerIdx + 1, message: `unknown column: ${name}` });
+    if (name !== '' && matchImportHeader(c) === null) errors.push({ line: headerIdx + 1, message: `unknown column: ${name}` });
   }
 
   const seen = new Set<string>();
@@ -96,9 +115,9 @@ export function parseUnitImport(text: string): UnitImportResult {
     if (raw.trim() === '') continue;
     const line = i + 1;
     const cells = splitCsvLine(raw, delim);
-    const cell = (f: Field): string => { const j = at(f); return j === -1 ? '' : (cells[j] ?? '').trim(); };
+    const cell = (f: ImportField): string => { const j = at(f); return j === -1 ? '' : (cells[j] ?? '').trim(); };
 
-    const tooLong = (Object.keys(LIMITS) as Field[]).find((f) => cell(f).length > LIMITS[f]!);
+    const tooLong = (Object.keys(LIMITS) as ImportField[]).find((f) => cell(f).length > LIMITS[f]!);
     if (tooLong) { errors.push({ line, message: `${tooLong} is too long (max ${LIMITS[tooLong]!})` }); continue; }
 
     const label = cell('label');
@@ -106,7 +125,7 @@ export function parseUnitImport(text: string): UnitImportResult {
     if (seen.has(label)) { errors.push({ line, message: `duplicate label in file: ${label}` }); continue; }
 
     const kindRaw = cell('kind');
-    const kind = KINDS[norm(kindRaw)];
+    const kind = normaliseKind(kindRaw);
     if (!kind) { errors.push({ line, message: `unknown kind: ${kindRaw || '(empty)'}` }); continue; }
 
     let areaM2: number | null = null;

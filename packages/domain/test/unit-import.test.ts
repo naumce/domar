@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseUnitImport } from '../src/import/units.js';
+import { IMPORT_FIELDS, matchImportHeader, normaliseKind, parseUnitImport } from '../src/import/units.js';
 
 const MK_FILE =
   '﻿број;кат;тип;површина;удел;име;презиме;е-пошта;телефон;почетно салдо\r\n' +
@@ -108,5 +108,34 @@ describe('parseUnitImport', () => {
 
   it('reports an empty file instead of throwing', () => {
     expect(parseUnitImport('   \n\n')).toEqual({ rows: [], errors: [{ line: 1, message: 'empty file' }] });
+  });
+});
+
+describe('matchImportHeader', () => {
+  it('accepts both locales, ignores case, padding and repeated spaces', () => {
+    expect(matchImportHeader('  Е-Пошта ')).toBe('ownerEmail');
+    expect(matchImportHeader('епошта')).toBe('ownerEmail');
+    expect(matchImportHeader('ownerFirstName')).toBe('ownerFirstName');
+    expect(matchImportHeader('Почетно  салдо')).toBe('openingBalance');
+    expect(matchImportHeader('AreaM2')).toBe('areaM2');
+    expect(matchImportHeader('Опис')).toBeNull();
+    expect(matchImportHeader('')).toBeNull();
+  });
+
+  it('lists the ten target fields in canonical column order', () => {
+    expect(IMPORT_FIELDS).toEqual([
+      'label', 'floor', 'kind', 'areaM2', 'ownershipShare',
+      'ownerFirstName', 'ownerLastName', 'ownerEmail', 'ownerPhone', 'openingBalance',
+    ]);
+  });
+});
+
+describe('normaliseKind', () => {
+  it('maps both locales onto the unit kinds and refuses the rest', () => {
+    expect(normaliseKind('  Деловен Простор ')).toBe('commercial');
+    expect(normaliseKind('СТАН')).toBe('apartment');
+    expect(normaliseKind('storage')).toBe('storage');
+    expect(normaliseKind('остава')).toBe('storage');
+    expect(normaliseKind('кутија')).toBeNull();
   });
 });
