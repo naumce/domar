@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
-import type { InvoiceRow, Period, PeriodLine, Service, TaxRate, Unit } from '@/api/types';
+import type { EmailBulkResult, InvoiceRow, Period, PeriodLine, Service, TaxRate, Unit } from '@/api/types';
 import PeriodLineForm, { type LinePayload } from '@/components/billing/PeriodLineForm.vue';
 import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
@@ -45,10 +45,10 @@ async function onLine(payload: LinePayload) {
   if (!error.value) open.value = false;
 }
 async function publish() { if (window.confirm(t('periods.publishConfirm'))) await run(() => api.post(`${base}/publish`)); }
-const bulk = ref<{ sent: number; failed: number; skipped: number } | null>(null);
+const bulk = ref<EmailBulkResult | null>(null);
 async function sendAll() {
   busy.value = true; error.value = ''; bulk.value = null;
-  try { bulk.value = await api.post<{ sent: number; failed: number; skipped: number }>(`${base}/send`); }
+  try { bulk.value = await api.post<EmailBulkResult>(`${base}/send`); }
   catch { error.value = t('app.error'); } finally { busy.value = false; }
 }
 

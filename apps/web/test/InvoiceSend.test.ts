@@ -42,4 +42,15 @@ describe('InvoicePage send by email', () => {
     expect(w.get('[data-test=send-email]').attributes('disabled')).toBeDefined();
     expect(w.get('[data-test=send-email-status]').text()).toBe('Сопственикот нема е-пошта.');
   });
+
+  it('shows the reason a 200 send came back failed', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(invoice))
+      .mockResolvedValueOnce(json({ id: 'i1', status: 'failed', to: 'marko@test.mk', error: 'smtp_not_configured' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(InvoicePage, { props: { id: 'i1' }, global: { plugins: [i18n, router] } });
+    await vi.waitFor(() => expect(w.text()).toContain('INV-0001/2026'));
+    await w.get('[data-test=send-email]').trigger('click');
+    await vi.waitFor(() => expect(w.get('[data-test=send-email-status]').text()).toBe('Е-поштата не е конфигурирана на серверот.'));
+  });
 });

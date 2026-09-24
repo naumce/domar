@@ -77,14 +77,14 @@ export default {
     reasons: { consecutive: 'Две последователни неплатени', total: 'Три неплатени вкупно' },
     channels: { email: 'Е-пошта', letter: 'Писмо' },
     statuses: { pending: 'Чека печатење', sent: 'Испратена', failed: 'Неуспешна', printed: 'Испечатена' },
-    pdf: 'PDF', markPrinted: 'Означи како испечатена',
+    pdf: 'PDF', markPrinted: 'Означи како испечатена', resend: 'Испрати повторно',
     errors: { smtp_not_configured: 'Е-поштата не е конфигурирана на серверот.' },
   },
   emails: {
     send: 'Испрати по е-пошта', sent: 'Испратено', failed: 'Испраќањето не успеа.',
     sendPeriod: 'Испрати ги сите по е-пошта', result: 'Испратени: {sent}, неуспешни: {failed}, без е-пошта: {skipped}',
     configured: 'Испраќањето е-пошта е конфигурирано.', notConfigured: 'Испраќањето е-пошта не е конфигурирано (SMTP_URL).',
-    errors: { no_email: 'Сопственикот нема е-пошта.', invoice_not_sendable: 'Само објавена пресметка може да се испрати.' },
+    errors: { no_email: 'Сопственикот нема е-пошта.', invoice_not_sendable: 'Само објавена пресметка може да се испрати.', smtp_not_configured: 'Е-поштата не е конфигурирана на серверот.' },
   },
   openingBalances: {
     title: 'Почетни салда', owner: 'Сопственик', regular: 'Редовен фонд', reserve: 'Резервен фонд', balance: 'Салдо',

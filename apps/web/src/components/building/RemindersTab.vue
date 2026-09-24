@@ -32,6 +32,11 @@ async function markPrinted(id: string) {
   try { await api.post(`/api/reminders/${id}/printed`); await load(); } catch { error.value = t('app.error'); }
 }
 
+async function resend(id: string) {
+  error.value = '';
+  try { await api.post(`/api/reminders/${id}/resend`); await load(); } catch { error.value = t('app.error'); }
+}
+
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString('mk-MK') : '—');
 const pdfHref = (id: string) => `${API_BASE}/api/reminders/${id}/pdf`;
 // Known failure codes get a translation; anything the SMTP server said is shown as it came back.
@@ -60,7 +65,8 @@ const errorText = (e: string) => (te(`reminders.errors.${e}`) ? t(`reminders.err
     <template #cell-sentAt="{ row }">{{ date(row.sentAt) }}</template>
     <template #actions="{ row }">
       <a :href="pdfHref(row.id)" target="_blank" rel="noopener" class="rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-300" data-test="reminder-pdf">{{ t('reminders.pdf') }}</a>
-      <AppButton v-if="row.channel === 'letter' && row.status === 'pending'" variant="secondary" class="ml-2" data-test="reminder-printed" @click="markPrinted(row.id)">{{ t('reminders.markPrinted') }}</AppButton>
+      <AppButton v-if="row.channel === 'email' && row.status === 'failed'" variant="secondary" class="ml-2" data-test="reminder-resend" @click="resend(row.id)">{{ t('reminders.resend') }}</AppButton>
+      <AppButton v-if="(row.channel === 'letter' && row.status === 'pending') || row.status === 'failed'" variant="secondary" class="ml-2" data-test="reminder-printed" @click="markPrinted(row.id)">{{ t('reminders.markPrinted') }}</AppButton>
     </template>
   </DataTable>
 </template>

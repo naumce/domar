@@ -77,14 +77,14 @@ export default {
     reasons: { consecutive: 'Two consecutive unpaid', total: 'Three unpaid in total' },
     channels: { email: 'Email', letter: 'Letter' },
     statuses: { pending: 'Awaiting printing', sent: 'Sent', failed: 'Failed', printed: 'Printed' },
-    pdf: 'PDF', markPrinted: 'Mark as printed',
+    pdf: 'PDF', markPrinted: 'Mark as printed', resend: 'Resend',
     errors: { smtp_not_configured: 'Email is not configured on the server.' },
   },
   emails: {
     send: 'Send by email', sent: 'Sent', failed: 'Sending failed.',
     sendPeriod: 'Email all invoices', result: 'Sent: {sent}, failed: {failed}, no email: {skipped}',
     configured: 'Email sending is configured.', notConfigured: 'Email sending is not configured (SMTP_URL).',
-    errors: { no_email: 'This owner has no email address.', invoice_not_sendable: 'Only a published invoice can be emailed.' },
+    errors: { no_email: 'This owner has no email address.', invoice_not_sendable: 'Only a published invoice can be emailed.', smtp_not_configured: 'Email is not configured on the server.' },
   },
   openingBalances: {
     title: 'Opening balances', owner: 'Owner', regular: 'Regular fund', reserve: 'Reserve fund', balance: 'Balance',

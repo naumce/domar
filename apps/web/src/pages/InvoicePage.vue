@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import { api, API_BASE } from '@/api/client';
-import type { Invoice, InvoiceLine } from '@/api/types';
+import type { EmailSendResult, Invoice, InvoiceLine } from '@/api/types';
 import PaymentForm, { type PaymentPayload } from '@/components/billing/PaymentForm.vue';
 import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
@@ -11,7 +11,7 @@ import AppButton from '@/components/ui/AppButton.vue';
 import { formatMoney, percentFromBp } from '@/utils/money';
 
 const props = defineProps<{ id: string }>();
-const { t } = useI18n();
+const { t, te } = useI18n();
 const router = useRouter();
 const inv = ref<Invoice | null>(null);
 const error = ref('');
@@ -29,11 +29,15 @@ async function voidPayment(id: string) {
 const sending = ref(false);
 const sendable = computed(() => inv.value !== null && ['published', 'partially_paid', 'paid'].includes(inv.value.status));
 const sendState = ref<'idle' | 'sent' | 'failed'>('idle');
+const sendError = ref('');
+// A rejected send answers 200 with the reason; a known code gets its own wording, the rest the generic one.
+const failedText = (code: string | null) => (code && te(`emails.errors.${code}`) ? t(`emails.errors.${code}`) : t('emails.failed'));
 async function sendEmail() {
-  sending.value = true; sendState.value = 'idle';
+  sending.value = true; sendState.value = 'idle'; sendError.value = '';
   try {
-    const res = await api.post<{ status: 'sent' | 'failed' }>(`/api/invoices/${props.id}/send`);
+    const res = await api.post<EmailSendResult>(`/api/invoices/${props.id}/send`);
     sendState.value = res.status;
+    if (res.status === 'failed') sendError.value = failedText(res.error);
   } catch (e) {
     const code = (e as { code?: string }).code;
     error.value = code === 'no_email' ? t('emails.errors.no_email') : code === 'invoice_not_sendable' ? t('emails.errors.invoice_not_sendable') : t('app.error');
@@ -62,7 +66,7 @@ async function remove() { try { await api.del(`/api/invoices/${props.id}`); awai
       </div>
     </div>
     <p v-if="sendable" class="mb-2 text-sm" :class="sendState === 'failed' ? 'text-red-600' : 'text-emerald-700'" data-test="send-email-status">
-      {{ !inv.contact.email ? t('emails.errors.no_email') : sendState === 'sent' ? t('emails.sent') : sendState === 'failed' ? t('emails.failed') : '' }}
+      {{ !inv.contact.email ? t('emails.errors.no_email') : sendState === 'sent' ? t('emails.sent') : sendState === 'failed' ? (sendError || t('emails.failed')) : '' }}
     </p>
     <p v-if="error" class="mb-2 text-sm text-red-600">{{ error }}</p>
     <div class="mb-4 grid grid-cols-2 gap-4 rounded-xl bg-white p-4 shadow-sm">

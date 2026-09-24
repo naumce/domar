@@ -44,4 +44,23 @@ describe('RemindersTab', () => {
     expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/reminders/r1/printed');
     expect(w.get('[data-test=reminder-status]').text()).toBe('Испечатена');
   });
+
+  it('resends a failed email reminder and can still print it', async () => {
+    const failed = { ...reminder, channel: 'email', status: 'failed', error: 'smtp_not_configured', contact: { ...reminder.contact, email: 'marko@test.mk' } };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ rows: [failed] }))
+      .mockResolvedValueOnce(json({ ...failed, status: 'sent', error: null, sentAt: '2026-09-25T09:00:00.000Z' }))
+      .mockResolvedValueOnce(json({ rows: [{ ...failed, status: 'sent', error: null, sentAt: '2026-09-25T09:00:00.000Z' }] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(RemindersTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await vi.waitFor(() => expect(w.text()).toContain('Марков'));
+    expect(w.text()).toContain('Е-поштата не е конфигурирана на серверот.');
+    // A failed email can go out again or be delivered on paper.
+    expect(w.find('[data-test=reminder-printed]').exists()).toBe(true);
+    await w.get('[data-test=reminder-resend]').trigger('click');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/reminders/r1/resend');
+    expect(w.get('[data-test=reminder-status]').text()).toBe('Испратена');
+    expect(w.find('[data-test=reminder-resend]').exists()).toBe(false);
+  });
 });
