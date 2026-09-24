@@ -18,8 +18,10 @@ function publicUser(row: Row): PublicUser {
 }
 
 export async function listUsers(db: Db, ctx: TenantContext) {
-  const rows = await db.select().from(U).where(eq(U.tenantId, ctx.tenantId)).orderBy(asc(U.lastName), asc(U.firstName));
-  return { rows: rows.map(publicUser) };
+  // Only the six public columns: a password hash should not even be read into memory.
+  const rows = await db.select({ id: U.id, email: U.email, firstName: U.firstName, lastName: U.lastName, role: U.role, isActive: U.isActive })
+    .from(U).where(eq(U.tenantId, ctx.tenantId)).orderBy(asc(U.lastName), asc(U.firstName));
+  return { rows };
 }
 
 async function getUser(db: Db, ctx: TenantContext, id: string): Promise<Row> {

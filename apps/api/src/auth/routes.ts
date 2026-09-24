@@ -13,6 +13,13 @@ import { createSession, deleteSession, SESSION_COOKIE } from './session.js';
 const publicTenant = z.object({ id: z.string(), slug: z.string(), name: z.string(), countryCode: z.string(), currency: z.string(), locale: z.string(), timezone: z.string() });
 const meResponse = z.object({ user: userOut, tenant: publicTenant });
 
+/**
+ * A valid scrypt hash of a fixed throwaway string, verified when no user matches so that an unknown
+ * email costs the same time as a wrong password. A literal, not a call: hashing at module load would
+ * pay the full scrypt cost on every boot.
+ */
+const DUMMY_PASSWORD_HASH = 'scrypt$131072$__eKji6dtUjRjS7WEtNFcA$QAXfu0bP0eMWJxlBTJLWPKi0pjL9X9WcBkNcdJAhjGJ_vMfmV1ybdlb8yxB9NeMzeV8LjRVkcFne7z00BVBhOA';
+
 const slug = z.string().min(2).max(64).regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lowercase letters, digits and hyphens');
 const password = z.string().min(10).max(200);
 
@@ -65,7 +72,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     const tenant = await req.db.query.tenants.findFirst({ where: eq(schema.tenants.slug, req.body.tenantSlug) });
     if (!tenant) throw invalid();
     const user = await req.db.query.users.findFirst({ where: and(eq(schema.users.tenantId, tenant.id), eq(schema.users.email, req.body.email.toLowerCase())) });
-    if (!user || !(await verifyPassword(req.body.password, user.passwordHash))) throw invalid();
+    const ok = await verifyPassword(req.body.password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !ok) throw invalid();
     if (!user.isActive) throw invalid();
     const session = await createSession(req.db, user.id, { userAgent: req.headers['user-agent'], ip: req.ip });
     setSessionCookie(reply, session.token, session.expiresAt, app.config.isProduction);

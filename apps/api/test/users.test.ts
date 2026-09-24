@@ -13,6 +13,7 @@ describe('staff users', () => {
   let saraId = '';
   let saraPassword = '';
   let saraCookie = '';
+  let saraCookieB = '';
 
   const post = (url: string, payload: Record<string, unknown>, cookie: string) => t.app.inject({ method: 'POST', url, headers: { cookie }, payload });
   const patch = (id: string, payload: Record<string, unknown>, cookie: string) => t.app.inject({ method: 'PATCH', url: `/api/users/${id}`, headers: { cookie }, payload });
@@ -39,6 +40,7 @@ describe('staff users', () => {
     expect(ok.statusCode).toBe(200);
     expect(ok.json().user.isActive).toBe(true);
     saraCookie = cookieOf(ok);
+    saraCookieB = cookieOf(await login(saraPassword)); // login 2, a second device
     expect((await users(a.cookie)).json().rows).toHaveLength(2);
   });
 
@@ -50,9 +52,10 @@ describe('staff users', () => {
     const res = await post('/api/auth/change-password', { currentPassword: saraPassword, newPassword: 'new-correct-horse-9' }, saraCookie);
     expect(res.statusCode).toBe(204);
     expect((await me(saraCookie)).statusCode).toBe(200);
-    expect((await login(saraPassword)).statusCode).toBe(401);   // login 2, old password
+    expect((await me(saraCookieB)).statusCode).toBe(401);       // the other device is signed out
+    expect((await login(saraPassword)).statusCode).toBe(401);   // login 3, old password
     saraPassword = 'new-correct-horse-9';
-    const fresh = await login(saraPassword);                    // login 3
+    const fresh = await login(saraPassword);                    // login 4
     expect(fresh.statusCode).toBe(200);
     saraCookie = cookieOf(fresh);
   });
@@ -64,13 +67,13 @@ describe('staff users', () => {
     expect(off.statusCode).toBe(200);
     expect(off.json().isActive).toBe(false);
     expect((await me(saraCookie)).statusCode).toBe(401);
-    const denied = await login(saraPassword);                   // login 4
+    const denied = await login(saraPassword);                   // login 5
     expect(denied.statusCode).toBe(401);
     expect(denied.json().error.code).toBe('invalid_credentials');
 
     const on = await patch(saraId, { isActive: true }, a.cookie);
     expect(on.json().isActive).toBe(true);
-    const back = await login(saraPassword);                     // login 5
+    const back = await login(saraPassword);                     // login 6
     expect(back.statusCode).toBe(200);
     saraCookie = cookieOf(back);
   });
@@ -82,6 +85,7 @@ describe('staff users', () => {
     const demote = await patch(a.userId, { role: 'accountant' }, a.cookie);
     expect(demote.statusCode).toBe(409);
     expect(demote.json().error.code).toBe('last_owner');
+    expect((await patch(saraId, {}, a.cookie)).statusCode).toBe(400);
   });
 
   it('an accountant cannot create users and duplicate emails are refused', async () => {
@@ -102,7 +106,7 @@ describe('staff users', () => {
     expect(res.json().temporaryPassword).not.toBe(saraPassword);
     expect((await me(saraCookie)).statusCode).toBe(401);
     saraPassword = res.json().temporaryPassword;
-    expect((await login(saraPassword)).statusCode).toBe(200);   // login 6
+    expect((await login(saraPassword)).statusCode).toBe(200);   // login 7
   });
 
   it('a user of another organization is not found', async () => {

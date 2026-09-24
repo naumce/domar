@@ -16,7 +16,7 @@ export const userPatch = z.object({
   lastName: z.string().min(1).max(100).optional(),
   role: userRoleEnum.optional(),
   isActive: z.boolean().optional(),
-}).strict();
+}).strict().refine((v) => Object.keys(v).length > 0, 'empty patch');
 export const userCreated = z.object({ user: userOut, temporaryPassword: z.string() });
 export const changePasswordBody = z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(10).max(200) });
 
