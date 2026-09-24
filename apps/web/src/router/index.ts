@@ -31,6 +31,12 @@ export const router = createRouter({
       path: '/portal', component: () => import('@/layouts/PortalShell.vue'), meta: { portal: true },
       children: [
         { path: '', component: () => import('@/pages/portal/PortalHomePage.vue') },
+        { path: 'invoices', component: () => import('@/pages/portal/PortalInvoicesPage.vue') },
+        { path: 'invoices/:id', component: () => import('@/pages/portal/PortalInvoicePage.vue'), props: true },
+        { path: 'payments', component: () => import('@/pages/portal/PortalPaymentsPage.vue') },
+        { path: 'statement', component: () => import('@/pages/portal/PortalStatementPage.vue') },
+        { path: 'fund', component: () => import('@/pages/portal/PortalFundPage.vue') },
+        { path: 'settings', component: () => import('@/pages/portal/PortalSettingsPage.vue') },
       ],
     },
   ],

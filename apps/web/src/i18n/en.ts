@@ -34,6 +34,7 @@ export default {
       invalid_code: 'The code is wrong, already used or expired.',
       invalid_credentials: 'Wrong email or password.',
       already_linked: 'This property is already linked to your account.',
+      contact_already_linked: 'This property is already linked to another account.',
       email_taken: 'An account with that email already exists. Log in and add the code under Settings.',
       validation: 'Check what you entered. The password must be at least 10 characters.',
       generic: 'Something went wrong. Please try again.',
