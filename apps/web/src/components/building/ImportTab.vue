@@ -40,10 +40,16 @@ function onFile(e: Event) {
 }
 
 function fail(e: unknown) {
-  const code = (e as { code?: string }).code;
-  error.value = code === 'label_conflict' ? t('imports.failure.label_conflict')
-    : code === 'period_published' ? t('imports.failure.period_published')
-    : t('app.error');
+  const err = e as { code?: string; details?: { labels?: string[] } };
+  if (err.code === 'label_conflict') {
+    error.value = t('imports.failure.label_conflict', { labels: (err.details?.labels ?? []).join(', ') });
+  } else if (err.code === 'period_published') {
+    error.value = t('imports.failure.period_published');
+  } else if (err.code === 'too_many_rows') {
+    error.value = t('imports.failure.too_many_rows');
+  } else {
+    error.value = t('app.error');
+  }
 }
 
 async function buildBody(dryRun: boolean): Promise<{ content: string; mode: 'fail' | 'skip'; dryRun?: true; force?: true }> {

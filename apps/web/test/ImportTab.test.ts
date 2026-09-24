@@ -42,4 +42,29 @@ describe('ImportTab', () => {
     expect(JSON.parse(String((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toEqual({ content: CSV, mode: 'fail' });
     await vi.waitFor(() => expect(w.find('[data-test=import-done]').exists()).toBe(true));
   });
+
+  it('requires the force checkbox before committing against a published period', async () => {
+    const blockedPreview = { ...preview, hasPublishedPeriod: true, blocked: 'period_published' as const };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(blockedPreview))
+      .mockResolvedValueOnce(json({ ...blockedPreview, dryRun: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const w = mount(ImportTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n] } });
+    const input = w.get('[data-test=import-file]');
+    Object.defineProperty(input.element, 'files', { value: [new File([CSV], 'units.csv', { type: 'text/csv' })] });
+    await input.trigger('change');
+    await w.get('[data-test=import-preview]').trigger('click');
+    await vi.waitFor(() => expect(w.find('[data-test=import-force]').exists()).toBe(true));
+
+    expect(w.get('[data-test=import-commit]').attributes('disabled')).toBeDefined();
+
+    await w.get('[data-test=import-force]').setValue(true);
+    expect(w.get('[data-test=import-commit]').attributes('disabled')).toBeUndefined();
+
+    await w.get('[data-test=import-commit]').trigger('click');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const [, commitInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(commitInit.body))).toEqual({ content: CSV, mode: 'fail', force: true });
+  });
 });

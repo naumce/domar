@@ -16,6 +16,7 @@ const force = ref(false);
 const amounts = ref<Record<string, string>>({});
 const funds = ref<Record<string, Fund>>({});
 const error = ref(''); const saved = ref(false); const busy = ref(false);
+const invalidContactId = ref<string | null>(null);
 
 async function load() {
   const res = await api.get<OpeningBalanceList>(base);
@@ -26,13 +27,13 @@ async function load() {
 onMounted(async () => { try { await load(); } catch { error.value = t('app.error'); } });
 
 async function save() {
-  error.value = ''; saved.value = false;
+  error.value = ''; saved.value = false; invalidContactId.value = null;
   const payload: { contactId: string; fund: Fund; amountMinor: number }[] = [];
   for (const row of rows.value) {
     const raw = (amounts.value[row.contactId] ?? '').trim();
     if (!raw) continue;
     const amountMinor = toMinor(raw);
-    if (amountMinor === null || amountMinor === 0) { error.value = t('auth.errors.validation'); return; }
+    if (amountMinor === null || amountMinor === 0) { invalidContactId.value = row.contactId; error.value = t('openingBalances.errors.invalid_amount'); return; }
     payload.push({ contactId: row.contactId, fund: funds.value[row.contactId] ?? 'regular', amountMinor });
   }
   if (payload.length === 0) { error.value = t('auth.errors.validation'); return; }
@@ -63,7 +64,8 @@ async function save() {
     <template #cell-openingMinor="{ row }">{{ formatMoney(row.openingMinor) }}</template>
     <template #cell-amount="{ row }">
       <input v-model="amounts[row.contactId]" :data-test="`ob-amount-${row.contactId}`" placeholder="1.200,00"
-        class="w-32 rounded-md border border-slate-300 px-2 py-1 focus:border-emerald-500 focus:outline-none" />
+        class="w-32 rounded-md border px-2 py-1 focus:border-emerald-500 focus:outline-none"
+        :class="invalidContactId === row.contactId ? 'border-red-500' : 'border-slate-300'" />
     </template>
     <template #cell-fund="{ row }">
       <select v-model="funds[row.contactId]" :data-test="`ob-fund-${row.contactId}`" class="rounded-md border border-slate-300 bg-white px-2 py-1">

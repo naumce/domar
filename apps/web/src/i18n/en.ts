@@ -79,6 +79,7 @@ export default {
     errors: {
       period_published: 'This building has a published period. Tick “Book anyway”.',
       invalid_reference: 'The selected owner does not exist in this organization.',
+      invalid_amount: 'Enter a non-zero amount.',
     },
   },
   imports: {
@@ -88,8 +89,9 @@ export default {
     counts: { units: 'Units', contacts: 'New / existing contacts', balances: 'Opening balances', conflicts: 'Conflicts' },
     done: 'Imported {units} units, {contacts} new contacts and {balances} opening balances.',
     failure: {
-      label_conflict: 'Some unit labels already exist. Choose “Skip” or change them in the file.',
+      label_conflict: 'These units already exist: {labels}. Choose “skip” or change the labels.',
       period_published: 'This building has a published period, so opening balances cannot be imported.',
+      too_many_rows: 'The file has more than 5000 rows.',
     },
   },
   import: {
