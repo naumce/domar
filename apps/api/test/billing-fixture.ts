@@ -9,7 +9,7 @@ export interface PublishedBuilding {
 }
 
 /** The billing-core fixture: three owners, five units, two services, a reserve fund and a published 2026-09 period. */
-export async function setupPublishedBuilding(app: FastifyInstance, cookie: string): Promise<PublishedBuilding> {
+export async function setupPublishedBuilding(app: FastifyInstance, cookie: string, opts: { dueAt?: string } = {}): Promise<PublishedBuilding> {
   const h = { cookie };
   const post = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url, headers: h, payload });
   const get = (url: string) => app.inject({ method: 'GET', url, headers: h });
@@ -35,7 +35,7 @@ export async function setupPublishedBuilding(app: FastifyInstance, cookie: strin
   const periodId = (await post(`/api/buildings/${buildingId}/periods`, { period: '2026-09', managementFeeMinor: 15000, managementFeeTaxRateId: vatId })).json().id;
   await post(`/api/buildings/${buildingId}/periods/${periodId}/lines`, { description: 'Осветлување паркинг', pricing: 'fixed_per_unit', unitPriceMinor: 2000, taxRateId: vatId, appliesTo: ['parking'] });
   await post(`/api/buildings/${buildingId}/periods/${periodId}/generate`, {});
-  await post(`/api/buildings/${buildingId}/periods/${periodId}/publish`, {});
+  await post(`/api/buildings/${buildingId}/periods/${periodId}/publish`, opts.dueAt ? { dueAt: opts.dueAt } : {});
 
   const rows: { id: string; number: string; totalMinor: number; contactId: string }[] = (await get(`/api/invoices?buildingId=${buildingId}&period=2026-09`)).json().rows;
   const invoices = {} as PublishedBuilding['invoices'];

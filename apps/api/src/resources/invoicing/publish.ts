@@ -10,7 +10,9 @@ import { nextInvoiceNumber } from './numbering.js';
 const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.contacts; const BP = schema.billingPeriods; const T = schema.tenants;
 const DUE_DAYS = 15;
 
-export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: string, periodId: string) {
+export interface PublishInput { dueAt?: Date | undefined }
+
+export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: string, periodId: string, input: PublishInput = {}) {
   return db.transaction(async (tx) => {
     // Claim the row first: only a period still 'generated' can transition, and the update takes a
     // row lock for the rest of the transaction, so a concurrent publish loses the race here instead
@@ -28,7 +30,7 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
     const tenant = await tx.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId), columns: { timezone: true } });
     const issuedAt = new Date();
     const year = Number(new Intl.DateTimeFormat('en-US', { timeZone: tenant!.timezone, year: 'numeric' }).format(issuedAt));
-    const dueAt = new Date(issuedAt.getTime() + DUE_DAYS * 24 * 3600 * 1000);
+    const dueAt = input.dueAt ?? new Date(issuedAt.getTime() + DUE_DAYS * 24 * 3600 * 1000);
     const postings: NewPosting[] = [];
     for (const { inv } of drafts) {
       const number = await nextInvoiceNumber(tx, ctx, year, claimed.numberPrefix, claimed.numberSuffix);

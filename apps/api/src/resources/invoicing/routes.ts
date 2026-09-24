@@ -5,6 +5,7 @@ import { periodDetailOut, periodParam } from '../periods/schema.js';
 import { deleteDrafts, generatePeriod } from './generate.js';
 import { publishPeriod } from './publish.js';
 
+const publishBody = z.object({ dueAt: z.string().datetime().optional() }).default({});
 const summaryOut = z.object({ period: periodDetailOut, invoiceCount: z.number().int(), totalMinor: z.number().int(), warnings: z.array(z.record(z.unknown())).optional(), skippedUnits: z.array(z.object({ unitId: z.string(), reason: z.string() })).optional() });
 
 export const invoicingRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -12,5 +13,6 @@ export const invoicingRoutes: FastifyPluginAsyncZod = async (app) => {
   const write = { preHandler: requireRole(...WRITE_ROLES) };
   app.post('/:id/generate', { ...write, schema: { params: periodParam, response: { 200: summaryOut } } }, async (req) => generatePeriod(req.db, req.ctx!, req.params.buildingId, req.params.id));
   app.delete('/:id/drafts', { ...write, schema: { params: periodParam, response: { 200: periodDetailOut } } }, async (req) => deleteDrafts(req.db, req.ctx!, req.params.buildingId, req.params.id));
-  app.post('/:id/publish', { ...write, schema: { params: periodParam, response: { 200: summaryOut } } }, async (req) => publishPeriod(req.db, req.ctx!, req.params.buildingId, req.params.id));
+  app.post('/:id/publish', { ...write, schema: { params: periodParam, body: publishBody, response: { 200: summaryOut } } }, async (req) =>
+    publishPeriod(req.db, req.ctx!, req.params.buildingId, req.params.id, req.body.dueAt ? { dueAt: new Date(req.body.dueAt) } : {}));
 };

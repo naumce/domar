@@ -4,7 +4,8 @@ export type UserRole = (typeof schema.userRole.enumValues)[number];
 
 export interface TenantContext {
   tenantId: string;
-  userId: string;
+  /** null for the nightly job, which acts for no user; `audit_logs.user_id` is nullable. */
+  userId: string | null;
   role: UserRole;
 }
 

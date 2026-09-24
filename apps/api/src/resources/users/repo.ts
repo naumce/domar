@@ -99,12 +99,13 @@ export async function resetUserPassword(db: Db, ctx: TenantContext, id: string) 
 
 /** Self-service. `keepToken` is the caller's session token: every other session of theirs is dropped. */
 export async function changeOwnPassword(db: Db, ctx: TenantContext, currentPassword: string, newPassword: string, keepToken: string): Promise<void> {
-  const user = await getUser(db, ctx, ctx.userId);
+  const userId = ctx.userId!; // behind requireAuth: a session always carries a user
+  const user = await getUser(db, ctx, userId);
   if (!(await verifyPassword(currentPassword, user.passwordHash))) throw new AppError(401, 'invalid_credentials', 'The current password is wrong');
   const passwordHash = await hashPassword(newPassword);
   await db.transaction(async (tx) => {
-    await tx.update(U).set({ passwordHash, updatedAt: new Date() }).where(and(eq(U.tenantId, ctx.tenantId), eq(U.id, ctx.userId)));
-    await deleteOtherSessionsForUser(tx, ctx.userId, keepToken);
-    await writeAudit(tx, ctx, { action: 'user.change_password', entityType: 'user', entityId: ctx.userId });
+    await tx.update(U).set({ passwordHash, updatedAt: new Date() }).where(and(eq(U.tenantId, ctx.tenantId), eq(U.id, userId)));
+    await deleteOtherSessionsForUser(tx, userId, keepToken);
+    await writeAudit(tx, ctx, { action: 'user.change_password', entityType: 'user', entityId: userId });
   });
 }
