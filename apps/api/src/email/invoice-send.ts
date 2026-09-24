@@ -62,8 +62,10 @@ export async function sendPeriodEmails(db: Db, ctx: TenantContext, buildingId: s
       if (res.status === 'sent') sent += 1; else failed += 1;
     } catch (err) {
       // `no_email` is the only expected refusal here and it means "this owner gets a paper copy".
-      if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'no_email') skipped += 1;
-      else throw err;
+      if (err instanceof Error && 'code' in err && (err as { code: unknown }).code === 'no_email') { skipped += 1; continue; }
+      // Anything else (a dead transport, a failed log write) must not cost the remaining owners.
+      rt.log.warn({ err, tenantId: ctx.tenantId, buildingId, invoiceId: row.id }, 'invoice send threw; marked failed');
+      failed += 1;
     }
   }
   return { sent, failed, skipped };

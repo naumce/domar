@@ -74,4 +74,21 @@ describe('invoice email', () => {
     expect((await post(`/api/invoices/${F.invoices.O1.id}/send`, {}, b.cookie)).statusCode).toBe(404);
     expect((await post(`/api/buildings/${F.buildingId}/periods/${F.periodId}/send`, {}, b.cookie)).statusCode).toBe(404);
   });
+
+  it('never aborts the batch when one owner\'s send throws', async () => {
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${F.owners.O2}`, headers: { cookie: a.cookie }, payload: { email: 'bosko@firma-mail2.mk' } });
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${F.owners.O3}`, headers: { cookie: a.cookie }, payload: { email: 'velko@firma-mail2.mk' } });
+    const original = t.app.mailer.send.bind(t.app.mailer);
+    t.app.mailer.send = (async (msg) => {
+      if (msg.to === 'bosko@firma-mail2.mk') throw new Error('smtp exploded');
+      return original(msg);
+    }) as typeof t.app.mailer.send;
+    try {
+      const res = await post(`/api/buildings/${F.buildingId}/periods/${F.periodId}/send`);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ sent: 2, failed: 1, skipped: 0 });
+    } finally {
+      t.app.mailer.send = original;
+    }
+  });
 });
