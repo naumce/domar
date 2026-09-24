@@ -14,6 +14,8 @@ import { decorate, getReminderRow, listByIds, overdueByOwner, priorRemindersByOw
 const R = schema.reminders; const INV = schema.invoices; const C = schema.contacts; const B = schema.buildings; const T = schema.tenants;
 const PRIOR_WINDOW_MS = 31 * 24 * 3600 * 1000; // one day wider than the 30-day rule the pure function applies
 
+type Pack = ReturnType<typeof getCountryPack>;
+
 export interface ReminderRuntime {
   mailer: Mailer;
   pdfBrowserChannel: string;
@@ -24,72 +26,88 @@ export interface ReminderRuntime {
 export async function runBuildingReminders(db: Db, ctx: TenantContext, buildingId: string, rt: ReminderRuntime, now: Date = new Date()) {
   const building = await getBuilding(db, ctx, buildingId);
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  const pack = getCountryPack(tenant.countryCode as CountryCode);
+  // `tenants.country_code` is a plain varchar, so an unsupported value arrives here as undefined.
+  const pack = getCountryPack(tenant.countryCode as CountryCode) as Pack | undefined;
+  if (!pack) throw new Error(`unknown country pack: ${tenant.countryCode}`);
 
-  const [overdue, priors] = await Promise.all([
-    overdueByOwner(db, ctx, buildingId, now),
-    priorRemindersByOwner(db, ctx, buildingId, new Date(now.getTime() - PRIOR_WINDOW_MS)),
-  ]);
+  // Evaluate and insert under a lock on the building row: two overlapping runs serialise, and the
+  // second one then reads the first one's reminders as priors instead of duplicating them.
+  const { inserted, contactById } = await db.transaction(async (tx) => {
+    await tx.select({ id: B.id }).from(B).where(and(eq(B.tenantId, ctx.tenantId), eq(B.id, buildingId))).for('update');
+    const empty = { inserted: [] as ReminderRecord[], contactById: new Map<string, typeof C.$inferSelect>() };
 
-  const plans = overdue.flatMap((o) => {
-    // One owner with a malformed period or due date must not abort the whole building run.
-    try {
-      const ev = evaluateOwner({ invoices: o.invoices, priorReminders: priors.get(o.contactId) ?? [] }, pack.reminderRules, now);
-      if (!ev.due || ev.reason === null) return [];
-      const covered = o.invoices.filter((i) => ev.invoiceIds.includes(i.id));
-      return [{ contactId: o.contactId, reason: ev.reason, invoiceIds: ev.invoiceIds, covered }];
-    } catch (err) {
-      rt.log.warn({ err, tenantId: ctx.tenantId, buildingId, contactId: o.contactId }, 'reminder evaluation failed for owner; skipped');
-      return [];
-    }
-  });
-  if (plans.length === 0) return { rows: [] };
+    const overdue = await overdueByOwner(tx, ctx, buildingId, now);
+    const priors = await priorRemindersByOwner(tx, ctx, buildingId, new Date(now.getTime() - PRIOR_WINDOW_MS));
 
-  const allInvoiceIds = [...new Set(plans.flatMap((p) => p.invoiceIds))];
-  const [contacts, invoiceNumbers] = await Promise.all([
-    db.select().from(C).where(and(eq(C.tenantId, ctx.tenantId), inArray(C.id, plans.map((p) => p.contactId)))),
-    db.select({ id: INV.id, number: INV.number }).from(INV).where(and(eq(INV.tenantId, ctx.tenantId), inArray(INV.id, allInvoiceIds))),
-  ]);
-  const contactById = new Map(contacts.map((c) => [c.id, c]));
-  const numberOf = new Map(invoiceNumbers.map((i) => [i.id, i.number]));
-
-  const values = plans.map((p) => {
-    const contact = contactById.get(p.contactId)!;
-    const invoices: ReminderHtmlInvoice[] = p.covered
-      .map((i) => ({ number: numberOf.get(i.id) ?? null, period: i.period, dueAt: i.dueAt, outstandingMinor: i.outstandingMinor }))
-      .sort((x, y) => x.period.localeCompare(y.period));
-    const totalOutstandingMinor = p.covered.reduce((s, i) => s + i.outstandingMinor, 0);
-    const documentHtml = renderReminderHtml({
-      tenant, building, contact, invoices, totalOutstandingMinor,
-      labels: { reminderIntro: pack.labels.reminderIntro, reminderLegal: pack.labels.reminderLegal },
-      formatMoney: pack.formatMoney, locale: 'mk', createdAt: now,
+    const plans = overdue.flatMap((o) => {
+      // One owner with a malformed period or due date must not abort the whole building run.
+      try {
+        const ev = evaluateOwner({ invoices: o.invoices, priorReminders: priors.get(o.contactId) ?? [] }, pack.reminderRules, now);
+        if (!ev.due || ev.reason === null) return [];
+        const covered = o.invoices.filter((i) => ev.invoiceIds.includes(i.id));
+        return [{ contactId: o.contactId, reason: ev.reason, invoiceIds: ev.invoiceIds, covered }];
+      } catch (err) {
+        rt.log.warn({ err, tenantId: ctx.tenantId, buildingId, contactId: o.contactId }, 'reminder evaluation failed for owner; skipped');
+        return [];
+      }
     });
-    return {
-      tenantId: ctx.tenantId, buildingId, contactId: p.contactId, reason: p.reason, invoiceIds: p.invoiceIds,
-      totalOutstandingMinor, channel: (contact.email ? 'email' : 'letter') as 'email' | 'letter',
-      status: 'pending' as const, documentHtml,
-    };
-  });
+    if (plans.length === 0) return empty;
 
-  const inserted = await db.transaction(async (tx) => {
+    const allInvoiceIds = [...new Set(plans.flatMap((p) => p.invoiceIds))];
+    const contacts = await tx.select().from(C).where(and(eq(C.tenantId, ctx.tenantId), inArray(C.id, plans.map((p) => p.contactId))));
+    const invoiceNumbers = await tx.select({ id: INV.id, number: INV.number }).from(INV).where(and(eq(INV.tenantId, ctx.tenantId), inArray(INV.id, allInvoiceIds)));
+    const contactById = new Map(contacts.map((c) => [c.id, c]));
+    const numberOf = new Map(invoiceNumbers.map((i) => [i.id, i.number]));
+
+    const values = plans.map((p) => {
+      const contact = contactById.get(p.contactId)!;
+      const invoices: ReminderHtmlInvoice[] = p.covered
+        .map((i) => ({ number: numberOf.get(i.id) ?? null, period: i.period, dueAt: i.dueAt, outstandingMinor: i.outstandingMinor }))
+        .sort((x, y) => x.period.localeCompare(y.period));
+      const totalOutstandingMinor = p.covered.reduce((s, i) => s + i.outstandingMinor, 0);
+      const documentHtml = renderReminderHtml({
+        tenant, building, contact, invoices, totalOutstandingMinor,
+        labels: { reminderIntro: pack.labels.reminderIntro, reminderLegal: pack.labels.reminderLegal },
+        formatMoney: pack.formatMoney, locale: 'mk', createdAt: now,
+      });
+      return {
+        tenantId: ctx.tenantId, buildingId, contactId: p.contactId, reason: p.reason, invoiceIds: p.invoiceIds,
+        totalOutstandingMinor, channel: (contact.email ? 'email' : 'letter') as 'email' | 'letter',
+        status: 'pending' as const, documentHtml,
+      };
+    });
+
     const rows = await tx.insert(R).values(values).returning();
     await writeAudit(tx, ctx, {
       action: 'reminder.create', entityType: 'building', entityId: buildingId,
       after: { created: rows.map((r) => ({ id: r.id, contactId: r.contactId, reason: r.reason, channel: r.channel, totalOutstandingMinor: r.totalOutstandingMinor, invoiceIds: r.invoiceIds })) },
     });
-    return rows;
+    return { inserted: rows, contactById };
   });
 
   // After the commit: a failed send updates the row, it never rolls the reminder back (spec §18.8).
   for (const row of inserted) {
     if (row.channel !== 'email') continue;
     const contact = contactById.get(row.contactId)!;
-    await sendReminderEmail(db, ctx, row, contact.email!, building.name, pack, rt);
+    try {
+      await sendReminderEmail(db, ctx, row, contact.email!, building.name, pack, rt);
+    } catch (err) {
+      // A throw here (a dead transport, a failed log write) must not cost the remaining owners.
+      rt.log.warn({ err, tenantId: ctx.tenantId, buildingId, reminderId: row.id }, 'reminder send threw; marked failed');
+      await markSendFailed(db, ctx, row.id, err);
+    }
   }
   return listByIds(db, ctx, inserted.map((r) => r.id));
 }
 
-type Pack = ReturnType<typeof getCountryPack>;
+/** Last-resort bookkeeping when a send throws outright, so the reminder is never left pending. */
+async function markSendFailed(db: Db, ctx: TenantContext, id: string, err: unknown) {
+  const error = (err instanceof Error ? err.message : 'send_failed').slice(0, 500);
+  await db.transaction(async (tx) => {
+    await tx.update(R).set({ status: 'failed', sentAt: null, error }).where(and(eq(R.tenantId, ctx.tenantId), eq(R.id, id)));
+    await writeAudit(tx, ctx, { action: 'reminder.send', entityType: 'reminder', entityId: id, after: { status: 'failed', error } });
+  });
+}
 
 async function sendReminderEmail(db: Db, ctx: TenantContext, row: ReminderRecord, to: string, buildingName: string, pack: Pack, rt: ReminderRuntime) {
   const subject = `Опомена за неплатени пресметки — ${buildingName}`;
@@ -142,16 +160,16 @@ export async function runAllTenants(db: Db, rt: ReminderRuntime, now: Date = new
   let reminders = 0;
   for (const tenant of tenants) {
     const ctx: TenantContext = { tenantId: tenant.id, userId: null, role: 'owner' };
-    // One broken tenant must not stop the nightly run for everybody else.
-    try {
-      const rows = await db.select({ id: B.id }).from(B).where(eq(B.tenantId, tenant.id));
-      for (const b of rows) {
-        buildings += 1;
+    const rows = await db.select({ id: B.id }).from(B).where(eq(B.tenantId, tenant.id));
+    for (const b of rows) {
+      // One broken building must not stop the nightly run for any of the others.
+      try {
         const res = await runBuildingReminders(db, ctx, b.id, rt, now);
+        buildings += 1;
         reminders += res.rows.length;
+      } catch (err) {
+        rt.log.warn({ err, tenantId: tenant.id, buildingId: b.id }, 'reminder run failed for building; skipped');
       }
-    } catch (err) {
-      rt.log.warn({ err, tenantId: tenant.id }, 'reminder run failed for tenant; skipped');
     }
   }
   return { tenants: tenants.length, buildings, reminders };

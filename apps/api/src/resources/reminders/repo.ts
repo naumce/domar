@@ -1,6 +1,6 @@
 import { type Db, schema } from '@domar/db';
 import type { PriorReminder, UnpaidInvoice } from '@domar/domain';
-import { and, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 
@@ -29,13 +29,15 @@ export async function overdueByOwner(db: Db, ctx: TenantContext, buildingId: str
 }
 
 /**
- * Reminders created for this building since `since`, keyed by contact. A reminder that was created
- * but never sent (a pending letter, a failed email) still counts as sent, or the job would create a
- * duplicate every night.
+ * Reminders of this building whose effective send date is at or after `since`, keyed by contact. A
+ * reminder that was created but never sent (a pending letter, a failed email) still counts as sent,
+ * or the job would create a duplicate every night. The filter is `coalesce(sent_at, created_at)`,
+ * the very expression the suppression rule reads: a letter created long ago and printed last week
+ * is still a recent reminder, and filtering on `created_at` alone would hide it from the rule.
  */
 export async function priorRemindersByOwner(db: Db, ctx: TenantContext, buildingId: string, since: Date): Promise<Map<string, PriorReminder[]>> {
   const rows = await db.select({ contactId: R.contactId, sentAt: R.sentAt, createdAt: R.createdAt, invoiceIds: R.invoiceIds })
-    .from(R).where(and(eq(R.tenantId, ctx.tenantId), eq(R.buildingId, buildingId), gte(R.createdAt, since)));
+    .from(R).where(and(eq(R.tenantId, ctx.tenantId), eq(R.buildingId, buildingId), sql`coalesce(${R.sentAt}, ${R.createdAt}) >= ${since.toISOString()}::timestamptz`));
   const out = new Map<string, PriorReminder[]>();
   for (const r of rows) {
     const list = out.get(r.contactId) ?? [];

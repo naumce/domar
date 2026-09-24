@@ -166,4 +166,38 @@ describe('reminders', () => {
     expect((await get(`/api/reminders/${id}/pdf`, b.cookie)).statusCode).toBe(404);
     expect((await post(`/api/reminders/${id}/printed`, {}, b.cookie)).statusCode).toBe(404);
   });
+
+  /** Two overdue periods on a fresh building, so each of the three owners is due a reminder. */
+  const overdueBuilding = async () => {
+    const built = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(120) });
+    const p = (await post(`/api/buildings/${built.buildingId}/periods`, { period: '2026-10' })).json().id;
+    await post(`/api/buildings/${built.buildingId}/periods/${p}/generate`);
+    await post(`/api/buildings/${built.buildingId}/periods/${p}/publish`, { dueAt: daysAgo(90) });
+    return built;
+  };
+
+  it('suppresses on the sent date, not on the creation date', async () => {
+    const C = await overdueBuilding();
+    expect((await post(`/api/buildings/${C.buildingId}/reminders/run`)).json().rows).toHaveLength(3);
+    // A letter created 40 days ago but printed 5 days ago is still a recent reminder: filtering the
+    // priors on created_at alone would hide it from the rule and duplicate every reminder.
+    await t.db.update(schema.reminders)
+      .set({ createdAt: new Date(Date.now() - 40 * 86_400_000), sentAt: new Date(Date.now() - 5 * 86_400_000), status: 'printed' })
+      .where(eq(schema.reminders.buildingId, C.buildingId));
+    const again = await post(`/api/buildings/${C.buildingId}/reminders/run`);
+    expect(again.statusCode).toBe(200);
+    expect(again.json().rows).toEqual([]);
+  });
+
+  it('serialises two overlapping runs of the same building', async () => {
+    const D = await overdueBuilding();
+    const [r1, r2] = await Promise.all([
+      post(`/api/buildings/${D.buildingId}/reminders/run`),
+      post(`/api/buildings/${D.buildingId}/reminders/run`),
+    ]);
+    expect(r1.statusCode).toBe(200);
+    expect(r2.statusCode).toBe(200);
+    expect((r1.json().rows as Row[]).length + (r2.json().rows as Row[]).length).toBe(3);
+    expect((await get(`/api/buildings/${D.buildingId}/reminders`)).json().rows).toHaveLength(3);
+  });
 });
