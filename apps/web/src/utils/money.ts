@@ -18,8 +18,14 @@ export function percentFromBp(bp: number): string {
   return `${(bp / 100).toFixed(2).replace('.', ',')} %`;
 }
 
-/** Plain quantity (m², shares) in the mk locale: 54.5 → "54,5", 1234.5 → "1.234,5"; null → "—". */
+/**
+ * Plain quantity (m², shares) in the mk format: 54.5 → "54,5", 1234.5 → "1.234,5"; null → "—".
+ * Hand-rolled like `formatMoney`: Chrome ships no `mk-MK` ICU data, so `Intl` silently falls back to en-US.
+ */
 export function formatNumber(value: number | null | undefined, maxFractionDigits = 2): string {
-  if (value === null || value === undefined) return '—';
-  return new Intl.NumberFormat('mk-MK', { maximumFractionDigits: maxFractionDigits }).format(value);
+  if (value === null || value === undefined || Number.isNaN(value)) return '—';
+  const [int, frac = ''] = Math.abs(value).toFixed(maxFractionDigits).split('.');
+  const grouped = int!.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const trimmed = frac.replace(/0+$/, '');
+  return `${value < 0 ? '-' : ''}${grouped}${trimmed ? `,${trimmed}` : ''}`;
 }
