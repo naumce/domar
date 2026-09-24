@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { conflict, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -20,11 +20,13 @@ const toRow = (r: { inv: typeof INV.$inferSelect; period: string; paidMinor: str
   return { ...r.inv, period: r.period, paidMinor, outstandingMinor: Math.max(0, r.inv.totalMinor - paidMinor), contact: r.contact, building: r.building };
 };
 
-export async function listInvoices(db: Db, ctx: TenantContext, q: { buildingId?: string | undefined; period?: string | undefined; status?: string | undefined; contactId?: string | undefined; page: number; pageSize: number }) {
+export async function listInvoices(db: Db, ctx: TenantContext, q: { buildingId?: string | undefined; period?: string | undefined; status?: string | undefined; statuses?: string[] | undefined; contactId?: string | undefined; page: number; pageSize: number }) {
   const conds = [eq(INV.tenantId, ctx.tenantId)];
   if (q.buildingId) conds.push(eq(INV.buildingId, q.buildingId));
   if (q.period) conds.push(eq(BP.period, q.period));
   if (q.status) conds.push(eq(INV.status, q.status as typeof INV.$inferSelect.status));
+  // The portal asks for "published and later" as a set; every manager caller omits this.
+  if (q.statuses && q.statuses.length > 0) conds.push(inArray(INV.status, q.statuses as (typeof INV.$inferSelect.status)[]));
   if (q.contactId) conds.push(eq(INV.contactId, q.contactId));
   const where = and(...conds);
   const [rows, totalRows] = await Promise.all([

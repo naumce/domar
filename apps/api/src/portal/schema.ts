@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { pageQuery } from '../resources/common.js';
+import { fundEnum } from '../resources/reserve-fund/schema.js';
 
 export const portalInviteOut = z.object({
   code: z.string(),
@@ -26,4 +28,23 @@ export const portalLinkOut = z.object({
 export const portalMeOut = z.object({
   account: z.object({ id: z.string(), email: z.string() }),
   links: z.array(portalLinkOut),
+});
+
+export const portalContactQuery = z.object({ contactId: z.string().uuid() });
+export const portalInvoiceListQuery = pageQuery.extend({ contactId: z.string().uuid() });
+export const portalPaymentListQuery = pageQuery.extend({ contactId: z.string().uuid() });
+export const portalStatementQuery = portalContactQuery.extend({ buildingId: z.string().uuid().optional() });
+
+export const portalFundOut = z.object({
+  building: z.object({ id: z.string(), name: z.string() }),
+  regular: z.object({ balanceMinor: z.number().int(), billedMinor: z.number().int() }),
+  reserve: z.object({ balanceMinor: z.number().int(), billedMinor: z.number().int() }),
+  transactions: z.array(z.object({
+    id: z.string(),
+    kind: z.enum(['charge', 'payment', 'expense', 'adjustment', 'opening']),
+    fund: fundEnum,
+    amountMinor: z.number().int(),
+    bookedAt: z.date().or(z.string()),
+    description: z.string().nullable(),
+  })),
 });
