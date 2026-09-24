@@ -2,10 +2,21 @@ node_modules
 **/node_modules
 **/dist
 .git
+.github
 .env
 .env.*
 !.env.example
+backups
 coverage
 playwright-report
-e2e/test-results
+docs
+.superpowers
+.vscode
+.idea
+*.md
+**/*.md
+# e2e is not part of the runtime, but the lockfile has an importer for it, so its manifest must stay
+# in the context or `pnpm install --frozen-lockfile` fails.
+e2e/*
+!e2e/package.json
 *.log

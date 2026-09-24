@@ -4,6 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import { join, sep } from 'node:path';
 import type { Db } from '@domar/db';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { hasZodFastifySchemaValidationErrors, jsonSchemaTransform, serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -52,10 +53,25 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
 
   // `wildcard: false`: no catch-all GET route, so unknown paths reach the not-found handler below
   // and only that handler decides between the SPA shell and the JSON envelope.
-  if (opts.config.serveWeb) await app.register(fastifyStatic, { root: opts.config.webDist, wildcard: false });
+  if (opts.config.serveWeb) {
+    // Vite writes content-hashed files into assets/, so those can be cached forever; the shell that
+    // names them must always be revalidated, or a deploy keeps serving the previous bundle's HTML.
+    const assetsDir = join(opts.config.webDist, 'assets') + sep;
+    await app.register(fastifyStatic, {
+      root: opts.config.webDist,
+      wildcard: false,
+      // `send` would otherwise write its own `cache-control` over whatever setHeaders put there.
+      cacheControl: false,
+      setHeaders: (res, path) => {
+        res.setHeader('cache-control', path.startsWith(assetsDir) ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    });
+  }
 
   app.setNotFoundHandler((req, reply) => {
-    if (opts.config.serveWeb && req.method === 'GET' && !req.url.startsWith('/api')) return reply.sendFile('index.html');
+    // A miss under /assets/ is a stale or wrong bundle reference, never a client route: answering it
+    // with the SPA shell would hand the browser HTML where it expects JavaScript.
+    if (opts.config.serveWeb && req.method === 'GET' && !req.url.startsWith('/api') && !req.url.startsWith('/assets/')) return reply.sendFile('index.html');
     return reply.status(404).send({ error: { code: 'not_found', message: `Route ${req.method} ${req.url} not found` } });
   });
 

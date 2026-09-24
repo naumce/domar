@@ -35,7 +35,10 @@ ENV NODE_ENV=production \
     API_PORT=3001 \
     WEB_DIST=/app/apps/web/dist \
     PDF_BROWSER_CHANNEL=chromium
-COPY --from=build /app /app
-RUN chmod +x /app/scripts/docker-entrypoint.sh
+# pwuser ships with the Playwright image and already owns the browsers under /ms-playwright; --chown
+# on the copy gives it /app too without duplicating the tree in a second `chown -R` layer.
+COPY --from=build --chown=pwuser:pwuser /app /app
+USER pwuser
 EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD curl -fsS http://localhost:3001/api/health || exit 1
 CMD ["/app/scripts/docker-entrypoint.sh"]
