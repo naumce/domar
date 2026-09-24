@@ -36,7 +36,7 @@ describe('reminders', () => {
   const get = (url: string, cookie?: string) => t.app.inject({ method: 'GET', url, headers: { cookie: cookie ?? a.cookie } });
 
   beforeAll(async () => {
-    t = await createTestApp({ SMTP_URL: 'json', JOB_TOKEN: 'cron-secret' });
+    t = await createTestApp({ SMTP_URL: 'json', JOB_TOKEN: 'cron-secret-0123456789' });
     a = await registerTenant(t.app, 'firma-rem');
     b = await registerTenant(t.app, 'firma-other');
     // Building A: 2026-09 and 2026-10, both published with a due date in the past.
@@ -156,7 +156,7 @@ describe('reminders', () => {
   });
 
   it('runs the cron job over every tenant and creates nothing inside the window', async () => {
-    const res = await t.app.inject({ method: 'POST', url: '/api/jobs/reminders', headers: { 'x-job-token': 'cron-secret' } });
+    const res = await t.app.inject({ method: 'POST', url: '/api/jobs/reminders', headers: { 'x-job-token': 'cron-secret-0123456789' } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ tenants: 2, buildings: 2, reminders: 0, failed: 0 });
   });

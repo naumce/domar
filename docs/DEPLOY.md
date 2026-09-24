@@ -33,6 +33,9 @@ Only eight variables come from `.env`; compose interpolates them into the stack:
 | `EMAIL_FROM` | `api` — envelope sender | `domar <no-reply@$DOMAIN>` |
 | `JOB_TOKEN` | `api` — the reminder cron's shared secret | none — compose fails without it |
 
+Generate `JOB_TOKEN` with `openssl rand -hex 32`; the api refuses to start with a token shorter
+than 16 characters.
+
 `POSTGRES_PASSWORD` is substituted into `DATABASE_URL` unescaped, so keep it URL-safe: letters,
 digits, `-` and `_`. `BACKUP_DIR` is read from `.env` by `scripts/backup.sh` only.
 

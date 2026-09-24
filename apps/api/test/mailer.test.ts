@@ -14,9 +14,11 @@ describe('config', () => {
     expect(c.jobToken).toBe('');
   });
 
-  it('requires JOB_TOKEN in production', () => {
+  it('requires a JOB_TOKEN of at least 16 characters in production', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/JOB_TOKEN/);
-    expect(loadConfig({ ...base, NODE_ENV: 'production', JOB_TOKEN: 'secret' }).jobToken).toBe('secret');
+    expect(() => loadConfig({ ...base, JOB_TOKEN: 'short-secret' })).toThrow(/at least 16/);
+    const token = 'a'.repeat(16);
+    expect(loadConfig({ ...base, NODE_ENV: 'production', JOB_TOKEN: token }).jobToken).toBe(token);
   });
 });
 

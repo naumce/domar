@@ -19,6 +19,10 @@ const schema = z.object({
   if (v.NODE_ENV === 'production' && !v.JOB_TOKEN) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JOB_TOKEN'], message: 'JOB_TOKEN is required when NODE_ENV=production' });
   }
+  // The job endpoint is reachable from the internet, so a short shared secret is worth guessing.
+  if (v.JOB_TOKEN && v.JOB_TOKEN.length < 16) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JOB_TOKEN'], message: 'JOB_TOKEN must be at least 16 characters' });
+  }
 });
 
 export interface Config {
