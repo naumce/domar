@@ -119,6 +119,7 @@ export async function importUnits(db: Db, ctx: TenantContext, buildingId: string
       action: 'import.units', entityType: 'building', entityId: buildingId,
       after: { counts, mode: body.mode, force: body.force, afterPublishedPeriod: published, conflicts, errorCount: errors.length },
     });
-    return { dryRun: false, rows: importable, errors, counts, conflicts, hasPublishedPeriod: published, blocked: null };
+    // Every parsed row, as the preview returned: the table the operator just checked must not shrink.
+    return { dryRun: false, rows, errors, counts, conflicts, hasPublishedPeriod: published, blocked: null };
   });
 }
