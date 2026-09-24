@@ -19,10 +19,12 @@ const month = ref(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2,
 const fee = ref('');
 const feeTax = ref<string | null>(null);
 const error = ref('');
+const ready = ref(false);
 onMounted(async () => {
-  await res.load();
-  taxRates.value = (await api.get<{ rows: TaxRate[] }>('/api/tax-rates')).rows;
+  const [, rates] = await Promise.all([res.load(), api.get<{ rows: TaxRate[] }>('/api/tax-rates')]);
+  taxRates.value = rates.rows;
   feeTax.value = taxRates.value.find((r) => r.isDefault)?.id ?? null;
+  ready.value = true;
 });
 async function create() {
   error.value = '';
@@ -37,7 +39,7 @@ async function create() {
     <AppInput v-model="month" :label="t('billing.period')" type="month" data-test="period-month" />
     <AppInput v-model="fee" :label="t('periods.managementFee')" data-test="period-fee" placeholder="150,00" />
     <AppSelect v-model="feeTax" :label="t('periods.managementFeeTax')" :options="[{ value: null, label: t('services.noTax') }, ...taxRates.map((r) => ({ value: r.id, label: `${r.name} (${percentFromBp(r.rateBp)})` }))]" />
-    <AppButton type="submit" data-test="period-create">{{ t('periods.create') }}</AppButton>
+    <AppButton type="submit" :disabled="!ready" data-test="period-create">{{ t('periods.create') }}</AppButton>
     <p v-if="error" class="col-span-4 text-sm text-red-600" data-test="error">{{ error }}</p>
   </form>
   <p v-if="res.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>

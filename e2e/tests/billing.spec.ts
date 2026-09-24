@@ -29,6 +29,7 @@ test('bill a building end to end', async ({ page, request }) => {
 
   // service through the UI
   await page.getByTestId('nav-services').click();
+  await expect(page).toHaveURL(/\/app\/services$/); // the previous page's `add` must be gone before we click
   await page.getByTestId('add').click();
   await page.getByTestId('service-name').fill('Чистење');
   await page.getByTestId('service-price').fill('300');

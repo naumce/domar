@@ -16,6 +16,7 @@ test('register, create contact, building, unit, logout and login', async ({ page
   await expect(page.getByTestId('stat-buildings')).toHaveText('0');
 
   await page.getByTestId('nav-contacts').click();
+  await expect(page).toHaveURL(/\/app\/contacts$/); // the previous page's `add` must be gone before we click
   await page.getByTestId('add').click();
   await page.getByTestId('firstName').fill('Марко');
   await page.getByTestId('lastName').fill('Марков');
@@ -23,6 +24,7 @@ test('register, create contact, building, unit, logout and login', async ({ page
   await expect(page.getByTestId('row')).toHaveCount(1);
 
   await page.getByTestId('nav-buildings').click();
+  await expect(page).toHaveURL(/\/app\/buildings$/); // the previous page's `add` must be gone before we click
   await page.getByTestId('add').click();
   await page.getByTestId('name').fill('Партизанска 12');
   await page.getByTestId('address').fill('Партизанска 12');

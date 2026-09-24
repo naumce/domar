@@ -22,6 +22,7 @@ test('import units from CSV, read the owner balance and add a staff user', async
   await expect(page).toHaveURL(/\/app$/);
 
   await page.getByTestId('nav-buildings').click();
+  await expect(page).toHaveURL(/\/app\/buildings$/); // the previous page's `add` must be gone before we click
   await page.getByTestId('add').click();
   await page.getByTestId('name').fill('Партизанска 12');
   await page.getByTestId('address').fill('Партизанска 12');
