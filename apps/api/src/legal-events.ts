@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import type { TenantContext } from './tenant-context.js';
 
 const LE = schema.legalEvents;
@@ -38,8 +38,14 @@ export async function recordLegalEvent(tx: Db, ctx: TenantContext, e: NewLegalEv
   return row!;
 }
 
-/** Art. 45(4) is "once per building": the first owner to link makes the fund statement available. */
+/**
+ * Art. 45(4) is "once per building": the first owner to link makes the fund statement available.
+ * Two concurrent transactions (two owners registering at once) would otherwise both pass the select
+ * before either commits; the advisory lock serialises them on (tenant, building, kind) so the second
+ * transaction blocks until the first commits, then re-reads under READ COMMITTED and sees its row.
+ */
 export async function recordLegalEventOnce(tx: Db, ctx: TenantContext, e: NewLegalEvent): Promise<LegalEventRow | null> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${ctx.tenantId}:${e.buildingId}:${e.kind}`}))`);
   const [existing] = await tx.select({ id: LE.id }).from(LE)
     .where(and(eq(LE.tenantId, ctx.tenantId), eq(LE.buildingId, e.buildingId), eq(LE.kind, e.kind))).limit(1);
   if (existing) return null;

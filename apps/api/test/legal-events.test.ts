@@ -113,6 +113,43 @@ describe('legal events', () => {
     expect(fund).toHaveLength(1);
   });
 
+  it('two owners of the same building registering at once write exactly one fund_statement_available', async () => {
+    const C = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(75) });
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${C.owners.O1}`, headers: { cookie: a.cookie }, payload: { email: 'concurrent1@firma-le.mk' } });
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${C.owners.O2}`, headers: { cookie: a.cookie }, payload: { email: 'concurrent2@firma-le.mk' } });
+    const invite1 = (await post(`/api/contacts/${C.owners.O1}/portal-invite`)).json();
+    const invite2 = (await post(`/api/contacts/${C.owners.O2}/portal-invite`)).json();
+    const [res1, res2] = await Promise.all([
+      t.app.inject({ method: 'POST', url: '/api/portal/register', payload: { code: invite1.code, email: 'concurrent1.owner@example.mk', password: 'correct-horse-1' } }),
+      t.app.inject({ method: 'POST', url: '/api/portal/register', payload: { code: invite2.code, email: 'concurrent2.owner@example.mk', password: 'correct-horse-1' } }),
+    ]);
+    expect(res1.statusCode).toBe(201);
+    expect(res2.statusCode).toBe(201);
+    const fund = (await events(C.buildingId)).filter((e) => e.kind === 'fund_statement_available');
+    expect(fund).toHaveLength(1);
+  });
+
+  it('a reminder send stubbed to fail writes no reminder_sent event; a successful resend writes exactly one', async () => {
+    const D = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(75) });
+    const p10 = (await post(`/api/buildings/${D.buildingId}/periods`, { period: '2026-10' })).json().id;
+    await post(`/api/buildings/${D.buildingId}/periods/${p10}/generate`);
+    await post(`/api/buildings/${D.buildingId}/periods/${p10}/publish`, { dueAt: daysAgo(45) });
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${D.owners.O1}`, headers: { cookie: a.cookie }, payload: { email: 'fail-resend@firma-le.mk' } });
+
+    const send = vi.spyOn(t.app.mailer, 'send').mockResolvedValue({ error: 'connection refused' });
+    const created: { id: string; contactId: string; channel: string; status: string }[] =
+      (await post(`/api/buildings/${D.buildingId}/reminders/run`)).json().rows;
+    send.mockRestore();
+    const failed = created.find((r) => r.contactId === D.owners.O1 && r.channel === 'email')!;
+    expect(failed.status).toBe('failed');
+    expect((await events(D.buildingId)).filter((e) => e.kind === 'reminder_sent' && e.refId === failed.id)).toHaveLength(0);
+
+    const resent = await post(`/api/reminders/${failed.id}/resend`);
+    expect(resent.statusCode).toBe(200);
+    expect(resent.json().status).toBe('sent');
+    expect((await events(D.buildingId)).filter((e) => e.kind === 'reminder_sent' && e.refId === failed.id)).toHaveLength(1);
+  });
+
   it('lists newest first and pages', async () => {
     const page = (await get(`/api/buildings/${A.buildingId}/legal-events?page=1&pageSize=2`)).json();
     expect(page.rows).toHaveLength(2);
