@@ -3,7 +3,7 @@ import {
   type ComplianceSnapshot, type CountryCode, evaluateBuildingCompliance, evaluateOwner,
   getCountryPack, localDayStart,
 } from '@domar/domain';
-import { and, asc, count, countDistinct, desc, eq, isNotNull, max, ne } from 'drizzle-orm';
+import { and, asc, count, countDistinct, desc, eq, inArray, isNotNull, max } from 'drizzle-orm';
 import { countEvents, lastEventAt } from '../../legal-events.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
@@ -11,6 +11,9 @@ import { overdueByOwner, priorRemindersByOwner } from '../reminders/repo.js';
 
 const B = schema.buildings; const BP = schema.billingPeriods; const BC = schema.buildingContracts; const AS = schema.assemblies;
 const OCL = schema.ownerContactLinks; const U = schema.units; const T = schema.tenants;
+
+/** What Art. 37 counts as an assembly of this building: one the owners were actually summoned to. */
+const COUNTED_STATUSES = ['invited', 'held'] as const;
 
 /** One day wider than the 30-day suppression rule, exactly as `runBuildingReminders` reads it. */
 const PRIOR_WINDOW_MS = 31 * 24 * 3600 * 1000;
@@ -71,16 +74,18 @@ export async function buildComplianceSnapshot(db: Db, ctx: TenantContext, buildi
       .where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.buildingId, building.id), eq(BC.kind, 'management')))
       .orderBy(desc(BC.startsOn), desc(BC.createdAt)).limit(1),
     reminderState(db, ctx, building.id, now, pack.reminderRules),
-    // The assemblies table, not the event log (plan addendum 9): a scheduled assembly already lifts
+    // The assemblies table, not the event log (plan addendum 9): a *called* assembly already lifts
     // the duty out of `n/a`, and the held/invited pair comes off one row so the Art. 37
-    // late-invitation flag compares an assembly's own invitation with its own date.
+    // late-invitation flag compares an assembly's own invitation with its own date. A draft is the
+    // manager's notepad — nobody has been summoned yet — and a cancelled assembly summoned nobody,
+    // so neither counts and a building with only drafts is still one domar knows nothing about.
     db.select({ n: count() }).from(AS)
-      .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), ne(AS.status, 'cancelled'))),
+      .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), inArray(AS.status, [...COUNTED_STATUSES]))),
     db.select({ heldAt: AS.heldAt, invitedAt: AS.invitedAt }).from(AS)
       .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), eq(AS.status, 'held')))
       .orderBy(desc(AS.heldAt)).limit(1),
     db.select({ invitedAt: AS.invitedAt }).from(AS)
-      .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), ne(AS.status, 'cancelled'), isNotNull(AS.invitedAt)))
+      .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), inArray(AS.status, [...COUNTED_STATUSES]), isNotNull(AS.invitedAt)))
       .orderBy(desc(AS.invitedAt)).limit(1),
     lastEventAt(db, ctx, building.id, 'annual_report_issued'),
     lastEventAt(db, ctx, building.id, 'handover_report_issued'),

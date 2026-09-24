@@ -6,7 +6,7 @@ import { badRequest, conflict, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { assemblyOwners, getAssembly, getAssemblyRow } from './repo.js';
 
-const AD = schema.assemblyDecisions; const AV = schema.assemblyVotes; const C = schema.contacts;
+const A = schema.assemblies; const AD = schema.assemblyDecisions; const AV = schema.assemblyVotes; const C = schema.contacts;
 
 export interface NewVote {
   assemblyId: string;
@@ -26,10 +26,22 @@ export async function upsertVote(tx: Db, ctx: TenantContext, v: NewVote): Promis
     .onConflictDoUpdate({ target: [AV.decisionId, AV.contactId], set: { choice: v.choice, via: v.via, castAt: new Date() } });
 }
 
+/**
+ * The same row `claimAssembly` locks when the assembly is held, locked here before the window is
+ * read: a ballot arriving while a hold is in flight blocks on that claim instead of slipping in
+ * between the hold's vote query and its commit, and then re-reads `held` and is refused. Without
+ * the lock the vote would be stored and never tallied — a ballot silently lost.
+ */
+async function lockAssembly(tx: Db, ctx: TenantContext, id: string) {
+  const [row] = await tx.select().from(A).where(and(eq(A.tenantId, ctx.tenantId), eq(A.id, id))).limit(1).for('update');
+  if (!row) throw notFound('Assembly'); // 404 across tenants
+  return row;
+}
+
 /** The manager typing what somebody wrote on paper. Same window, same one-vote rule as the portal. */
 export async function castPaperVote(db: Db, ctx: TenantContext, id: string, decisionId: string, input: { contactId: string; choice: VoteChoice }) {
   return db.transaction(async (tx) => {
-    const assembly = await getAssemblyRow(tx, ctx, id); // 404 across tenants
+    const assembly = await lockAssembly(tx, ctx, id);
     if (assembly.status !== 'invited') throw conflict('voting_closed', 'Voting is open only while the assembly is called');
     const [decision] = await tx.select({ id: AD.id }).from(AD)
       .where(and(eq(AD.tenantId, ctx.tenantId), eq(AD.assemblyId, id), eq(AD.id, decisionId))).limit(1);

@@ -6,6 +6,8 @@ export interface MinutesDecision {
   title: string; text: string | null; for: number; against: number; abstain: number;
   result: 'passed' | 'rejected' | 'no_quorum';
 }
+/** A ballot from somebody who owned a unit when they cast it and owns none on the day. */
+export interface MinutesDiscardedVote { name: string; decisionTitle: string; choice: 'for' | 'against' | 'abstain' }
 
 export interface AssemblyMinutesHtmlData {
   tenant: { name: string; companyNumber: string | null; address: string | null };
@@ -18,6 +20,7 @@ export interface AssemblyMinutesHtmlData {
   quorum: { present: number; basisTotal: number; quorumReached: boolean };
   attendance: MinutesAttendee[];
   decisions: MinutesDecision[];
+  discarded: MinutesDiscardedVote[];
   labels: { assemblyLegal: string };
   timeZone: string;
   locale: 'mk';
@@ -32,6 +35,9 @@ const L = {
     basis: { share: 'по сопственички удел', count: 'по сопственик' },
     decisions: 'Одлуки', for: 'За', against: 'Против', abstain: 'Воздржани', result: 'Резултат',
     results: { passed: 'Усвоена', rejected: 'Одбиена', no_quorum: 'Без кворум' },
+    choices: { for: 'За', against: 'Против', abstain: 'Воздржан' },
+    discarded: 'Не се земени предвид', discardedNote: 'Гласовите подолу се дадени од лица кои на денот на собирот не се сопственици во зградата, па не влегуваат во пребројувањето.',
+    decision: 'Одлука', vote: 'Глас',
     signatures: 'Потписи', chair: 'Претседавач', minuteTaker: 'Записничар', witness: 'Заверувач',
   },
 } as const;
@@ -39,13 +45,18 @@ const L = {
 const e = escapeHtml;
 
 /** Art. 37: the record of what happened, filed as a `minutes` document the owners can download. */
-export function renderAssemblyMinutesHtml({ tenant, building, scheduledAt, heldAt, location, agenda, quorumBasis, quorum, attendance, decisions, labels, timeZone, locale }: AssemblyMinutesHtmlData): string {
+export function renderAssemblyMinutesHtml({ tenant, building, scheduledAt, heldAt, location, agenda, quorumBasis, quorum, attendance, decisions, discarded, labels, timeZone, locale }: AssemblyMinutesHtmlData): string {
   const t = L[locale];
   const agendaHtml = agenda.map((x) => `<li><strong>${e(x.title)}</strong>${x.text ? `<div class="muted">${e(x.text)}</div>` : ''}</li>`).join('');
   const attendanceHtml = attendance.map((r) =>
     `<tr><td>${e(r.name)}</td><td>${e(r.present ? t.yes : t.no)}</td><td>${e(r.proxyName ?? '—')}</td><td class="num">${r.weightBp}</td></tr>`).join('');
   const decisionsHtml = decisions.map((d) =>
     `<tr><td><strong>${e(d.title)}</strong>${d.text ? `<div class="muted">${e(d.text)}</div>` : ''}</td><td class="num">${d.for}</td><td class="num">${d.against}</td><td class="num">${d.abstain}</td><td>${e(t.results[d.result])}</td></tr>`).join('');
+  const discardedHtml = discarded.length === 0 ? '' :
+    `<h2>${e(t.discarded)}</h2><div class="muted">${e(t.discardedNote)}</div>
+<table><thead><tr><th>${e(t.owner)}</th><th>${e(t.decision)}</th><th>${e(t.vote)}</th></tr></thead><tbody>${
+      discarded.map((d) => `<tr><td>${e(d.name)}</td><td>${e(d.decisionTitle)}</td><td>${e(t.choices[d.choice])}</td></tr>`).join('')
+    }</tbody></table>`;
   return `<!doctype html><html lang="mk"><head><meta charset="utf-8"><title>${e(t.title)}</title>
 <style>
 body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;margin:0}
@@ -68,6 +79,7 @@ ol{margin:4px 0 0 18px;padding:0}li{margin-bottom:6px}
 <div class="quorum"><strong>${e(t.quorum)}</strong> (${e(t.basis[quorumBasis])}): ${quorum.present} / ${quorum.basisTotal} — ${e(quorum.quorumReached ? t.quorumReached : t.quorumMissed)}</div>
 <h2>${e(t.decisions)}</h2>
 <table><thead><tr><th>${e(t.decisions)}</th><th class="num">${e(t.for)}</th><th class="num">${e(t.against)}</th><th class="num">${e(t.abstain)}</th><th>${e(t.result)}</th></tr></thead><tbody>${decisionsHtml}</tbody></table>
+${discardedHtml}
 <div class="legal">${e(labels.assemblyLegal)}</div>
 <div class="sign"><div>${e(t.chair)}</div><div>${e(t.minuteTaker)}</div><div>${e(t.witness)}</div></div>
 <div class="muted" style="margin-top:8px">${e(formatAssemblyDate(heldAt, timeZone))}</div>

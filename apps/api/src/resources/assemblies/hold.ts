@@ -2,7 +2,6 @@ import { type Db, schema } from '@domar/db';
 import { ownerWeight, tallyDecision } from '@domar/domain';
 import { and, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
-import { documentStorageKey } from '../../documents/store.js';
 import { AppError, badRequest } from '../../errors.js';
 import { recordLegalEvent } from '../../legal-events.js';
 import { formatAssemblyDate } from '../../pdf/assembly-invitation-html.js';
@@ -30,8 +29,14 @@ export async function holdAssembly(db: Db, ctx: TenantContext, id: string, input
     const claimed = await claimAssembly(tx, ctx, id, ['invited']);
     const building = await getBuilding(tx, ctx, claimed.buildingId);
     const { tenant, pack } = await tenantPack(tx, ctx);
-    // Plan addendum 15: the day the invitation announced, unless the manager says otherwise.
+    // Plan addendum 15: the day the invitation announced, unless the manager says otherwise. The
+    // minutes are a record of what happened, so the day has to be one that already has: an assembly
+    // closed ahead of its own date is closed with `heldAt` explicitly set to the day it ran.
+    const now = new Date();
     const heldAt = input.heldAt ? new Date(input.heldAt) : claimed.scheduledAt;
+    if (heldAt.getTime() > now.getTime()) {
+      throw badRequest('held_in_the_future', 'An assembly cannot have been held on a day that has not come yet');
+    }
     if (claimed.invitedAt && heldAt.getTime() < claimed.invitedAt.getTime()) {
       throw badRequest('held_before_invited', 'An assembly cannot have been held before it was called');
     }
@@ -46,6 +51,9 @@ export async function holdAssembly(db: Db, ctx: TenantContext, id: string, input
     const decisions = await listDecisionRows(tx, ctx, id);
     const votes = await tx.select().from(AV).where(and(eq(AV.tenantId, ctx.tenantId), eq(AV.assemblyId, id)));
 
+    // A ballot from somebody who has sold since casting it decides nothing — `tallyDecision` drops
+    // it — but it was cast, so the minutes name it rather than let it vanish without a trace.
+    const discardedVotes = votes.filter((v) => !ownerIds.has(v.contactId));
     // Plan addendum 7: casting a vote is participating, so every voter is present whatever the sheet says.
     const voted = new Set(votes.filter((v) => ownerIds.has(v.contactId)).map((v) => v.contactId));
     const sheet = new Map(input.attendance.map((r) => [r.contactId, r]));
@@ -75,9 +83,11 @@ export async function holdAssembly(db: Db, ctx: TenantContext, id: string, input
       }).where(and(eq(AD.tenantId, ctx.tenantId), eq(AD.id, decision.id)));
     }
 
+    const named = [...new Set([...owners.map((o) => o.contactId), ...discardedVotes.map((v) => v.contactId)])];
     const contacts = await tx.select({ id: C.id, firstName: C.firstName, lastName: C.lastName }).from(C)
-      .where(and(eq(C.tenantId, ctx.tenantId), inArray(C.id, owners.map((o) => o.contactId))));
+      .where(and(eq(C.tenantId, ctx.tenantId), inArray(C.id, named)));
     const nameOf = new Map(contacts.map((c) => [c.id, `${c.firstName} ${c.lastName}`.trim()]));
+    const titleOf = new Map(decisions.map((d) => [d.id, d.title]));
     const minutesHtml = renderAssemblyMinutesHtml({
       tenant, building, scheduledAt: claimed.scheduledAt, heldAt, location: claimed.location,
       agenda: claimed.agenda, quorumBasis: claimed.quorumBasis,
@@ -85,6 +95,9 @@ export async function holdAssembly(db: Db, ctx: TenantContext, id: string, input
       attendance: attendance.map((r) => ({ name: nameOf.get(r.contactId) ?? '', present: r.present, proxyName: r.proxyName, weightBp: r.weightBp })),
       decisions: tallies.map(({ decision, tally }) => ({
         title: decision.title, text: decision.text, for: tally.for, against: tally.against, abstain: tally.abstain, result: tally.result,
+      })),
+      discarded: discardedVotes.map((v) => ({
+        name: nameOf.get(v.contactId) ?? '', decisionTitle: titleOf.get(v.decisionId) ?? '', choice: v.choice,
       })),
       labels: { assemblyLegal: pack.labels.assemblyLegal },
       timeZone: tenant.timezone, locale: 'mk',
@@ -112,7 +125,7 @@ export async function holdAssembly(db: Db, ctx: TenantContext, id: string, input
           assemblyId: id, heldAt: heldAt.toISOString(), quorumReached: quorum.quorumReached,
           present: quorum.present, basisTotal: quorum.basisTotal, quorumBasis: claimed.quorumBasis,
           decisions: tallies.map(({ decision, tally }) => ({ id: decision.id, result: tally.result })),
-          minutesDocumentId: document.id,
+          discardedVotes: discardedVotes.length, minutesDocumentId: document.id,
         },
       });
       await writeAudit(tx, ctx, {
@@ -127,9 +140,8 @@ export async function holdAssembly(db: Db, ctx: TenantContext, id: string, input
     } catch (err) {
       // The document row goes back with the transaction, so its bytes must go too: `createDocument`
       // only cleans up after *its own* failure, and a file with no row is an orphan nothing reaches.
-      // The key is the one `createDocument` derived from the very same three values.
       try {
-        await rt.documents.remove(documentStorageKey(ctx.tenantId, document.id, document.mime, document.createdAt));
+        await rt.documents.remove(document.storageKey);
       } catch (removeErr) {
         rt.log.warn({ err: removeErr, documentId: document.id }, 'assembly hold rolled back but its minutes file could not be removed');
       }

@@ -51,7 +51,9 @@ export interface NewDocument {
 /**
  * The bytes land first and the row second, so a failed insert cannot leave a document without a
  * file; the reverse — a file without a row — is undone in the catch, so it cannot leave an orphan
- * either.
+ * either. The storage key comes back with the row: a caller that creates a document inside a wider
+ * transaction needs it to clean the bytes up if that transaction later rolls back. It never reaches
+ * the wire — every response schema is a zod object, which drops what it does not declare.
  */
 export async function createDocument(db: Db, ctx: TenantContext, store: DocumentStore, input: NewDocument) {
   if (!ALLOWED_MIME[input.mime]) throw badRequest('unsupported_media_type', `Files of type ${input.mime} are not accepted`);
@@ -74,7 +76,7 @@ export async function createDocument(db: Db, ctx: TenantContext, store: Document
         fileName: input.fileName, mime: input.mime, sizeBytes, storageKey, sha256, uploadedBy: ctx.userId,
       }).returning();
       await writeAudit(tx, ctx, { action: 'document.create', entityType: 'document', entityId: row!.id, after: publicDocument(row!) });
-      return publicDocument(row!);
+      return { ...publicDocument(row!), storageKey };
     });
   } catch (err) {
     await store.remove(storageKey);

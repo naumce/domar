@@ -38,9 +38,15 @@ export async function portalAssemblies(db: Db, portal: PortalContext, contactIdP
   };
 }
 
-/** The three checks every portal read makes, applied to one assembly before anything is returned. */
-async function visibleAssembly(db: Db, ctx: TenantContext, contactId: string, id: string) {
-  const [row] = await db.select().from(A).where(and(eq(A.tenantId, ctx.tenantId), eq(A.id, id))).limit(1);
+/**
+ * The three checks every portal read makes, applied to one assembly before anything is returned.
+ * `lock` is for the ballot: it takes the very row `claimAssembly` locks when the assembly is held,
+ * so a vote arriving during a hold waits for it and is then refused, rather than being stored after
+ * the hold has already counted the ballots.
+ */
+async function visibleAssembly(db: Db, ctx: TenantContext, contactId: string, id: string, lock = false) {
+  const query = db.select().from(A).where(and(eq(A.tenantId, ctx.tenantId), eq(A.id, id))).limit(1);
+  const [row] = await (lock ? query.for('update') : query);
   if (!row || !VISIBLE_STATUSES.includes(row.status as VisibleStatus)) throw notFound('Assembly');
   await assertOwnsUnitIn(db, ctx, contactId, row.buildingId);
   return row;
@@ -76,7 +82,7 @@ export async function portalAssembly(db: Db, portal: PortalContext, contactIdPar
 export async function portalCastVote(db: Db, portal: PortalContext, contactIdParam: string, id: string, decisionId: string, choice: VoteChoice) {
   const { ctx, contactId } = resolveLink(portal, contactIdParam);
   await db.transaction(async (tx) => {
-    const row = await visibleAssembly(tx, ctx, contactId, id);
+    const row = await visibleAssembly(tx, ctx, contactId, id, true);
     if (row.status !== 'invited') throw conflict('voting_closed', 'Voting on this assembly is closed');
     const [decision] = await tx.select({ id: AD.id }).from(AD)
       .where(and(eq(AD.tenantId, ctx.tenantId), eq(AD.assemblyId, id), eq(AD.id, decisionId))).limit(1);
