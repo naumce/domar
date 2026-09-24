@@ -13,6 +13,7 @@ import type { Config } from './config.js';
 import { authPlugin } from './auth/plugin.js';
 import { authRoutes } from './auth/routes.js';
 import { AppError } from './errors.js';
+import { createMailer, type Mailer } from './email/mailer.js';
 import { pdfRoutes } from './pdf/routes.js';
 import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
@@ -50,6 +51,9 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(dbPlugin, { db: opts.db, sql: opts.sql });
   await app.register(authPlugin);
   app.decorate('config', opts.config);
+  const mailer = createMailer(opts.config);
+  app.decorate('mailer', mailer);
+  app.addHook('onClose', async () => { await mailer.close(); });
 
   // `wildcard: false`: no catch-all GET route, so unknown paths reach the not-found handler below
   // and only that handler decides between the SPA shell and the JSON envelope.
@@ -124,5 +128,5 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
 }
 
 declare module 'fastify' {
-  interface FastifyInstance { config: Config }
+  interface FastifyInstance { config: Config; mailer: Mailer }
 }

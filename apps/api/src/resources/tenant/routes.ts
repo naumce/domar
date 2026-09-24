@@ -15,7 +15,7 @@ export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get('/', { schema: { response: { 200: tenantOut } } }, async (req) => {
     const row = await req.db.query.tenants.findFirst({ where: eq(T.id, req.ctx!.tenantId) });
     if (!row) throw notFound('Tenant');
-    return row;
+    return { ...row, emailConfigured: app.mailer.configured };
   });
 
   app.patch('/', { preHandler: requireRole('owner'), schema: { body: tenantPatch, response: { 200: tenantOut } } }, async (req) => {
@@ -31,7 +31,7 @@ export const tenantRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!before) throw notFound('Tenant');
       const [row] = await tx.update(T).set({ ...stripUndefined(req.body), updatedAt: new Date() }).where(eq(T.id, req.ctx!.tenantId)).returning();
       await writeAudit(tx, req.ctx!, { action: 'tenant.update', entityType: 'tenant', entityId: req.ctx!.tenantId, before, after: row });
-      return row!;
+      return { ...row!, emailConfigured: app.mailer.configured };
     });
   });
 };

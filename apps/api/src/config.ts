@@ -11,6 +11,14 @@ const schema = z.object({
   PDF_BROWSER_CHANNEL: z.string().default('chrome'),
   SERVE_WEB: z.enum(['true', 'false']).default('false'),
   WEB_DIST: z.string().default(''),
+  SMTP_URL: z.string().default(''),
+  EMAIL_FROM: z.string().default('domar <no-reply@localhost>'),
+  JOB_TOKEN: z.string().default(''),
+}).superRefine((v, ctx) => {
+  // Without it the reminder cron endpoint is permanently 503, i.e. reminders would silently stop.
+  if (v.NODE_ENV === 'production' && !v.JOB_TOKEN) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JOB_TOKEN'], message: 'JOB_TOKEN is required when NODE_ENV=production' });
+  }
 });
 
 export interface Config {
@@ -24,6 +32,10 @@ export interface Config {
   pdfBrowserChannel: string;
   serveWeb: boolean;
   webDist: string;
+  /** SMTP connection URL, `json` for the in-memory test transport, or '' for "email disabled". */
+  smtpUrl: string;
+  emailFrom: string;
+  jobToken: string;
 }
 
 /** apps/web/dist, resolved from apps/api/src/config.ts, so it works in the repo and in the image. */
@@ -49,5 +61,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     pdfBrowserChannel: parsed.PDF_BROWSER_CHANNEL,
     serveWeb: parsed.SERVE_WEB === 'true',
     webDist: parsed.WEB_DIST || DEFAULT_WEB_DIST,
+    smtpUrl: parsed.SMTP_URL,
+    emailFrom: parsed.EMAIL_FROM,
+    jobToken: parsed.JOB_TOKEN,
   };
 }

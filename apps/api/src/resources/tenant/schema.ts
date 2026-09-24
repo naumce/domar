@@ -5,6 +5,7 @@ export const tenantOut = z.object({
   id: z.string(), slug: z.string(), name: z.string(), countryCode: z.string(), currency: z.string(), locale: z.string(), timezone: z.string(),
   companyNumber: z.string().nullable(), vatNumber: z.string().nullable(), address: z.string().nullable(), phone: z.string().nullable(),
   email: z.string().nullable(), bankName: z.string().nullable(), bankAccount: z.string().nullable(),
+  emailConfigured: z.boolean(),
 });
 export const tenantPatch = z.object({
   name: z.string().min(1).max(200).optional(), timezone: z.string().max(64).optional(),
