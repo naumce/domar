@@ -131,7 +131,7 @@ export default {
     },
   },
   imports: {
-    title: 'Import', file: 'CSV file', mode: 'Existing labels', modeFail: 'Stop', modeSkip: 'Skip',
+    title: 'Import', file: 'File (CSV, XLSX)', mode: 'Existing labels', modeFail: 'Stop', modeSkip: 'Skip',
     preview: 'Preview', commit: 'Import', template: 'Download template', errors: 'File errors', line: 'Line',
     conflicts: 'Existing labels', chooseFile: 'Choose a file.',
     counts: { units: 'Units', contacts: 'New / existing contacts', balances: 'Opening balances', conflicts: 'Conflicts' },
@@ -140,6 +140,17 @@ export default {
       label_conflict: 'These units already exist: {labels}. Choose “skip” or change the labels.',
       period_published: 'The building has a published period; tick “Enter opening balances despite a published period” to continue.',
       too_many_rows: 'The file has more than 5000 rows.',
+    },
+    map: {
+      open: 'Map columns', title: 'Connect the columns', none: '— do not import —', apply: 'Apply mapping',
+      unmapped: 'Columns left out of the import', ready: 'Columns connected: {rows} rows ready to preview.',
+      duplicate: 'Two targets point at the same column: {fields}.',
+      required: 'Both “label” and “kind” must be mapped.',
+      readError: 'The file could not be read.',
+      fields: {
+        label: 'Label', floor: 'Floor', kind: 'Kind', areaM2: 'Area', ownershipShare: 'Ownership share',
+        ownerFirstName: 'First name', ownerLastName: 'Last name', ownerEmail: 'Email', ownerPhone: 'Phone', openingBalance: 'Opening balance',
+      },
     },
   },
   import: {

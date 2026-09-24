@@ -131,7 +131,7 @@ export default {
     },
   },
   imports: {
-    title: 'Увоз', file: 'CSV датотека', mode: 'Постоечки броеви', modeFail: 'Прекини', modeSkip: 'Прескокни',
+    title: 'Увоз', file: 'Датотека (CSV, XLSX)', mode: 'Постоечки броеви', modeFail: 'Прекини', modeSkip: 'Прескокни',
     preview: 'Преглед', commit: 'Увези', template: 'Преземи шаблон', errors: 'Грешки во датотеката', line: 'Ред',
     conflicts: 'Постоечки броеви', chooseFile: 'Изберете датотека.',
     counts: { units: 'Единици', contacts: 'Нови / постоечки контакти', balances: 'Почетни салда', conflicts: 'Конфликти' },
@@ -140,6 +140,17 @@ export default {
       label_conflict: 'Овие единици веќе постојат: {labels}. Изберете „прескокни“ или сменете ги броевите.',
       period_published: 'Зградата има објавен период; означете „Внеси почетни салда и покрај објавен период“ за да продолжите.',
       too_many_rows: 'Датотеката има повеќе од 5000 редови.',
+    },
+    map: {
+      open: 'Мапирај колони', title: 'Поврзи ги колоните', none: '— не увезувај —', apply: 'Потврди мапирање',
+      unmapped: 'Неповрзани колони од датотеката', ready: 'Колоните се поврзани: {rows} редови се подготвени за преглед.',
+      duplicate: 'Две полиња покажуваат на иста колона: {fields}.',
+      required: 'Мора да се поврзат „број“ и „тип“.',
+      readError: 'Датотеката не може да се прочита.',
+      fields: {
+        label: 'Број', floor: 'Кат', kind: 'Тип', areaM2: 'Површина', ownershipShare: 'Удел',
+        ownerFirstName: 'Име', ownerLastName: 'Презиме', ownerEmail: 'Е-пошта', ownerPhone: 'Телефон', openingBalance: 'Почетно салдо',
+      },
     },
   },
   import: {
