@@ -29,4 +29,5 @@ fi
 # Only a verified dump becomes a backup, and only then is anything rotated away.
 mv "$TMP" "$FILE"
 echo "wrote $FILE ($SIZE bytes)"
-ls -1t "$DIR"/domar-*.sql.gz | tail -n +15 | xargs -r rm --
+# Space-safe rotation: the timestamped names sort newest first, so everything past the newest 14 goes.
+find "$DIR" -maxdepth 1 -name 'domar-*.sql.gz' -type f | sort -r | tail -n +15 | while IFS= read -r f; do rm -f -- "$f"; done
