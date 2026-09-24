@@ -101,6 +101,22 @@ export default {
   settings: {
     title: 'Поставки на организацијата', timezone: 'Временска зона', bankName: 'Банка', bankAccount: 'Сметка', companyNumber: 'ЕМБС', vatNumber: 'ЕДБ', saved: 'Зачувано.',
   },
+  users: {
+    title: 'Корисници', add: 'Додади корисник', role: 'Улога', active: 'Активен', inactive: 'Неактивен',
+    activate: 'Активирај', deactivate: 'Деактивирај', resetPassword: 'Ресетирај лозинка',
+    tempPassword: 'Привремена лозинка', tempPasswordHint: 'Запишете ја сега — нема да се прикаже повторно.',
+    copy: 'Копирај', copied: 'Копирано',
+    roles: { owner: 'Сопственик', accountant: 'Сметководител', technician: 'Техничар', readonly: 'Само читање' },
+    errors: {
+      email_taken: 'Корисник со таа е-пошта веќе постои.',
+      last_owner: 'Последниот активен сопственик не може да се деактивира ниту да му се смени улогата.',
+      forbidden: 'Само сопственик може да управува со корисници.',
+    },
+  },
+  password: {
+    change: 'Промени лозинка', current: 'Тековна лозинка', new: 'Нова лозинка', changed: 'Лозинката е променета.',
+    errors: { invalid_credentials: 'Тековната лозинка е погрешна.', validation: 'Новата лозинка мора да има најмалку 10 знаци.' },
+  },
   ledger: {
     kind: { charge: 'Задолжување', payment: 'Уплата', adjustment: 'Корекција', opening: 'Почетно салдо', expense: 'Трошок' },
   },

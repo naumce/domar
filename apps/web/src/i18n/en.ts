@@ -101,6 +101,22 @@ export default {
   settings: {
     title: 'Organization settings', timezone: 'Timezone', bankName: 'Bank', bankAccount: 'Account', companyNumber: 'Company number', vatNumber: 'VAT number', saved: 'Saved.',
   },
+  users: {
+    title: 'Users', add: 'Add user', role: 'Role', active: 'Active', inactive: 'Inactive',
+    activate: 'Activate', deactivate: 'Deactivate', resetPassword: 'Reset password',
+    tempPassword: 'Temporary password', tempPasswordHint: 'Write it down now — it will not be shown again.',
+    copy: 'Copy', copied: 'Copied',
+    roles: { owner: 'Owner', accountant: 'Accountant', technician: 'Technician', readonly: 'Read only' },
+    errors: {
+      email_taken: 'A user with that email already exists.',
+      last_owner: 'The last active owner cannot be deactivated or given another role.',
+      forbidden: 'Only an owner can manage users.',
+    },
+  },
+  password: {
+    change: 'Change password', current: 'Current password', new: 'New password', changed: 'Password changed.',
+    errors: { invalid_credentials: 'The current password is wrong.', validation: 'The new password must be at least 10 characters.' },
+  },
   ledger: {
     kind: { charge: 'Charge', payment: 'Payment', adjustment: 'Adjustment', opening: 'Opening balance', expense: 'Expense' },
   },

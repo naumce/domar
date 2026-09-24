@@ -3,10 +3,14 @@ import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
 import type { Tenant } from '@/api/types';
+import ChangePasswordForm from '@/components/settings/ChangePasswordForm.vue';
+import UsersSection from '@/components/settings/UsersSection.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppInput from '@/components/ui/AppInput.vue';
+import { useAuthStore } from '@/stores/auth';
 
 const { t } = useI18n();
+const auth = useAuthStore();
 const timezones = ['Europe/Skopje', 'Europe/Belgrade', 'Europe/Sofia', 'Europe/Tirana', 'Europe/Zagreb', 'Europe/Ljubljana', 'UTC'];
 const loading = ref(true); const saving = ref(false); const error = ref(''); const saved = ref(false);
 const form = ref({ name: '', timezone: '', companyNumber: '', vatNumber: '', address: '', phone: '', email: '', bankName: '', bankAccount: '' });
@@ -57,4 +61,6 @@ async function save() {
     <p v-if="saved" class="col-span-2 text-sm text-emerald-700" data-test="settings-saved">{{ t('settings.saved') }}</p>
     <div class="col-span-2 flex justify-end"><AppButton type="submit" :loading="saving" data-test="settings-save">{{ t('app.save') }}</AppButton></div>
   </form>
+  <UsersSection v-if="auth.user?.role === 'owner'" />
+  <ChangePasswordForm />
 </template>

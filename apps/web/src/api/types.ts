@@ -1,4 +1,5 @@
-export interface User { id: string; email: string; firstName: string; lastName: string; role: 'owner' | 'accountant' | 'technician' | 'readonly' }
+export interface User { id: string; email: string; firstName: string; lastName: string; role: 'owner' | 'accountant' | 'technician' | 'readonly'; isActive: boolean }
+export interface CreatedUser { user: User; temporaryPassword: string }
 export interface Tenant {
   id: string; slug: string; name: string; countryCode: string; currency: string; locale: string; timezone: string;
   companyNumber: string | null; vatNumber: string | null; address: string | null; phone: string | null; email: string | null; bankName: string | null; bankAccount: string | null;
