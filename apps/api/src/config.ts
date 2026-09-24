@@ -14,6 +14,8 @@ const schema = z.object({
   SMTP_URL: z.string().default(''),
   EMAIL_FROM: z.string().default('domar <no-reply@localhost>'),
   JOB_TOKEN: z.string().default(''),
+  // Empty means "unset", like SMTP_URL: .env.example ships the key blank and a blank must not crash.
+  PUBLIC_WEB_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
 }).superRefine((v, ctx) => {
   // Without it the reminder cron endpoint is permanently 503, i.e. reminders would silently stop.
   if (v.NODE_ENV === 'production' && !v.JOB_TOKEN) {
@@ -40,6 +42,8 @@ export interface Config {
   smtpUrl: string;
   emailFrom: string;
   jobToken: string;
+  /** Public origin of the web app, e.g. `https://domar.mk`; unset when nobody told the API its URL. */
+  publicWebUrl: string | undefined;
 }
 
 /** apps/web/dist, resolved from apps/api/src/config.ts, so it works in the repo and in the image. */
@@ -68,5 +72,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     smtpUrl: parsed.SMTP_URL,
     emailFrom: parsed.EMAIL_FROM,
     jobToken: parsed.JOB_TOKEN,
+    publicWebUrl: parsed.PUBLIC_WEB_URL?.replace(/\/$/, ''),
   };
 }

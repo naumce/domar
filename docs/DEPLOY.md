@@ -32,6 +32,7 @@ Only eight variables come from `.env`; compose interpolates them into the stack:
 | `SMTP_URL` | `api` — outgoing mail; empty disables email | empty |
 | `EMAIL_FROM` | `api` — envelope sender | `domar <no-reply@$DOMAIN>` |
 | `JOB_TOKEN` | `api` — the reminder cron's shared secret | none — compose fails without it |
+| `PUBLIC_WEB_URL` | `api` — set from `DOMAIN`; the registration link in portal invite emails | `https://$DOMAIN` |
 
 Generate `JOB_TOKEN` with `openssl rand -hex 32`; the api refuses to start with a token shorter
 than 16 characters.

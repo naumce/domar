@@ -5,7 +5,7 @@ import { idParam } from '../resources/common.js';
 import { deletePortalLink, issuePortalInvite, portalStatus, type PortalInviteRuntime } from './invites.js';
 import { portalInviteOut, portalStatusOut } from './schema.js';
 
-const runtime = (app: FastifyInstance): PortalInviteRuntime => ({ mailer: app.mailer, log: app.log });
+const runtime = (app: FastifyInstance): PortalInviteRuntime => ({ mailer: app.mailer, log: app.log, publicWebUrl: app.config.publicWebUrl });
 
 /** Registered under `/contacts`, next to `contactRoutes`: the manager's half of the portal. */
 export const contactPortalRoutes: FastifyPluginAsyncZod = async (app) => {

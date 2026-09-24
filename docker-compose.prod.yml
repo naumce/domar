@@ -39,6 +39,7 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       EMAIL_FROM: ${EMAIL_FROM:-domar <no-reply@${DOMAIN}>}
       JOB_TOKEN: ${JOB_TOKEN:?set JOB_TOKEN in .env}
+      PUBLIC_WEB_URL: https://${DOMAIN}
     expose:
       - '3001'
     healthcheck:

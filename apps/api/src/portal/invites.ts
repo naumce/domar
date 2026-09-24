@@ -17,6 +17,8 @@ const MAX_FAILED_ATTEMPTS = 5;
 export interface PortalInviteRuntime {
   mailer: Mailer;
   log: { warn(obj: unknown, msg: string): void };
+  /** Public origin of the web app; when the server knows it, the email carries the register link. */
+  publicWebUrl?: string | undefined;
 }
 
 export type InviteRow = typeof PI.$inferSelect;
@@ -116,6 +118,7 @@ export async function issuePortalInvite(db: Db, ctx: TenantContext, contactId: s
     `Кодот важи до ${row.expiresAt.toLocaleDateString('mk-MK')}.`,
     '',
     'Отворете ја страницата за регистрација, внесете го кодот, вашата е-пошта и лозинка по ваш избор.',
+    ...(rt.publicWebUrl ? [`${rt.publicWebUrl}/portal/register`] : []),
   ].join('\n');
   const res = await rt.mailer.send({ to, subject, text });
   const ok = 'id' in res;

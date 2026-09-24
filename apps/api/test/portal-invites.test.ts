@@ -112,3 +112,24 @@ describe('portal invites', () => {
     expect((await t.app.inject({ method: 'GET', url: `/api/contacts/${withEmail}/portal-status` })).statusCode).toBe(401);
   });
 });
+
+describe('portal invite email with a public web url', () => {
+  let t: Awaited<ReturnType<typeof createTestApp>>;
+  afterAll(async () => { await t.close(); });
+
+  it('names the registration page when the server knows its own address', async () => {
+    t = await createTestApp({ SMTP_URL: 'json', PUBLIC_WEB_URL: 'https://example.test' });
+    const a = await registerTenant(t.app, 'firma-url');
+    const contact = (await t.app.inject({
+      method: 'POST', url: '/api/contacts', headers: { cookie: a.cookie },
+      payload: { firstName: 'Линк', lastName: 'Линков', email: 'link@firma-url.mk' },
+    })).json().id;
+
+    const res = await t.app.inject({ method: 'POST', url: `/api/contacts/${contact}/portal-invite`, headers: { cookie: a.cookie }, payload: {} });
+    expect(res.statusCode).toBe(201);
+    const mail = t.app.mailer.outbox;
+    expect(mail).toHaveLength(1);
+    expect(mail[0]!.text).toContain('https://example.test/portal/register');
+    expect(mail[0]!.text).toContain(res.json().code);
+  });
+});
