@@ -57,21 +57,29 @@ export async function getUnit(db: Db, ctx: TenantContext, buildingId: string, id
   return row;
 }
 
+/**
+ * Validates references, rejects a duplicate label and inserts the row. Runs inside the caller's
+ * transaction and writes no audit row: `createUnit` and the CSV import add their own.
+ */
+export async function insertUnit(tx: Db, ctx: TenantContext, buildingId: string, input: UnitCreate): Promise<Row> {
+  await validateRefs(tx, ctx, buildingId, input);
+  const dup = await tx.query.units.findFirst({ where: and(eq(U.buildingId, buildingId), eq(U.label, input.label)), columns: { id: true } });
+  if (dup) throw conflict('label_taken', `Unit ${input.label} already exists in this building`);
+  try {
+    const [row] = await tx.insert(U).values({ ...stripUndefined(toRow(input)), tenantId: ctx.tenantId, buildingId, label: input.label, kind: input.kind }).returning();
+    return row!;
+  } catch (err) {
+    if (isUniqueViolation(err)) throw conflict('label_taken', `Unit ${input.label} already exists in this building`);
+    throw err;
+  }
+}
+
 export async function createUnit(db: Db, ctx: TenantContext, buildingId: string, input: UnitCreate) {
   return db.transaction(async (tx) => {
     await getBuilding(tx, ctx, buildingId);
-    await validateRefs(tx, ctx, buildingId, input);
-    const dup = await tx.query.units.findFirst({ where: and(eq(U.buildingId, buildingId), eq(U.label, input.label)), columns: { id: true } });
-    if (dup) throw conflict('label_taken', `Unit ${input.label} already exists in this building`);
-    let row: Row | undefined;
-    try {
-      [row] = await tx.insert(U).values({ ...stripUndefined(toRow(input)), tenantId: ctx.tenantId, buildingId, label: input.label, kind: input.kind }).returning();
-    } catch (err) {
-      if (isUniqueViolation(err)) throw conflict('label_taken', `Unit ${input.label} already exists in this building`);
-      throw err;
-    }
-    await writeAudit(tx, ctx, { action: 'unit.create', entityType: 'unit', entityId: row!.id, after: row });
-    return toOut(row!, await ownerOf(tx, ctx, row!.ownerContactId));
+    const row = await insertUnit(tx, ctx, buildingId, input);
+    await writeAudit(tx, ctx, { action: 'unit.create', entityType: 'unit', entityId: row.id, after: row });
+    return toOut(row, await ownerOf(tx, ctx, row.ownerContactId));
   });
 }
 
