@@ -36,10 +36,13 @@ services:
       TRUST_PROXY: '1'
       TZ: ${TZ:-Europe/Skopje}
       PDF_BROWSER_CHANNEL: chromium
+      DATA_DIR: /data
       SMTP_URL: ${SMTP_URL:-}
       EMAIL_FROM: ${EMAIL_FROM:-domar <no-reply@${DOMAIN}>}
       JOB_TOKEN: ${JOB_TOKEN:?set JOB_TOKEN in .env}
       PUBLIC_WEB_URL: https://${DOMAIN}
+    volumes:
+      - domar-data:/data
     expose:
       - '3001'
     healthcheck:
@@ -77,5 +80,6 @@ services:
 
 volumes:
   domar-pg:
+  domar-data:
   caddy-data:
   caddy-config:

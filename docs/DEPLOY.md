@@ -33,6 +33,7 @@ Only eight variables come from `.env`; compose interpolates them into the stack:
 | `EMAIL_FROM` | `api` — envelope sender | `domar <no-reply@$DOMAIN>` |
 | `JOB_TOKEN` | `api` — the reminder cron's shared secret | none — compose fails without it |
 | `PUBLIC_WEB_URL` | `api` — set from `DOMAIN`; the registration link in portal invite emails | `https://$DOMAIN` |
+| `DATA_DIR` | `api` — where uploaded documents are written (a named volume) | `/data` in the image |
 
 Generate `JOB_TOKEN` with `openssl rand -hex 32`; the api refuses to start with a token shorter
 than 16 characters.
@@ -133,3 +134,12 @@ into a database that still holds the old schema will not give you a clean restor
     docker compose -f docker-compose.prod.yml start api
 
 Use your own `POSTGRES_USER`/`POSTGRES_DB` in place of `domar` if you changed them.
+
+`pg_dump` does not contain uploaded documents: they live in the `domar-data` volume, outside the
+database. Back it up alongside the dump, for example from the same cron line:
+
+    docker run --rm -v domar_domar-data:/data:ro -v /srv/domar/backups:/out alpine \
+      tar czf /out/domar-documents-$(date +%Y-%m-%d-%H%M).tar.gz -C /data .
+
+Restoring a database dump without the matching document archive leaves every `documents` row
+pointing at a file that is not there; downloads then answer 500 while everything else keeps working.

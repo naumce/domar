@@ -37,10 +37,13 @@ ENV NODE_ENV=production \
     API_HOST=0.0.0.0 \
     API_PORT=3001 \
     WEB_DIST=/app/apps/web/dist \
+    DATA_DIR=/data \
     PDF_BROWSER_CHANNEL=chromium
 # pwuser ships with the Playwright image and already owns the browsers under /ms-playwright; --chown
 # on the copy gives it /app too without duplicating the tree in a second `chown -R` layer.
 COPY --from=build --chown=pwuser:pwuser /app /app
+# Uploaded documents live outside /app and outside the web root; the compose file mounts a volume here.
+RUN mkdir -p /data && chown pwuser:pwuser /data
 USER pwuser
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD curl -fsS http://localhost:3001/api/health || exit 1
