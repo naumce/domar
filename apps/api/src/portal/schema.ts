@@ -61,3 +61,10 @@ export const portalFundOut = z.object({
   })),
   truncated: z.boolean(),
 });
+
+export const portalDocumentOut = z.object({
+  id: z.string(), buildingId: z.string(), kind: z.enum(['minutes', 'report']), title: z.string(),
+  fileName: z.string(), mime: z.string(), sizeBytes: z.number().int(), createdAt: z.date().or(z.string()),
+});
+export const portalDocumentListOut = z.object({ rows: z.array(portalDocumentOut) });
+export const portalDocumentListQuery = portalContactQuery.extend({ buildingId: z.string().uuid() });

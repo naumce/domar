@@ -11,7 +11,7 @@ import type { TenantContext } from '../tenant-context.js';
 import { portalTenantContext } from './accounts.js';
 import type { PortalContext } from './context.js';
 
-const P = schema.postings; const E = schema.expenses; const U = schema.units; const B = schema.buildings; const T = schema.tenants;
+const P = schema.postings; const E = schema.expenses; const U = schema.units; const B = schema.buildings; const T = schema.tenants; const DOC = schema.documents;
 
 /** What the manager has published, and nothing before that. A draft is invisible, not forbidden. */
 const VISIBLE_STATUSES: InvoiceStatus[] = ['published', 'partially_paid', 'paid', 'cancelled'];
@@ -118,4 +118,32 @@ export async function portalBuildingFund(db: Db, portal: PortalContext, contactI
     })),
     truncated: rows.length > FUND_TX_LIMIT,
   };
+}
+
+/**
+ * Spec §11: the portal sees minutes and reports of buildings the contact owns a unit in, and nothing
+ * else. A tenant-level document (`building_id is null`) is never visible here.
+ */
+const PORTAL_DOCUMENT_KINDS = ['minutes', 'report'] as const;
+
+export async function portalDocuments(db: Db, portal: PortalContext, q: { contactId: string; buildingId: string }) {
+  const { ctx, contactId } = resolveLink(portal, q.contactId);
+  await assertOwnsUnitIn(db, ctx, contactId, q.buildingId);
+  const rows = await db.select({
+    id: DOC.id, buildingId: DOC.buildingId, kind: DOC.kind, title: DOC.title,
+    fileName: DOC.fileName, mime: DOC.mime, sizeBytes: DOC.sizeBytes, createdAt: DOC.createdAt,
+  }).from(DOC)
+    .where(and(eq(DOC.tenantId, ctx.tenantId), eq(DOC.buildingId, q.buildingId), inArray(DOC.kind, [...PORTAL_DOCUMENT_KINDS])))
+    .orderBy(desc(DOC.createdAt), desc(DOC.id));
+  // `building_id` is the one the caller was cleared for, so it is never null here.
+  return { rows: rows.map((r) => ({ ...r, buildingId: q.buildingId, kind: r.kind as (typeof PORTAL_DOCUMENT_KINDS)[number] })) };
+}
+
+/** The same three checks as the list, applied to one document, before its bytes are opened. */
+export async function portalDocumentFile(db: Db, portal: PortalContext, contactIdParam: string, id: string) {
+  const { ctx, contactId } = resolveLink(portal, contactIdParam);
+  const [row] = await db.select().from(DOC).where(and(eq(DOC.tenantId, ctx.tenantId), eq(DOC.id, id))).limit(1);
+  if (!row || row.buildingId === null || !PORTAL_DOCUMENT_KINDS.includes(row.kind as (typeof PORTAL_DOCUMENT_KINDS)[number])) throw notFound('Document');
+  await assertOwnsUnitIn(db, ctx, contactId, row.buildingId);
+  return row;
 }

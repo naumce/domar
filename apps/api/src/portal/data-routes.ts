@@ -1,12 +1,13 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { contentDisposition } from '../documents/store.js';
 import { AppError } from '../errors.js';
 import { htmlToPdf } from '../pdf/html-to-pdf.js';
 import { idParam } from '../resources/common.js';
 import { invoiceRowOut } from '../resources/invoices/schema.js';
 import { statementOut } from '../resources/contacts/schema.js';
-import { portalBuildingFund, portalInvoice, portalInvoiceHtml, portalInvoices, portalPayments, portalStatement } from './repo.js';
-import { portalContactQuery, portalFundOut, portalInvoiceDetailOut, portalInvoiceListQuery, portalPaymentListQuery, portalPaymentOut, portalStatementQuery } from './schema.js';
+import { portalBuildingFund, portalDocumentFile, portalDocuments, portalInvoice, portalInvoiceHtml, portalInvoices, portalPayments, portalStatement } from './repo.js';
+import { portalContactQuery, portalDocumentListOut, portalDocumentListQuery, portalFundOut, portalInvoiceDetailOut, portalInvoiceListQuery, portalPaymentListQuery, portalPaymentOut, portalStatementQuery } from './schema.js';
 
 /** Read-only, scoped by link. Nothing here writes, and nothing here sees a request-supplied tenant. */
 export const portalDataRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -36,6 +37,20 @@ export const portalDataRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/statement', { schema: { querystring: portalStatementQuery, response: { 200: statementOut } } }, async (req) =>
     portalStatement(req.db, req.portal!, req.query.contactId, req.query.buildingId));
+
+  app.get('/documents', { schema: { querystring: portalDocumentListQuery, response: { 200: portalDocumentListOut } } }, async (req) =>
+    portalDocuments(req.db, req.portal!, req.query));
+
+  app.get('/documents/:id/download', { schema: { params: idParam, querystring: portalContactQuery } }, async (req, reply) => {
+    const row = await portalDocumentFile(req.db, req.portal!, req.query.contactId, req.params.id);
+    const stream = await app.documents.open(row.storageKey);
+    return reply
+      .type(row.mime)
+      .header('content-length', String(row.sizeBytes))
+      .header('x-content-type-options', 'nosniff')
+      .header('content-disposition', contentDisposition(row.fileName))
+      .send(stream);
+  });
 
   app.get('/buildings/:id/fund', { schema: { params: idParam, querystring: portalContactQuery, response: { 200: portalFundOut } } }, async (req) =>
     portalBuildingFund(req.db, req.portal!, req.query.contactId, req.params.id));

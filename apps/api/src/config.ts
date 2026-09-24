@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
@@ -11,6 +12,7 @@ const schema = z.object({
   PDF_BROWSER_CHANNEL: z.string().default('chrome'),
   SERVE_WEB: z.enum(['true', 'false']).default('false'),
   WEB_DIST: z.string().default(''),
+  DATA_DIR: z.string().default('./data'),
   SMTP_URL: z.string().default(''),
   EMAIL_FROM: z.string().default('domar <no-reply@localhost>'),
   JOB_TOKEN: z.string().default(''),
@@ -38,6 +40,8 @@ export interface Config {
   pdfBrowserChannel: string;
   serveWeb: boolean;
   webDist: string;
+  /** Root of the uploaded-document tree; outside the web root and never served statically. */
+  dataDir: string;
   /** SMTP connection URL, `json` for the in-memory test transport, or '' for "email disabled". */
   smtpUrl: string;
   emailFrom: string;
@@ -69,6 +73,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     pdfBrowserChannel: parsed.PDF_BROWSER_CHANNEL,
     serveWeb: parsed.SERVE_WEB === 'true',
     webDist: parsed.WEB_DIST || DEFAULT_WEB_DIST,
+    dataDir: resolve(parsed.DATA_DIR),
     smtpUrl: parsed.SMTP_URL,
     emailFrom: parsed.EMAIL_FROM,
     jobToken: parsed.JOB_TOKEN,

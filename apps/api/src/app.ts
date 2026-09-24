@@ -1,5 +1,6 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
@@ -12,6 +13,7 @@ import type postgres from 'postgres';
 import type { Config } from './config.js';
 import { authPlugin } from './auth/plugin.js';
 import { authRoutes } from './auth/routes.js';
+import { LocalDiskStore, MAX_DOCUMENT_BYTES, type DocumentStore } from './documents/store.js';
 import { AppError } from './errors.js';
 import { createMailer, type Mailer } from './email/mailer.js';
 import { pdfRoutes } from './pdf/routes.js';
@@ -24,6 +26,7 @@ import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
 import { buildingComplianceRoutes, complianceRoutes } from './resources/compliance/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
+import { buildingDocumentRoutes, documentRoutes } from './resources/documents/routes.js';
 import { dashboardRoutes } from './resources/dashboard/routes.js';
 import { invoiceEmailRoutes, periodEmailRoutes } from './email/routes.js';
 import { invoiceRoutes } from './resources/invoices/routes.js';
@@ -54,12 +57,18 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(cors, { origin: opts.config.corsOrigins, credentials: true });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
+  // `fields: 8` and `fieldSize: 1024` keep a multipart body from being used as a memory sink; the
+  // file itself is streamed to disk and capped at 20 MB (spec §4, §11).
+  // `throwFileSizeLimit: false`: busboy truncates instead of erroring mid-pipe, so the route sees a
+  // finished stream, deletes the partial file and answers one `file_too_large` envelope.
+  await app.register(multipart, { throwFileSizeLimit: false, limits: { fileSize: MAX_DOCUMENT_BYTES, files: 1, fields: 8, fieldSize: 1024 } });
   await app.register(swagger, { openapi: { info: { title: 'domar API', version: '0.0.1' } }, transform: jsonSchemaTransform });
   await app.register(swaggerUi, { routePrefix: '/api/docs' });
   await app.register(dbPlugin, { db: opts.db, sql: opts.sql });
   await app.register(authPlugin);
   await app.register(portalAuthPlugin);
   app.decorate('config', opts.config);
+  app.decorate('documents', new LocalDiskStore(opts.config.dataDir) as DocumentStore);
   const mailer = createMailer(opts.config);
   app.decorate('mailer', mailer);
   app.addHook('onClose', async () => { await mailer.close(); });
@@ -140,6 +149,8 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(legalEventRoutes, { prefix: '/buildings/:buildingId/legal-events' });
     await api.register(buildingComplianceRoutes, { prefix: '/buildings/:buildingId/compliance' });
     await api.register(complianceRoutes, { prefix: '/compliance' });
+    await api.register(buildingDocumentRoutes, { prefix: '/buildings/:buildingId/documents' });
+    await api.register(documentRoutes, { prefix: '/documents' });
     await api.register(reminderRoutes, { prefix: '/reminders' });
     await api.register(jobRoutes, { prefix: '/jobs' });
   }, { prefix: '/api' });
@@ -148,5 +159,5 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
 }
 
 declare module 'fastify' {
-  interface FastifyInstance { config: Config; mailer: Mailer }
+  interface FastifyInstance { config: Config; mailer: Mailer; documents: DocumentStore }
 }
