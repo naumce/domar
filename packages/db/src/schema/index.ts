@@ -7,3 +7,4 @@ export * from './audit.js';
 export * from './billing.js';
 export * from './payments.js';
 export * from './reminders.js';
+export * from './portal.js';

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDatabase } from '../src/test-db.js';
 
-const TENANT_SCOPED_EXEMPT = new Set(['tenants', 'sessions', '__drizzle_migrations']);
+const TENANT_SCOPED_EXEMPT = new Set(['tenants', 'sessions', 'owner_accounts', 'owner_sessions', '__drizzle_migrations']);
 
 describe('migrations', () => {
   let t: Awaited<ReturnType<typeof createTestDatabase>> | undefined;
@@ -18,7 +18,8 @@ describe('migrations', () => {
     const names = rows.map((r) => r.table_name);
     for (const n of ['tenants', 'users', 'sessions', 'contacts', 'buildings', 'units', 'tax_rates', 'audit_logs',
       'services', 'building_services', 'reserve_fund_settings', 'expenses', 'billing_periods', 'period_lines', 'invoices', 'invoice_lines', 'postings', 'invoice_sequences',
-      'payments', 'bank_statements', 'statement_lines', 'reminders', 'email_log'])
+      'payments', 'bank_statements', 'statement_lines', 'reminders', 'email_log',
+      'owner_accounts', 'owner_sessions', 'owner_contact_links', 'portal_invites'])
       expect(names).toContain(n);
   });
 
@@ -92,5 +93,39 @@ describe('migrations', () => {
       ['created_at', 'error', 'id', 'ref_id', 'ref_type', 'sent_at', 'status', 'subject', 'template', 'tenant_id', 'to_address']);
     const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'email_log' and indexname = 'email_log_tenant_created_idx'`;
     expect(idx[0]!.indexdef).toContain('(tenant_id, created_at)');
+  });
+
+  it('owner accounts are global and their email is unique', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'owner_accounts' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(['created_at', 'email', 'id', 'is_active', 'password_hash', 'updated_at']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'owner_accounts'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(email)'))).toBe(true);
+    const sess = await t!.sql<{ column_name: string }[]>`
+      select column_name from information_schema.columns where table_name = 'owner_sessions' and column_name = 'tenant_id'`;
+    expect(sess.length).toBe(0);
+  });
+
+  it('owner_contact_links bridge one account to one contact', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'owner_contact_links' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(['contact_id', 'id', 'linked_at', 'owner_account_id', 'tenant_id']);
+    expect(cols.every((c) => c.is_nullable === 'NO')).toBe(true);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'owner_contact_links'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(owner_account_id, contact_id)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, contact_id)'))).toBe(true);
+  });
+
+  it('portal_invites store a hashed code with an expiry', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'portal_invites' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(['code_hash', 'contact_id', 'created_at', 'created_by', 'expires_at', 'id', 'tenant_id', 'used_at']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['used_at']!.is_nullable).toBe('YES');
+    expect(by['created_by']!.is_nullable).toBe('YES');
+    expect(by['expires_at']!.is_nullable).toBe('NO');
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'portal_invites'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(code_hash)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, contact_id, created_at)'))).toBe(true);
   });
 });

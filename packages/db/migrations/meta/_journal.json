@@ -43,6 +43,13 @@
       "when": 1790242316994,
       "tag": "0005_robust_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790250395929,
+      "tag": "0006_same_photon",
+      "breakpoints": true
     }
   ]
 }
