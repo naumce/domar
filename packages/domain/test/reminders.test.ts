@@ -33,6 +33,24 @@ describe('evaluateOwner (Art. 28)', () => {
     expect(r).toEqual({ due: false, reason: null, invoiceIds: [] });
   });
 
+  it('counts distinct periods, not invoices, when two invoices share a period', () => {
+    const r = run([
+      inv('a', '2026-07', '2026-07-20T00:00:00.000Z'),
+      inv('b', '2026-07', '2026-07-25T00:00:00.000Z'),
+      inv('c', '2026-08', '2026-08-20T00:00:00.000Z'),
+    ]);
+    expect(r).toEqual({ due: true, reason: 'consecutive', invoiceIds: ['a', 'b', 'c'] });
+  });
+
+  it('is not due when all overdue invoices share a single period', () => {
+    const r = run([
+      inv('a', '2026-01', '2026-01-20T00:00:00.000Z'),
+      inv('b', '2026-01', '2026-01-22T00:00:00.000Z'),
+      inv('c', '2026-01', '2026-01-25T00:00:00.000Z'),
+    ]);
+    expect(r).toEqual({ due: false, reason: null, invoiceIds: [] });
+  });
+
   it('ignores invoices that are not past their due date', () => {
     const r = run([inv('a', '2026-08', '2026-08-20T00:00:00.000Z'), inv('b', '2026-09', '2026-10-09T00:00:00.000Z')]);
     expect(r).toEqual({ due: false, reason: null, invoiceIds: [] });
@@ -47,6 +65,13 @@ describe('evaluateOwner (Art. 28)', () => {
     const prior: PriorReminder = { sentAt: '2026-09-10T09:00:00.000Z', invoiceIds: ['a', 'b'] };
     const r = run([inv('a', '2026-07', '2026-07-20T00:00:00.000Z'), inv('b', '2026-08', '2026-08-20T00:00:00.000Z')], [prior]);
     expect(r).toEqual({ due: false, reason: null, invoiceIds: [] });
+  });
+
+  it('still suppresses just under the 30 day threshold', () => {
+    const sentAt = new Date(TODAY.getTime() - (29 * 24 + 23) * 60 * 60 * 1000).toISOString(); // 29 days 23 hours before TODAY
+    const prior: PriorReminder = { sentAt, invoiceIds: ['a', 'b'] };
+    const r = run([inv('a', '2026-07', '2026-07-20T00:00:00.000Z'), inv('b', '2026-08', '2026-08-20T00:00:00.000Z')], [prior]);
+    expect(r.due).toBe(false);
   });
 
   it('sends again once the prior reminder is 30 days old', () => {
@@ -71,8 +96,25 @@ describe('evaluateOwner (Art. 28)', () => {
     expect(r.due).toBe(false);
   });
 
+  it('is due when a prior reminder covers a disjoint set of invoices', () => {
+    const prior: PriorReminder = { sentAt: '2026-09-20T09:00:00.000Z', invoiceIds: ['x', 'y'] };
+    const r = run([inv('a', '2026-07', '2026-07-20T00:00:00.000Z'), inv('b', '2026-08', '2026-08-20T00:00:00.000Z')], [prior]);
+    expect(r).toEqual({ due: true, reason: 'consecutive', invoiceIds: ['a', 'b'] });
+  });
+
   it('returns nothing for an owner with no overdue invoices', () => {
     expect(run([])).toEqual({ due: false, reason: null, invoiceIds: [] });
+  });
+
+  it('produces the same result regardless of invoice order', () => {
+    const invoices = [
+      inv('i1', '2026-01', '2026-01-20T00:00:00.000Z'),
+      inv('i2', '2026-03', '2026-03-20T00:00:00.000Z'),
+      inv('i3', '2026-05', '2026-05-20T00:00:00.000Z'),
+    ];
+    const forward = run(invoices);
+    const reversed = run([...invoices].reverse());
+    expect(reversed).toEqual(forward);
   });
 });
 

@@ -1,16 +1,18 @@
 import type { ReminderRules } from '../country/types.js';
 import { comparePeriods, nextPeriod } from '../period.js';
 
-/** One unpaid invoice of a single owner in a single building. `dueAt` is an ISO date or date-time. */
+/** One unpaid invoice of a single owner in a single building. */
 export interface UnpaidInvoice {
   id: string;
   period: string;
+  /** ISO date-time with an explicit offset (the API passes `toISOString()`); date-only strings parse as UTC midnight. */
   dueAt: string;
   outstandingMinor: number;
 }
 
 /** A reminder already created for this owner in this building. `sentAt` is `sentAt ?? createdAt` on the API side. */
 export interface PriorReminder {
+  /** ISO date-time with an explicit offset (the API passes `toISOString()`); date-only strings parse as UTC midnight. */
   sentAt: string;
   invoiceIds: string[];
 }
