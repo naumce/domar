@@ -4,6 +4,7 @@ export * from './calculation/index.js';
 export * from './period.js';
 export * from './reminders/evaluate.js';
 export * from './compliance/evaluate.js';
+export * from './assembly/tally.js';
 export * from './statements/index.js';
 export * from './import/units.js';
 export * from './import/serialize.js';

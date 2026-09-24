@@ -66,6 +66,10 @@ export interface CountryLabels {
   reminderIntro: string;
   /** The legal sentence of the reminder: the citation plus the statement that no fee is charged. */
   reminderLegal: string;
+  /** Art. 37: the opening sentence of the assembly invitation, above the agenda. */
+  assemblyInvitationIntro: string;
+  /** Art. 37: the legal sentence printed on the invitation and repeated in the minutes. */
+  assemblyLegal: string;
   /** One entry per `ComplianceDutyKey`. */
   compliance: Record<ComplianceDutyKey, ComplianceLabel>;
 }
