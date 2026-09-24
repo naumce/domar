@@ -28,6 +28,7 @@ import { invoiceEmailRoutes, periodEmailRoutes } from './email/routes.js';
 import { invoiceRoutes } from './resources/invoices/routes.js';
 import { importRoutes } from './resources/import/routes.js';
 import { invoicingRoutes } from './resources/invoicing/routes.js';
+import { legalEventRoutes } from './resources/legal-events/routes.js';
 import { openingBalanceRoutes } from './resources/opening-balances/routes.js';
 import { buildingPaymentRoutes, invoicePaymentRoutes, paymentRoutes } from './resources/payments/routes.js';
 import { periodRoutes } from './resources/periods/routes.js';
@@ -135,6 +136,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(statementRoutes, { prefix: '/statements' });
     await api.register(statementLineRoutes, { prefix: '/statement-lines' });
     await api.register(buildingReminderRoutes, { prefix: '/buildings/:buildingId/reminders' });
+    await api.register(legalEventRoutes, { prefix: '/buildings/:buildingId/legal-events' });
     await api.register(reminderRoutes, { prefix: '/reminders' });
     await api.register(jobRoutes, { prefix: '/jobs' });
   }, { prefix: '/api' });

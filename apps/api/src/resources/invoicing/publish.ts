@@ -3,6 +3,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { conflict, isUniqueViolation } from '../../errors.js';
 import { addPostings, type NewPosting } from '../../ledger.js';
+import { recordLegalEvent } from '../../legal-events.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getPeriod, getPeriodRow } from '../periods/repo.js';
 import { nextInvoiceNumber } from './numbering.js';
@@ -50,6 +51,13 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
     }
     await addPostings(tx, ctx, postings);
     await tx.update(BP).set({ issuedAt, dueAt, publishedAt: issuedAt, updatedAt: issuedAt }).where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.id, periodId)));
+    await recordLegalEvent(tx, ctx, {
+      buildingId, kind: 'invoice_published', refType: 'billing_period', refId: periodId, occurredAt: issuedAt, dueAt,
+      evidence: {
+        period: claimed.period, periodKind: claimed.kind, invoiceCount: drafts.length,
+        invoiceIds: drafts.map((d) => d.inv.id), totalMinor: drafts.reduce((s, d) => s + d.inv.totalMinor, 0),
+      },
+    });
     await writeAudit(tx, ctx, { action: 'period.publish', entityType: 'billing_period', entityId: periodId, after: { invoices: drafts.length, issuedAt, dueAt } });
     const detail = await getPeriod(tx, ctx, buildingId, periodId);
     return { period: detail, invoiceCount: detail.invoiceCount, totalMinor: detail.totalMinor };

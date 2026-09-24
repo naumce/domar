@@ -5,6 +5,7 @@ import { writeAudit } from '../../audit.js';
 import { logEmail } from '../../email/log.js';
 import type { Mailer } from '../../email/mailer.js';
 import { conflict } from '../../errors.js';
+import { recordLegalEvent } from '../../legal-events.js';
 import { htmlToPdf } from '../../pdf/html-to-pdf.js';
 import { formatDocumentDate, renderReminderHtml, type ReminderHtmlInvoice } from '../../pdf/reminder-html.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -144,7 +145,14 @@ async function sendReminderEmail(db: Db, ctx: TenantContext, row: ReminderRecord
   await db.transaction(async (tx) => {
     await tx.update(R).set({ status: ok ? 'sent' : 'failed', sentAt: ok ? new Date() : null, error })
       .where(and(eq(R.tenantId, ctx.tenantId), eq(R.id, row.id)));
-    await logEmail(tx, ctx, { to, subject, template: 'reminder', refType: 'reminder', refId: row.id, status: ok ? 'sent' : 'failed', error });
+    const logRow = await logEmail(tx, ctx, { to, subject, template: 'reminder', refType: 'reminder', refId: row.id, status: ok ? 'sent' : 'failed', error });
+    // Only a delivered reminder is evidence of the Art. 28 duty; a failed send is an audit row alone.
+    if (ok) {
+      await recordLegalEvent(tx, ctx, {
+        buildingId: row.buildingId, kind: 'reminder_sent', refType: 'reminder', refId: row.id,
+        evidence: { contactId: row.contactId, channel: 'email', emailLogId: logRow.id, invoiceIds: row.invoiceIds, totalOutstandingMinor: row.totalOutstandingMinor, reason: row.reason },
+      });
+    }
     await writeAudit(tx, ctx, { action: 'reminder.send', entityType: 'reminder', entityId: row.id, after: { status: ok ? 'sent' : 'failed', to, error } });
   });
 }
@@ -161,6 +169,11 @@ export async function markPrinted(db: Db, ctx: TenantContext, id: string) {
       await getReminderRow(tx, ctx, id); // 404 across tenants, otherwise it is already sent or printed
       throw conflict('not_pending', 'Only a pending or failed reminder can be marked printed');
     }
+    await recordLegalEvent(tx, ctx, {
+      buildingId: claimed.buildingId, kind: 'reminder_sent', refType: 'reminder', refId: claimed.id,
+      ...(claimed.sentAt ? { occurredAt: claimed.sentAt } : {}),
+      evidence: { contactId: claimed.contactId, channel: 'letter', emailLogId: null, invoiceIds: claimed.invoiceIds, totalOutstandingMinor: claimed.totalOutstandingMinor, reason: claimed.reason },
+    });
     await writeAudit(tx, ctx, { action: 'reminder.printed', entityType: 'reminder', entityId: id, after: { status: 'printed' } });
     const [out] = await decorate(tx, ctx, [claimed]);
     return out!;

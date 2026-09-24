@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../audit.js';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from '../auth/password.js';
 import { AppError, conflict, isUniqueViolation } from '../errors.js';
+import { recordLegalEventOnce } from '../legal-events.js';
 import type { TenantContext } from '../tenant-context.js';
 import type { PortalContext } from './context.js';
 import { assertLiveInvite, claimInvite, countInviteFailure } from './invites.js';
@@ -48,6 +49,16 @@ async function linkContact(tx: Db, ownerAccountId: string, tenantId: string, con
     action: 'portal_link.create', entityType: 'contact', entityId: contactId,
     after: { ownerAccountId, linkId: row!.id },
   });
+  // Art. 45(4): from the first linked owner on, the building's fund statement is available online.
+  // `selectDistinct` because an owner may hold several units in the same building.
+  const owned = await tx.selectDistinct({ buildingId: U.buildingId }).from(U)
+    .where(and(eq(U.tenantId, tenantId), eq(U.ownerContactId, contactId)));
+  for (const b of owned) {
+    await recordLegalEventOnce(tx, portalTenantContext(tenantId), {
+      buildingId: b.buildingId, kind: 'fund_statement_available', refType: 'contact', refId: contactId,
+      evidence: { contactId, ownerAccountId },
+    });
+  }
   return row!;
 }
 
