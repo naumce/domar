@@ -22,6 +22,7 @@ import { portalAuthPlugin } from './portal/plugin.js';
 import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
+import { buildingComplianceRoutes, complianceRoutes } from './resources/compliance/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
 import { dashboardRoutes } from './resources/dashboard/routes.js';
 import { invoiceEmailRoutes, periodEmailRoutes } from './email/routes.js';
@@ -137,6 +138,8 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(statementLineRoutes, { prefix: '/statement-lines' });
     await api.register(buildingReminderRoutes, { prefix: '/buildings/:buildingId/reminders' });
     await api.register(legalEventRoutes, { prefix: '/buildings/:buildingId/legal-events' });
+    await api.register(buildingComplianceRoutes, { prefix: '/buildings/:buildingId/compliance' });
+    await api.register(complianceRoutes, { prefix: '/compliance' });
     await api.register(reminderRoutes, { prefix: '/reminders' });
     await api.register(jobRoutes, { prefix: '/jobs' });
   }, { prefix: '/api' });
