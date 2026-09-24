@@ -390,9 +390,9 @@ deliverables; anything else waits for feedback from that month.
    sorted source header list.
 2. **Domexa migration is a CLI, read-only against Domexa.** `apps/api/scripts/migrate-from-domexa.ts`
    (run with `pnpm --filter @domar/api migrate:domexa -- <command>`): `export` logs in to
-   `https://domexa.mk/<org>/api` (credentials from env `DOMEXA_ORG`, `DOMEXA_EMAIL`,
-   `DOMEXA_PASSWORD`, or a captured session via `DOMEXA_COOKIE` when Turnstile blocks the API
-   login) and writes raw JSON for `/api/organization`, `/api/tax-rates`, `/api/services`,
+   `https://domexa.mk/api/auth/login` with `tenantSlug` in the body (base URL overridable via
+   `DOMEXA_BASE_URL`; credentials from env `DOMEXA_ORG`, `DOMEXA_EMAIL`, `DOMEXA_PASSWORD`, or a
+   captured session via `DOMEXA_COOKIE` when Turnstile blocks the API login) and writes raw JSON for `/api/organization`, `/api/tax-rates`, `/api/services`,
    `/api/buildings`, `/api/buildings/:id/units`, `/api/buildings/:id/services`,
    `/api/buildings/:id/reserve-fund` (+ `/balance`), `/api/contacts`, `/api/contacts/:id/statement`
    into `./domexa-export/` (git-ignored). Only GET requests are ever sent. `transform` reads that
