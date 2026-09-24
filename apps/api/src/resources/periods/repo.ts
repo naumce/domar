@@ -111,6 +111,21 @@ export async function createPeriod(db: Db, ctx: TenantContext, buildingId: strin
   });
 }
 
+/**
+ * Only an unpublished *extraordinary* period can be deleted: it is the one period a manager can be
+ * left holding after a failed distribution, and nothing outside it depends on it yet (its lines and
+ * draft invoices cascade, and no posting exists before a publish). A regular month stays put — it is
+ * the building's record of that month — and a published period is never removable.
+ */
+export async function deletePeriod(db: Db, ctx: TenantContext, buildingId: string, id: string) {
+  return db.transaction(async (tx) => {
+    const before = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);
+    if (before.kind !== 'extraordinary') throw conflict('period_not_deletable', 'Only an unpublished extraordinary period can be deleted');
+    await tx.delete(BP).where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.id, id)));
+    await writeAudit(tx, ctx, { action: 'period.delete', entityType: 'billing_period', entityId: id, before });
+  });
+}
+
 export async function updatePeriod(db: Db, ctx: TenantContext, buildingId: string, id: string, patch: PeriodPatch) {
   return db.transaction(async (tx) => {
     const before = await claimPeriod(tx, ctx, buildingId, id, ['open', 'generated']);

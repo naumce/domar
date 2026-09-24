@@ -1,7 +1,24 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { schema } from '@domar/db';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { hashPassword } from '../src/auth/password.js';
+import { extraordinaryPeriodFor } from '../src/resources/extraordinary/service.js';
+import type * as PublishModule from '../src/resources/invoicing/publish.js';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
+
+/** Lets one test simulate a publish that dies after the invoices were generated. Off by default. */
+const stub = vi.hoisted(() => ({ failPublish: false }));
+vi.mock('../src/resources/invoicing/publish.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof PublishModule>();
+  return {
+    ...actual,
+    publishPeriod: async (...args: Parameters<typeof actual.publishPeriod>) => {
+      if (stub.failPublish) throw new Error('simulated publish failure');
+      return actual.publishPeriod(...args);
+    },
+  };
+});
 
 const YEAR = new Date().getFullYear();
 const num = (n: number) => `INV-${String(n).padStart(4, '0')}/${YEAR}`;
@@ -142,5 +159,137 @@ describe('extraordinary costs', () => {
       description: 'x', amountMinor: 1000, fund: 'regular', distribution: 'equal', dueDays: 15,
     }, b.cookie);
     expect(other.statusCode).toBe(404);
+  });
+
+  it('refuses a distribution that would reach a unit nobody owns', async () => {
+    // No appliesTo = every unit kind, and the fixture's storage unit S-1 has no owner: its slice
+    // would be computed and then dropped, quietly leaving the owners short of the full amount.
+    const res = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Фасада', amountMinor: 500000, fund: 'reserve', distribution: 'equal', dueDays: 30,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('missing_owner');
+    expect(res.json().error.details.units).toEqual(['S-1']);
+    expect(((await get(`/api/buildings/${A.buildingId}/periods`)).json().rows as unknown[])).toHaveLength(3);
+  });
+
+  it('refuses an area distribution over a unit with no area', async () => {
+    const res = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Кровна изолација', amountMinor: 500000, fund: 'reserve', distribution: 'area',
+      appliesTo: ['apartment', 'commercial', 'parking'], dueDays: 30,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('missing_unit_data');
+    expect(res.json().error.details).toEqual({ field: 'areaM2', units: ['P-1'] });
+  });
+
+  it('refuses a readonly user', async () => {
+    await t.db.insert(schema.users).values({
+      tenantId: a.tenantId, email: 'ro@firma-extra.mk', passwordHash: await hashPassword('correct-horse-1'),
+      firstName: 'R', lastName: 'O', role: 'readonly',
+    });
+    const login = await t.app.inject({ method: 'POST', url: '/api/auth/login', payload: { tenantSlug: 'firma-extra', email: 'ro@firma-extra.mk', password: 'correct-horse-1' } });
+    const cookie = String(login.headers['set-cookie']).split(';')[0]!;
+    const res = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'x', amountMinor: 1000, fund: 'regular', distribution: 'equal', appliesTo: ['apartment'], dueDays: 15,
+    }, cookie);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe('forbidden');
+  });
+
+  it('splits an area distribution by each unit area', async () => {
+    // 450.000 over 50 m², 75 m² and 100 m² = 225 m²: 2.000 per m², exactly and with no remainder.
+    const res = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Хидроизолација', amountMinor: 450000, fund: 'reserve', distribution: 'area',
+      appliesTo: ['apartment', 'commercial'], dueDays: 30,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().totalMinor).toBe(450000);
+    const rows = await invoicesOf(res.json().periodId);
+    const byOwner = Object.fromEntries(rows.map((r) => [r.contactId, r]));
+    expect(byOwner[A.owners.O1]!.totalMinor).toBe(100000);
+    expect(byOwner[A.owners.O2]!.totalMinor).toBe(150000);
+    expect(byOwner[A.owners.O3]!.totalMinor).toBe(200000);
+    const period = (await get(`/api/buildings/${A.buildingId}/periods/${res.json().periodId}`)).json();
+    expect(period.distributionBasis).toBe('area');
+  });
+
+  it('bills an attached unit to the unit it hangs off, and the owners carry the whole amount', async () => {
+    // P-1 hangs off unit 1, so its quarter lands on O1: four equal quarters, none of them lost.
+    const res = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Порта на паркинг', amountMinor: 400000, fund: 'regular', distribution: 'equal',
+      appliesTo: ['apartment', 'commercial', 'parking'], dueDays: 30,
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().totalMinor).toBe(400000);
+    const rows = await invoicesOf(res.json().periodId);
+    expect(rows.reduce((s, r) => s + r.totalMinor, 0)).toBe(400000);
+    const byOwner = Object.fromEntries(rows.map((r) => [r.contactId, r]));
+    expect(byOwner[A.owners.O1]!.totalMinor).toBe(200000);
+    expect(byOwner[A.owners.O2]!.totalMinor).toBe(100000);
+    expect(byOwner[A.owners.O3]!.totalMinor).toBe(100000);
+  });
+
+  it('refuses a second distribution while an earlier one is unpublished, and publishing it writes the event', async () => {
+    stub.failPublish = true;
+    const boom = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Скали', amountMinor: 300000, fund: 'regular', distribution: 'equal', appliesTo: ['apartment', 'commercial'], dueDays: 20,
+    });
+    expect(boom.statusCode).toBe(500);
+    stub.failPublish = false;
+
+    const blocked = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Друго', amountMinor: 1000, fund: 'regular', distribution: 'equal', appliesTo: ['apartment'], dueDays: 15,
+    });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe('extraordinary_pending');
+    const stranded: string = blocked.json().error.details.periodId;
+
+    // The manager finishes it from the period page: the legal event is written by the publish itself.
+    const done = await post(`/api/buildings/${A.buildingId}/periods/${stranded}/publish`, {});
+    expect(done.statusCode).toBe(200);
+    const events = (await get(`/api/buildings/${A.buildingId}/legal-events?pageSize=200`)).json().rows
+      .filter((e: { kind: string; refId: string }) => e.kind === 'extraordinary_cost_distributed' && e.refId === stranded);
+    expect(events).toHaveLength(1);
+    expect(events[0].evidence.amountMinor).toBe(300000);
+    expect(events[0].evidence.distribution).toBe('equal');
+    expect(events[0].evidence.invoiceCount).toBe(3);
+    expect(events[0].evidence.totalMinor).toBe(300000);
+  });
+
+  it('lets the manager delete a stranded period and try again', async () => {
+    stub.failPublish = true;
+    expect((await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Портафон', amountMinor: 300000, fund: 'regular', distribution: 'equal', appliesTo: ['apartment', 'commercial'], dueDays: 20,
+    })).statusCode).toBe(500);
+    stub.failPublish = false;
+
+    const blocked = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Портафон', amountMinor: 300000, fund: 'regular', distribution: 'equal', appliesTo: ['apartment', 'commercial'], dueDays: 20,
+    });
+    expect(blocked.statusCode).toBe(409);
+    const stranded: string = blocked.json().error.details.periodId;
+    const del = await t.app.inject({ method: 'DELETE', url: `/api/buildings/${A.buildingId}/periods/${stranded}`, headers: { cookie: a.cookie } });
+    expect(del.statusCode).toBe(204);
+    expect((await get(`/api/buildings/${A.buildingId}/periods/${stranded}`)).statusCode).toBe(404);
+
+    const again = await post(`/api/buildings/${A.buildingId}/extraordinary-costs`, {
+      description: 'Портафон', amountMinor: 300000, fund: 'regular', distribution: 'equal', appliesTo: ['apartment', 'commercial'], dueDays: 20,
+    });
+    expect(again.statusCode).toBe(201);
+    // A published period is not deletable, and neither is a regular month.
+    const locked = await t.app.inject({ method: 'DELETE', url: `/api/buildings/${A.buildingId}/periods/${again.json().periodId}`, headers: { cookie: a.cookie } });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.json().error.code).toBe('period_locked');
+    const regular = await t.app.inject({ method: 'DELETE', url: `/api/buildings/${A.buildingId}/periods/${A.periodId}`, headers: { cookie: a.cookie } });
+    expect(regular.statusCode).toBe(409);
+  });
+
+  it('dates the charge to this month, or the next when this month is already invoiced', async () => {
+    const ctx = { tenantId: a.tenantId, userId: a.userId, role: 'owner' as const };
+    // The fixture published the regular 2026-09 period, so September is out of reach.
+    expect(await extraordinaryPeriodFor(t.db, ctx, A.buildingId, 'Europe/Skopje', new Date('2026-09-15T10:00:00Z'))).toBe('2026-10');
+    expect(await extraordinaryPeriodFor(t.db, ctx, A.buildingId, 'Europe/Skopje', new Date('2026-12-31T23:30:00Z'))).toBe('2027-01');
+    expect(await extraordinaryPeriodFor(t.db, ctx, A.buildingId, 'Europe/Skopje', new Date('2026-11-05T08:00:00Z'))).toBe('2026-11');
   });
 });

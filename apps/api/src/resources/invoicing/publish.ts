@@ -1,4 +1,5 @@
 import { type Db, schema } from '@domar/db';
+import { mulMinor } from '@domar/domain';
 import { and, asc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { conflict, isUniqueViolation } from '../../errors.js';
@@ -8,10 +9,19 @@ import type { TenantContext } from '../../tenant-context.js';
 import { getPeriod, getPeriodRow } from '../periods/repo.js';
 import { nextInvoiceNumber } from './numbering.js';
 
-const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.contacts; const BP = schema.billingPeriods; const T = schema.tenants;
+const INV = schema.invoices; const IL = schema.invoiceLines; const C = schema.contacts; const BP = schema.billingPeriods; const PL = schema.periodLines; const T = schema.tenants;
 const DUE_DAYS = 15;
 
-export interface PublishInput { dueAt?: Date | undefined }
+/** The engine's basis, read back as the distribution the manager asked for (plan addendum 17). */
+const DISTRIBUTION = { custom: 'share', equal: 'equal', area: 'area' } as const;
+
+export interface PublishInput {
+  dueAt?: Date | undefined;
+  /** An alternative to `dueAt`: days from the issue date, so the due date is counted off the very moment stamped on the invoices. */
+  dueDays?: number | undefined;
+  /** Evidence only: the decision document an Art. 47(5) distribution rests on. */
+  documentId?: string | null | undefined;
+}
 
 export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: string, periodId: string, input: PublishInput = {}) {
   return db.transaction(async (tx) => {
@@ -31,7 +41,7 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
     const tenant = await tx.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId), columns: { timezone: true } });
     const issuedAt = new Date();
     const year = Number(new Intl.DateTimeFormat('en-US', { timeZone: tenant!.timezone, year: 'numeric' }).format(issuedAt));
-    const dueAt = input.dueAt ?? new Date(issuedAt.getTime() + DUE_DAYS * 24 * 3600 * 1000);
+    const dueAt = input.dueAt ?? new Date(issuedAt.getTime() + (input.dueDays ?? DUE_DAYS) * 24 * 3600 * 1000);
     const postings: NewPosting[] = [];
     for (const { inv } of drafts) {
       const number = await nextInvoiceNumber(tx, ctx, year, claimed.numberPrefix, claimed.numberSuffix);
@@ -58,6 +68,26 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
         invoiceIds: drafts.map((d) => d.inv.id), totalMinor: drafts.reduce((s, d) => s + d.inv.totalMinor, 0),
       },
     });
+    // Art. 47(5): the distribution becomes a legal fact the moment the invoices go out, so the event
+    // is written here rather than by the caller — a manual publish of an extraordinary period from
+    // the period page records it just as the extraordinary-costs route does.
+    if (claimed.kind === 'extraordinary') {
+      const lines = await tx.select().from(PL).where(and(eq(PL.tenantId, ctx.tenantId), eq(PL.periodId, periodId))).orderBy(asc(PL.sortOrder), asc(PL.createdAt));
+      await recordLegalEvent(tx, ctx, {
+        buildingId, kind: 'extraordinary_cost_distributed', refType: 'billing_period', refId: periodId, occurredAt: issuedAt, dueAt,
+        evidence: {
+          periodId, period: claimed.period,
+          amountMinor: lines.reduce((s, l) => s + mulMinor(l.unitPriceMinor, Number(l.quantity)), 0),
+          fund: lines[0]?.fund ?? null,
+          distribution: claimed.distributionBasis ? DISTRIBUTION[claimed.distributionBasis] : null,
+          distributionBasis: claimed.distributionBasis,
+          appliesTo: lines[0]?.appliesTo ?? [],
+          invoiceIds: drafts.map((d) => d.inv.id), invoiceCount: drafts.length,
+          totalMinor: drafts.reduce((s, d) => s + d.inv.totalMinor, 0),
+          documentId: input.documentId ?? null,
+        },
+      });
+    }
     await writeAudit(tx, ctx, { action: 'period.publish', entityType: 'billing_period', entityId: periodId, after: { invoices: drafts.length, issuedAt, dueAt } });
     const detail = await getPeriod(tx, ctx, buildingId, periodId);
     return { period: detail, invoiceCount: detail.invoiceCount, totalMinor: detail.totalMinor };

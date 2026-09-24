@@ -6,7 +6,11 @@ export const distributionEnum = z.enum(['share', 'equal', 'area']);
 
 export const extraordinaryCostCreate = z.object({
   description: z.string().min(1).max(300),
-  amountMinor: moneyMinor.refine((v) => v > 0, { message: 'amountMinor must be positive' }),
+  /**
+   * Positive, and capped where the engine is still exact: `mulMinor` multiplies by 1e6 internally,
+   * so anything above ~9.007e9 minor units overflows `Number.MAX_SAFE_INTEGER` and would throw.
+   */
+  amountMinor: moneyMinor.min(1).max(9_000_000_000),
   fund: fundEnum,
   distribution: distributionEnum,
   /** Empty or absent = every unit kind, exactly like a period line. */
