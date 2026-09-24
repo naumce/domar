@@ -32,6 +32,18 @@ export async function claimInvite(tx: Db, code: string): Promise<InviteRow> {
   return row;
 }
 
+/**
+ * Read-only peek at a live code, without consuming it. Registration runs this *before* it touches
+ * the account, so a wrong code answers `400 invalid_code` whether or not the email is registered;
+ * the claiming UPDATE in `claimInvite` remains the only atomic gate.
+ */
+export async function assertLiveInvite(db: Db, code: string): Promise<void> {
+  const [row] = await db.select({ id: PI.id }).from(PI)
+    .where(and(eq(PI.codeHash, hashCode(code)), isNull(PI.usedAt), gt(PI.expiresAt, new Date())))
+    .limit(1);
+  if (!row) throw badRequest('invalid_code', 'The code is wrong, already used or expired');
+}
+
 /** `none` | `invited` | `linked` for one contact, plus the one date that matters for that state. */
 export async function portalStatus(db: Db, ctx: TenantContext, contactId: string) {
   await getContact(db, ctx, contactId); // 404 across tenants

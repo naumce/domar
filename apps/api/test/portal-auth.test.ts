@@ -1,6 +1,7 @@
 import { schema } from '@domar/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { deleteOwnerSessionsFor } from '../src/portal/session.js';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
 
@@ -22,8 +23,9 @@ describe('portal auth', () => {
   let anaA = '';
   let ownerCookie = '';
 
-  const post = (url: string, payload: Record<string, unknown> = {}, cookie?: string) =>
-    t.app.inject({ method: 'POST', url, headers: cookie ? { cookie } : {}, payload });
+  const post = (url: string, payload: Record<string, unknown> = {}, cookie?: string, ip?: string) =>
+    t.app.inject({ method: 'POST', url, headers: cookie ? { cookie } : {}, payload, ...(ip ? { remoteAddress: ip } : {}) });
+  const get = (url: string, cookie: string) => t.app.inject({ method: 'GET', url, headers: { cookie } });
   const staffPost = (url: string, payload: Record<string, unknown> = {}, cookie?: string) =>
     t.app.inject({ method: 'POST', url, headers: { cookie: cookie ?? a.cookie }, payload });
   const codeFor = async (contactId: string, cookie?: string) =>
@@ -161,10 +163,78 @@ describe('portal auth', () => {
 
   it('keeps the two cookies apart', async () => {
     // A staff cookie buys nothing in the portal…
-    expect((await t.app.inject({ method: 'GET', url: '/api/portal/me', headers: { cookie: a.cookie } })).statusCode).toBe(401);
+    const staffInPortal = await get('/api/portal/me', a.cookie);
+    expect(staffInPortal.statusCode).toBe(401);
+    expect(staffInPortal.json().error.code).toBe('unauthorized');
     // …and an owner cookie buys nothing in the manager app.
-    expect((await t.app.inject({ method: 'GET', url: '/api/contacts', headers: { cookie: ownerCookie } })).statusCode).toBe(401);
-    expect((await t.app.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: ownerCookie } })).statusCode).toBe(401);
+    for (const url of ['/api/contacts', '/api/auth/me']) {
+      const res = await get(url, ownerCookie);
+      expect(res.statusCode).toBe(401);
+      expect(res.json().error.code).toBe('unauthorized');
+    }
+  });
+
+  it('reads only its own cookie when a request carries both', async () => {
+    const login = await post('/api/portal/login', { email: 'marko@owner.mk', password: 'correct-horse-1' }, undefined, '10.9.0.4');
+    const both = `${a.cookie}; ${cookieOf(login)}`;
+    const portalMe = await get('/api/portal/me', both);
+    expect(portalMe.statusCode).toBe(200);
+    expect(portalMe.json().account.email).toBe('marko@owner.mk');
+    const staffMe = await get('/api/auth/me', both);
+    expect(staffMe.statusCode).toBe(200);
+    expect(staffMe.json().user.id).toBe(a.userId);
+  });
+
+  it('checks the code before the account, so a bad code cannot reveal a registered email', async () => {
+    const ip = '10.9.0.1';
+    for (const email of ['marko@owner.mk', 'ghost@owner.mk']) {
+      const res = await post('/api/portal/register', { code: 'ZZZZZZZZ', email, password: 'nope-nope-nope' }, undefined, ip);
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe('invalid_code');
+    }
+  });
+
+  it('refuses a valid code against a deactivated account without burning it', async () => {
+    const ip = '10.9.0.3';
+    const contact = (await staffPost('/api/contacts', { firstName: 'Втора', lastName: 'Шанса' })).json().id;
+    const code = await codeFor(contact);
+    const res = await post('/api/portal/register', { code, email: 'off@owner.mk', password: 'correct-horse-1' }, undefined, ip);
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error.code).toBe('invalid_credentials');
+    const invites = await t.db.select().from(schema.portalInvites).where(eq(schema.portalInvites.contactId, contact));
+    expect(invites[0]!.usedAt).toBeNull();
+  });
+
+  it('refuses a code whose contact already belongs to another account', async () => {
+    const ip = '10.9.0.2';
+    const shared = (await staffPost('/api/contacts', { firstName: 'Спор', lastName: 'Имот' })).json().id;
+    expect((await post('/api/portal/register', { code: await codeFor(shared), email: 'first@owner.mk', password: 'correct-horse-1' }, undefined, ip)).statusCode).toBe(201);
+
+    // …at registration…
+    const viaRegister = await post('/api/portal/register', { code: await codeFor(shared), email: 'second@owner.mk', password: 'correct-horse-1' }, undefined, ip);
+    expect(viaRegister.statusCode).toBe(409);
+    expect(viaRegister.json().error.code).toBe('contact_already_linked');
+    expect(await t.db.select().from(schema.ownerAccounts).where(eq(schema.ownerAccounts.email, 'second@owner.mk'))).toHaveLength(0);
+
+    // …and on /link from a second account.
+    const own = (await staffPost('/api/contacts', { firstName: 'Свој', lastName: 'Имот' })).json().id;
+    const other = await post('/api/portal/register', { code: await codeFor(own), email: 'second@owner.mk', password: 'correct-horse-1' }, undefined, ip);
+    const viaLink = await post('/api/portal/link', { code: await codeFor(shared) }, cookieOf(other), ip);
+    expect(viaLink.statusCode).toBe(409);
+    expect(viaLink.json().error.code).toBe('contact_already_linked');
+
+    const invites = await t.db.select().from(schema.portalInvites).where(eq(schema.portalInvites.contactId, shared));
+    expect(invites.filter((i) => i.usedAt !== null)).toHaveLength(1); // only the first owner's claim stuck
+  });
+
+  it('deleteOwnerSessionsFor drops every session of one account', async () => {
+    const ip = '10.9.0.5';
+    const one = cookieOf(await post('/api/portal/login', { email: 'first@owner.mk', password: 'correct-horse-1' }, undefined, ip));
+    const two = cookieOf(await post('/api/portal/login', { email: 'first@owner.mk', password: 'correct-horse-1' }, undefined, ip));
+    expect((await get('/api/portal/me', one)).statusCode).toBe(200);
+    const [account] = await t.db.select().from(schema.ownerAccounts).where(eq(schema.ownerAccounts.email, 'first@owner.mk'));
+    await deleteOwnerSessionsFor(t.db, account!.id);
+    for (const cookie of [one, two]) expect((await get('/api/portal/me', cookie)).statusCode).toBe(401);
   });
 
   it('throttles repeated portal login attempts', async () => {

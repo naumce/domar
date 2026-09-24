@@ -5,7 +5,7 @@ import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from '../auth/passw
 import { AppError, conflict, isUniqueViolation } from '../errors.js';
 import type { TenantContext } from '../tenant-context.js';
 import type { PortalContext } from './context.js';
-import { claimInvite } from './invites.js';
+import { assertLiveInvite, claimInvite } from './invites.js';
 import { deleteOtherOwnerSessions, listLinks } from './session.js';
 
 const OA = schema.ownerAccounts; const OCL = schema.ownerContactLinks; const C = schema.contacts;
@@ -26,8 +26,17 @@ export function portalTenantContext(tenantId: string): TenantContext {
   return { tenantId, userId: null, role: 'readonly' };
 }
 
-/** Inserts the link and its audit row; `409 already_linked` when the account already holds it. */
+/**
+ * Inserts the link and its audit row. `409 already_linked` when this account already holds the
+ * contact, `409 contact_already_linked` when a different account does: one contact is one owner
+ * login in this phase, and the manager reissues the code if the wrong person claimed it.
+ */
 async function linkContact(tx: Db, ownerAccountId: string, tenantId: string, contactId: string) {
+  const [taken] = await tx.select({ ownerAccountId: OCL.ownerAccountId }).from(OCL)
+    .where(and(eq(OCL.tenantId, tenantId), eq(OCL.contactId, contactId))).limit(1);
+  if (taken && taken.ownerAccountId !== ownerAccountId) {
+    throw conflict('contact_already_linked', 'This property is already linked to another portal account');
+  }
   let row;
   try {
     [row] = await tx.insert(OCL).values({ ownerAccountId, tenantId, contactId }).returning();
@@ -43,12 +52,15 @@ async function linkContact(tx: Db, ownerAccountId: string, tenantId: string, con
 }
 
 /**
- * Register with a code. An email that already has an account must prove it with that account's
- * password (spec §19.3) — and that check runs *before* the transaction, so a wrong password never
- * consumes the code. Both failures answer the same `401 invalid_credentials`, so registration does
- * not reveal which emails are already registered.
+ * Register with a code. The code is checked first, read-only: a wrong code answers `400
+ * invalid_code` for every email, so registration cannot be used as an oracle for which addresses
+ * already have an account. Only then does the email matter — an address that already has an account
+ * must prove it with that account's password (spec §19.3), and that check too runs *before* the
+ * transaction, so a wrong password never consumes the code. The claiming UPDATE inside the
+ * transaction stays the atomic gate: the read-only peek is a courtesy, never the guarantee.
  */
 export async function registerPortalAccount(db: Db, input: { code: string; email: string; password: string }) {
+  await assertLiveInvite(db, input.code); // 400 invalid_code, before the account is even looked up
   const email = input.email.toLowerCase();
   const existing = (await db.query.ownerAccounts.findFirst({ where: eq(OA.email, email) })) ?? null;
   const ok = await verifyPassword(input.password, existing?.passwordHash ?? DUMMY_PASSWORD_HASH);
@@ -89,7 +101,9 @@ export async function linkAnotherContact(db: Db, portal: PortalContext, code: st
     return invite.contactId;
   });
   const links = await describeLinks(db, await listLinks(db, portal.ownerAccountId));
-  return links.find((l) => l.contactId === contactId)!;
+  const created = links.find((l) => l.contactId === contactId);
+  if (!created) throw new AppError(500, 'internal', 'the link was written but could not be read back');
+  return created;
 }
 
 export async function changePortalPassword(db: Db, portal: PortalContext, currentPassword: string, newPassword: string, keepToken: string): Promise<void> {

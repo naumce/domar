@@ -32,6 +32,15 @@ export async function deleteOwnerSession(db: Db, token: string): Promise<void> {
   await db.delete(OS).where(eq(OS.tokenHash, hashToken(token)));
 }
 
+/**
+ * Every session of an owner: used when the account is deactivated or its password is reset, so a
+ * cookie issued before that moment cannot be revived. Expired rows are deleted here too, while
+ * `resolveOwnerSession` simply never matches them.
+ */
+export async function deleteOwnerSessionsFor(db: Db, ownerAccountId: string): Promise<void> {
+  await db.delete(OS).where(eq(OS.ownerAccountId, ownerAccountId));
+}
+
 /** Every session of an owner except the caller's own: used after a self-service password change. */
 export async function deleteOtherOwnerSessions(db: Db, ownerAccountId: string, keepToken: string): Promise<void> {
   await db.delete(OS).where(and(eq(OS.ownerAccountId, ownerAccountId), ne(OS.tokenHash, hashToken(keepToken))));
