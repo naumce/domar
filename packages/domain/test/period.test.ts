@@ -62,4 +62,14 @@ describe('localDayStart', () => {
     // 23:30 UTC on the 23rd is already 01:30 on the 24th in Skopje.
     expect(localDayStart(new Date('2026-09-23T23:30:00.000Z'), 'Europe/Skopje').toISOString()).toBe('2026-09-23T22:00:00.000Z');
   });
+  it('gives the correct offset on the day Europe/Skopje springs forward', () => {
+    // 2026-03-29: clocks jump 02:00→03:00 CET→CEST at 01:00 UTC. Local midnight of the 29th itself
+    // is still CET (+1), before the day's own transition.
+    expect(localDayStart(new Date('2026-03-29T09:30:00.000Z'), 'Europe/Skopje').toISOString()).toBe('2026-03-28T23:00:00.000Z');
+  });
+  it('gives the correct offset on the day Europe/Skopje falls back', () => {
+    // 2026-10-25: clocks fall 03:00→02:00 CEST→CET at 01:00 UTC. Local midnight of the 25th itself
+    // is still CEST (+2), before the day's own transition.
+    expect(localDayStart(new Date('2026-10-25T09:30:00.000Z'), 'Europe/Skopje').toISOString()).toBe('2026-10-24T22:00:00.000Z');
+  });
 });

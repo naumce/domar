@@ -1,8 +1,8 @@
-import type { ComplianceRules } from '../country/types.js';
+import type { ComplianceDutyKey, ComplianceRules } from '../country/types.js';
+import { localDayStart } from '../period.js';
 
-export type ComplianceDutyKey =
-  | 'invoices' | 'reminders' | 'assembly' | 'annual_report'
-  | 'fund_transparency' | 'fund_accounts' | 'handover' | 'extraordinary_costs';
+/** `ComplianceDutyKey` lives on the country pack's types (`CountryLabels.compliance` is keyed by it); re-exported here since this module owns the evaluation that produces it. */
+export type { ComplianceDutyKey } from '../country/types.js';
 
 export type ComplianceStatus = 'ok' | 'due' | 'overdue' | 'n/a';
 
@@ -30,8 +30,9 @@ const HOW_TO_FIX: Record<ComplianceDutyKey, string> = {
 
 /**
  * Dates and counts the API reads out of events and columns (spec §3, §11). Every timestamp is an ISO
- * string with an offset; `managementContractEndsOn` is a `YYYY-MM-DD` date, which parses as UTC
- * midnight — the same grain `today` is given in.
+ * string with an offset; `managementContractEndsOn` is a `YYYY-MM-DD` date, read onto the tenant's
+ * civil day (`civilDay`, using the timezone `evaluateBuildingCompliance` is given) — the same grain
+ * `today` is given in.
  */
 export interface ComplianceSnapshot {
   buildingCreatedAt: string;
@@ -66,6 +67,8 @@ export interface ComplianceDuty {
   howToFix: string;
   /** Owners waiting, owners linked, costs distributed — null when the duty counts nothing. */
   count: number | null;
+  /** Signals that don't change `status` on their own, or that survive a status already worse (e.g. `late_invitation` on an assembly that's `overdue` for its age). */
+  flags: string[];
 }
 
 export interface ComplianceResult {
@@ -78,6 +81,16 @@ const DAY_MS = 86_400_000;
 const parse = (s: string | null): Date | null => (s === null ? null : new Date(s));
 const addDays = (d: Date, n: number): Date => new Date(d.getTime() + n * DAY_MS);
 const wholeDaysBetween = (from: Date, to: Date): number => Math.floor((to.getTime() - from.getTime()) / DAY_MS);
+
+/**
+ * A `YYYY-MM-DD` snapshot field onto the UTC instant of local midnight of that same civil day in
+ * `timeZone`, so it compares on equal footing with `today` (also `localDayStart`). Anchored at noon
+ * UTC rather than parsing the date directly as UTC midnight, so the civil day read back out via
+ * `localDayStart` is never pushed a day either way by the zone's offset.
+ */
+function civilDay(dateOnly: string, timeZone: string): Date {
+  return localDayStart(new Date(`${dateOnly}T12:00:00.000Z`), timeZone);
+}
 
 /** Calendar months in UTC; the 31st of a month lands on the last day of a shorter one. */
 function addMonths(d: Date, n: number): Date {
@@ -95,8 +108,8 @@ function windowStatus(deadline: Date, graceEnd: Date, today: Date): ComplianceSt
   return today.getTime() <= graceEnd.getTime() ? 'due' : 'overdue';
 }
 
-function duty(key: ComplianceDutyKey, status: ComplianceStatus, dueAt: Date | null, lastEvidenceAt: string | null, count: number | null = null): ComplianceDuty {
-  return { key, article: ARTICLES[key], status, dueAt: dueAt === null ? null : dueAt.toISOString(), lastEvidenceAt, howToFix: HOW_TO_FIX[key], count };
+function duty(key: ComplianceDutyKey, status: ComplianceStatus, dueAt: Date | null, lastEvidenceAt: string | null, count: number | null = null, flags: string[] = []): ComplianceDuty {
+  return { key, article: ARTICLES[key], status, dueAt: dueAt === null ? null : dueAt.toISOString(), lastEvidenceAt, howToFix: HOW_TO_FIX[key], count, flags };
 }
 
 function invoicesDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules): ComplianceDuty {
@@ -122,9 +135,17 @@ function assemblyDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules): C
   const deadline = addMonths(held, r.assemblyMaxAgeMonths);
   let status = windowStatus(deadline, addMonths(deadline, r.graceMonths), today);
   const invited = parse(s.lastAssemblyInvitedAt);
-  // Art. 37: the invitation must go out at least 15 days before the assembly.
-  if (status === 'ok' && invited !== null && wholeDaysBetween(invited, held) < r.assemblyInvitationMinDays) status = 'due';
-  return duty('assembly', status, deadline, s.lastAssemblyHeldAt, s.assemblyCount);
+  const flags: string[] = [];
+  // Art. 37: the invitation must go out at least 15 days before the assembly it precedes. An
+  // invitation timestamped after the last held assembly belongs to the next one, not this one, and
+  // says nothing about whether this assembly's invitation was timely.
+  if (invited !== null && invited.getTime() < held.getTime() && wholeDaysBetween(invited, held) < r.assemblyInvitationMinDays) {
+    flags.push('late_invitation');
+    // Elevates `ok` to `due`, but a late invitation on an already `due`/`overdue` assembly (stale
+    // from age) still needs the flag recorded, so it isn't checked only when status is `ok`.
+    if (status === 'ok') status = 'due';
+  }
+  return duty('assembly', status, deadline, s.lastAssemblyHeldAt, s.assemblyCount, flags);
 }
 
 function annualReportDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules): ComplianceDuty {
@@ -149,14 +170,16 @@ function fundAccountsDuty(s: ComplianceSnapshot): ComplianceDuty {
   return duty('fund_accounts', filled(s.regularFundAccount) && filled(s.reserveFundAccount) ? 'ok' : 'overdue', null, null);
 }
 
-function handoverDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules): ComplianceDuty {
-  const endsOn = parse(s.managementContractEndsOn);
+function handoverDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules, timeZone: string): ComplianceDuty {
+  // managementContractEndsOn is YYYY-MM-DD: read onto the same civil day as `today` (both via
+  // localDayStart), not onto UTC midnight, or a zone ahead of UTC sees the deadline a day early.
+  const endsOn = s.managementContractEndsOn === null ? null : civilDay(s.managementContractEndsOn, timeZone);
   if (endsOn === null) return duty('handover', 'n/a', null, s.lastHandoverReportAt);
   const deadline = addDays(endsOn, r.handoverDays);
   const issued = parse(s.lastHandoverReportAt);
   if (issued !== null && issued.getTime() >= endsOn.getTime()) return duty('handover', 'ok', deadline, s.lastHandoverReportAt);
-  if (today.getTime() < endsOn.getTime()) return duty('handover', 'ok', deadline, null);
-  return duty('handover', today.getTime() <= deadline.getTime() ? 'due' : 'overdue', deadline, null);
+  if (today.getTime() < endsOn.getTime()) return duty('handover', 'ok', deadline, s.lastHandoverReportAt);
+  return duty('handover', today.getTime() <= deadline.getTime() ? 'due' : 'overdue', deadline, s.lastHandoverReportAt);
 }
 
 /**
@@ -167,21 +190,26 @@ function extraordinaryDuty(s: ComplianceSnapshot): ComplianceDuty {
   return duty('extraordinary_costs', 'n/a', null, null, s.extraordinaryCostCount);
 }
 
+/** One evaluator per `ComplianceDutyKey`, called in `COMPLIANCE_DUTY_KEYS` order; unused parameters are dropped per duty rather than threaded through for uniformity. */
+const EVALUATORS: Record<ComplianceDutyKey, (s: ComplianceSnapshot, today: Date, rules: ComplianceRules, timeZone: string) => ComplianceDuty> = {
+  invoices: (s, today, rules) => invoicesDuty(s, today, rules),
+  reminders: (s, today, rules) => remindersDuty(s, today, rules),
+  assembly: (s, today, rules) => assemblyDuty(s, today, rules),
+  annual_report: (s, today, rules) => annualReportDuty(s, today, rules),
+  fund_transparency: (s) => fundTransparencyDuty(s),
+  fund_accounts: (s) => fundAccountsDuty(s),
+  handover: (s, today, rules, timeZone) => handoverDuty(s, today, rules, timeZone),
+  extraordinary_costs: (s) => extraordinaryDuty(s),
+};
+
 /**
- * Pure: the same snapshot, day and rules always give the same duties. `today` is local midnight in
- * the tenant's timezone (`localDayStart`), because every rule here is day- or month-grained.
+ * Pure: the same snapshot, day, rules and timezone always give the same duties. `today` is local
+ * midnight in the tenant's timezone (`localDayStart`), because every rule here is day- or
+ * month-grained. `timeZone` is that same zone, given again so date-only snapshot fields (currently
+ * `managementContractEndsOn`) can be read onto the same civil day as `today` via `civilDay`.
  */
-export function evaluateBuildingCompliance(snapshot: ComplianceSnapshot, today: Date, rules: ComplianceRules): ComplianceResult {
-  const duties: ComplianceDuty[] = [
-    invoicesDuty(snapshot, today, rules),
-    remindersDuty(snapshot, today, rules),
-    assemblyDuty(snapshot, today, rules),
-    annualReportDuty(snapshot, today, rules),
-    fundTransparencyDuty(snapshot),
-    fundAccountsDuty(snapshot),
-    handoverDuty(snapshot, today, rules),
-    extraordinaryDuty(snapshot),
-  ];
+export function evaluateBuildingCompliance(snapshot: ComplianceSnapshot, today: Date, rules: ComplianceRules, timeZone: string): ComplianceResult {
+  const duties = COMPLIANCE_DUTY_KEYS.map((key) => EVALUATORS[key](snapshot, today, rules, timeZone));
   const counts = { ok: 0, due: 0, overdue: 0, na: 0 };
   for (const d of duties) counts[d.status === 'n/a' ? 'na' : d.status] += 1;
   const status: ComplianceStatus = counts.overdue > 0 ? 'overdue' : counts.due > 0 ? 'due' : counts.ok > 0 ? 'ok' : 'n/a';

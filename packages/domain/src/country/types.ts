@@ -27,6 +27,11 @@ export interface ReminderRules {
   channels: ReminderChannel[];
 }
 
+/** The eight legal duties `compliance/evaluate.ts` evaluates, in their fixed report order. */
+export type ComplianceDutyKey =
+  | 'invoices' | 'reminders' | 'assembly' | 'annual_report'
+  | 'fund_transparency' | 'fund_accounts' | 'handover' | 'extraordinary_costs';
+
 /** Art. 19/33, 28, 37, 31, 45(4), 42/45, 30, 47(5): the thresholds the compliance rules read. */
 export interface ComplianceRules {
   /** Days a published period stays fresh before the next one is owed. */
@@ -61,8 +66,8 @@ export interface CountryLabels {
   reminderIntro: string;
   /** The legal sentence of the reminder: the citation plus the statement that no fee is charged. */
   reminderLegal: string;
-  /** One entry per `ComplianceDutyKey`; keyed loosely here so `compliance/evaluate.ts` owns the union. */
-  compliance: Record<string, ComplianceLabel>;
+  /** One entry per `ComplianceDutyKey`. */
+  compliance: Record<ComplianceDutyKey, ComplianceLabel>;
 }
 
 export interface CountryPack {

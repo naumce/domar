@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateBuildingCompliance, type ComplianceSnapshot, type ComplianceDutyKey, type ComplianceStatus } from '../src/compliance/evaluate.js';
 import { mkPack } from '../src/country/mk.js';
+import { localDayStart } from '../src/period.js';
 
 const RULES = mkPack.complianceRules;
 const TODAY = new Date('2026-09-24T00:00:00.000Z');
+// UTC: civilDay('YYYY-MM-DD', 'UTC') resolves to the same instant as parsing the string directly, so
+// this preserves every fixture below computed against a plain UTC-midnight reading of date-only
+// fields. Europe/Skopje is exercised explicitly in the civil-day tests further down.
+const TZ = 'UTC';
 
 /** A building that satisfies nothing: every duty is reached by overriding one field. */
 const base: ComplianceSnapshot = {
@@ -25,13 +30,13 @@ const base: ComplianceSnapshot = {
   extraordinaryCostCount: 0,
 };
 const statusOf = (s: Partial<ComplianceSnapshot>, key: ComplianceDutyKey): ComplianceStatus =>
-  evaluateBuildingCompliance({ ...base, ...s }, TODAY, RULES).duties.find((d) => d.key === key)!.status;
+  evaluateBuildingCompliance({ ...base, ...s }, TODAY, RULES, TZ).duties.find((d) => d.key === key)!.status;
 const dutyOf = (s: Partial<ComplianceSnapshot>, key: ComplianceDutyKey) =>
-  evaluateBuildingCompliance({ ...base, ...s }, TODAY, RULES).duties.find((d) => d.key === key)!;
+  evaluateBuildingCompliance({ ...base, ...s }, TODAY, RULES, TZ).duties.find((d) => d.key === key)!;
 
 describe('evaluateBuildingCompliance — shape', () => {
   it('returns the eight duties in a fixed order, each with its article and deep link', () => {
-    const r = evaluateBuildingCompliance(base, TODAY, RULES);
+    const r = evaluateBuildingCompliance(base, TODAY, RULES, TZ);
     expect(r.duties.map((d) => d.key)).toEqual([
       'invoices', 'reminders', 'assembly', 'annual_report', 'fund_transparency', 'fund_accounts', 'handover', 'extraordinary_costs']);
     expect(r.duties.map((d) => d.article)).toEqual(['19/33', '28', '37', '31', '45(4)', '42/45', '30', '47(5)']);
@@ -41,7 +46,7 @@ describe('evaluateBuildingCompliance — shape', () => {
   });
 
   it('summarises a fresh building as overdue because the fund accounts are empty', () => {
-    const r = evaluateBuildingCompliance(base, TODAY, RULES);
+    const r = evaluateBuildingCompliance(base, TODAY, RULES, TZ);
     expect(r.status).toBe('overdue');
     expect(r.counts).toEqual({ ok: 2, due: 1, overdue: 1, na: 4 });
   });
@@ -51,7 +56,7 @@ describe('evaluateBuildingCompliance — shape', () => {
       ...base, lastPublishedPeriodAt: '2026-09-20T00:00:00.000Z',
       portalLinkedOwners: 1, fundStatementAvailableAt: '2026-09-02T10:00:00.000Z',
       regularFundAccount: '210-0000000000-19', reserveFundAccount: '210-0000000000-96',
-    }, TODAY, RULES);
+    }, TODAY, RULES, TZ);
     expect(r.status).toBe('ok');
     expect(r.counts).toEqual({ ok: 4, due: 0, overdue: 0, na: 4 });
   });
@@ -76,6 +81,13 @@ describe('Art. 19/33 — invoices', () => {
     const d = dutyOf({ lastPublishedPeriodAt: '2026-09-20T00:00:00.000Z' }, 'invoices');
     expect(d.dueAt).toBe('2026-10-25T00:00:00.000Z');
     expect(d.lastEvidenceAt).toBe('2026-09-20T00:00:00.000Z');
+  });
+  it('is due on the exact grace-end day and overdue the day after', () => {
+    // lastPublishedPeriodAt 2026-01-01 → deadline 2026-02-05 (+35d) → graceEnd 2026-03-07 (+30d).
+    const snapshot = { ...base, lastPublishedPeriodAt: '2026-01-01T00:00:00.000Z' };
+    const statusAt = (today: Date) => evaluateBuildingCompliance(snapshot, today, RULES, TZ).duties.find((d) => d.key === 'invoices')!.status;
+    expect(statusAt(new Date('2026-03-07T00:00:00.000Z'))).toBe('due');
+    expect(statusAt(new Date('2026-03-08T00:00:00.000Z'))).toBe('overdue');
   });
 });
 
@@ -108,7 +120,24 @@ describe('Art. 37 — assembly', () => {
   it('flags an invitation sent fewer than fifteen days before the assembly', () => {
     const ok = { assemblyCount: 1, lastAssemblyHeldAt: '2026-09-01T00:00:00.000Z', lastAssemblyInvitedAt: '2026-08-17T00:00:00.000Z' };
     expect(statusOf(ok, 'assembly')).toBe('ok');
-    expect(statusOf({ ...ok, lastAssemblyInvitedAt: '2026-08-18T00:00:00.000Z' }, 'assembly')).toBe('due');
+    expect(dutyOf(ok, 'assembly').flags).toEqual([]);
+    const late = { ...ok, lastAssemblyInvitedAt: '2026-08-18T00:00:00.000Z' };
+    expect(statusOf(late, 'assembly')).toBe('due');
+    expect(dutyOf(late, 'assembly').flags).toEqual(['late_invitation']);
+  });
+  it('ignores an invitation dated after the last held assembly — that is a future assembly, not a late one', () => {
+    const d = dutyOf({ assemblyCount: 1, lastAssemblyHeldAt: '2026-03-01T00:00:00.000Z', lastAssemblyInvitedAt: '2026-09-20T00:00:00.000Z' }, 'assembly');
+    expect(d.status).toBe('ok');
+    expect(d.flags).toEqual([]);
+  });
+  it('keeps the late-invitation flag even when the assembly is already overdue for its age', () => {
+    const d = dutyOf({ assemblyCount: 1, lastAssemblyHeldAt: '2025-06-20T00:00:00.000Z', lastAssemblyInvitedAt: '2025-06-10T00:00:00.000Z' }, 'assembly');
+    expect(d.status).toBe('overdue');
+    expect(d.flags).toEqual(['late_invitation']);
+  });
+  it('rolls a month-grained deadline from the 31st onto the last day of a shorter month', () => {
+    const r = evaluateBuildingCompliance({ ...base, assemblyCount: 1, lastAssemblyHeldAt: '2026-01-31T00:00:00.000Z' }, TODAY, { ...RULES, assemblyMaxAgeMonths: 1 }, TZ);
+    expect(r.duties.find((d) => d.key === 'assembly')!.dueAt).toBe('2026-02-28T00:00:00.000Z');
   });
 });
 
@@ -166,6 +195,16 @@ describe('Art. 30 — handover', () => {
   it('reports the eight-day deadline', () => {
     expect(dutyOf({ managementContractEndsOn: '2026-10-01' }, 'handover').dueAt).toBe('2026-10-09T00:00:00.000Z');
   });
+  it('compares the end date and today on the same civil day in the tenant timezone, not on the UTC day', () => {
+    // Europe/Skopje is UTC+2 in September, so local midnight of 2026-09-24 is 2026-09-23T22:00Z —
+    // the same instant `civilDay` gives managementContractEndsOn '2026-09-24'. A UTC-midnight
+    // reading of the end date would instead put it a few hours after `today`, wrongly reading `ok`.
+    const today = localDayStart(new Date('2026-09-24T10:00:00.000Z'), 'Europe/Skopje');
+    const r = evaluateBuildingCompliance({ ...base, managementContractEndsOn: '2026-09-24' }, today, RULES, 'Europe/Skopje');
+    const d = r.duties.find((x) => x.key === 'handover')!;
+    expect(d.status).toBe('due');
+    expect(d.dueAt).toBe('2026-10-01T22:00:00.000Z');
+  });
 });
 
 describe('Art. 47(5) — extraordinary costs', () => {
@@ -184,11 +223,11 @@ describe('mk pack compliance rules and labels', () => {
     });
   });
   it('labels every duty in Macedonian', () => {
-    const keys = evaluateBuildingCompliance(base, TODAY, RULES).duties.map((d) => d.key);
+    const keys = evaluateBuildingCompliance(base, TODAY, RULES, TZ).duties.map((d) => d.key);
     for (const k of keys) {
-      expect(mkPack.labels.compliance[k]!.title.length, k).toBeGreaterThan(3);
-      expect(mkPack.labels.compliance[k]!.hint.length, k).toBeGreaterThan(10);
+      expect(mkPack.labels.compliance[k].title.length, k).toBeGreaterThan(3);
+      expect(mkPack.labels.compliance[k].hint.length, k).toBeGreaterThan(10);
     }
-    expect(mkPack.labels.compliance.fund_accounts!.title).toBe('Одвоени сметки за фондовите');
+    expect(mkPack.labels.compliance.fund_accounts.title).toBe('Одвоени сметки за фондовите');
   });
 });
