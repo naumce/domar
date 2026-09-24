@@ -13,6 +13,7 @@ const TEMPLATE = 'број;кат;тип;површина;удел;име;пре
   + 'P-1;;паркинг;;;;;;;\n';
 
 const props = defineProps<{ buildingId: string }>();
+const emit = defineEmits<{ imported: [] }>();
 const { t } = useI18n();
 const url = `/api/buildings/${props.buildingId}/import/units`;
 const file = ref<File | null>(null);
@@ -74,6 +75,7 @@ async function commit() {
   try {
     result.value = await api.post<UnitImportResult>(url, await buildBody(false));
     done.value = true;
+    emit('imported');
   } catch (e) { fail(e); } finally { busy.value = false; }
 }
 

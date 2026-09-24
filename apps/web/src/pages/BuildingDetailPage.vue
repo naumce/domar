@@ -27,10 +27,13 @@ const tabs = ['units', 'services', 'reserve-fund', 'opening-balances', 'periods'
 const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'units'));
 const tabLabel = (k: string) => ({ units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
 
-onMounted(async () => {
-  building.value = await api.get<Building>(`/api/buildings/${props.id}`);
+async function loadContactsAndUnits() {
   contacts.value = (await api.get<{ rows: Contact[] }>('/api/contacts', { pageSize: 200 })).rows;
   await units.load();
+}
+onMounted(async () => {
+  building.value = await api.get<Building>(`/api/buildings/${props.id}`);
+  await loadContactsAndUnits();
 });
 function openNew() { editing.value = null; formError.value = null; open.value = true; }
 function openEdit(u: Unit) { editing.value = u; formError.value = null; open.value = true; }
@@ -67,7 +70,7 @@ async function onSubmit(payload: UnitCreatePayload) {
     <ReserveFundTab v-else-if="tab === 'reserve-fund'" :building-id="id" />
     <OpeningBalancesTab v-else-if="tab === 'opening-balances'" :building-id="id" />
     <StatementsTab v-else-if="tab === 'statements'" :building-id="id" />
-    <ImportTab v-else-if="tab === 'import'" :building-id="id" />
+    <ImportTab v-else-if="tab === 'import'" :building-id="id" @imported="swallow(loadContactsAndUnits())" />
     <PeriodsTab v-else :building-id="id" />
   </div>
   <p v-else>{{ t('app.loading') }}</p>
