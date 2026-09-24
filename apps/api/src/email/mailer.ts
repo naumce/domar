@@ -30,7 +30,7 @@ export function createMailer(config: Config): Mailer {
   const capture = config.smtpUrl === 'json';
   const transport: Transporter = capture
     ? nodemailer.createTransport({ jsonTransport: true })
-    : nodemailer.createTransport(config.smtpUrl);
+    : nodemailer.createTransport({ url: config.smtpUrl, connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000 });
   return {
     configured: true,
     outbox,
