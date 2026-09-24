@@ -51,6 +51,33 @@ export async function ownerBalances(db: Db, ctx: TenantContext, buildingId: stri
   return Object.fromEntries(rows.filter((r) => r.contactId).map((r) => [r.contactId!, Number(r.total)]));
 }
 
+/** Owner balances in a building split by fund, with the share that came from `opening` postings. */
+export async function ownerBalancesByFund(
+  db: Db,
+  ctx: TenantContext,
+  buildingId: string,
+): Promise<Record<string, { regularMinor: number; reserveMinor: number; openingMinor: number }>> {
+  const rows = await db
+    .select({
+      contactId: P.contactId,
+      fund: P.fund,
+      total: sum,
+      opening: sql<string>`coalesce(sum(case when ${P.kind} = 'opening' then ${P.amountMinor} else 0 end), 0)`,
+    })
+    .from(P)
+    .where(and(eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'owner')))
+    .groupBy(P.contactId, P.fund);
+  const out: Record<string, { regularMinor: number; reserveMinor: number; openingMinor: number }> = {};
+  for (const r of rows) {
+    if (!r.contactId) continue;
+    const e = (out[r.contactId] ??= { regularMinor: 0, reserveMinor: 0, openingMinor: 0 });
+    if (r.fund === 'reserve') e.reserveMinor += Number(r.total);
+    else e.regularMinor += Number(r.total);
+    e.openingMinor += Number(r.opening);
+  }
+  return out;
+}
+
 /** Cash balance of a building fund. */
 export async function fundBalance(db: Db, ctx: TenantContext, buildingId: string, fund: Fund): Promise<number> {
   const [r] = await db.select({ total: sum }).from(P).where(and(eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'fund'), eq(P.fund, fund)));
