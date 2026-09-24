@@ -45,6 +45,12 @@ async function onLine(payload: LinePayload) {
   if (!error.value) open.value = false;
 }
 async function publish() { if (window.confirm(t('periods.publishConfirm'))) await run(() => api.post(`${base}/publish`)); }
+const bulk = ref<{ sent: number; failed: number; skipped: number } | null>(null);
+async function sendAll() {
+  busy.value = true; error.value = ''; bulk.value = null;
+  try { bulk.value = await api.post<{ sent: number; failed: number; skipped: number }>(`${base}/send`); }
+  catch { error.value = t('app.error'); } finally { busy.value = false; }
+}
 
 const settingsOpen = ref(false);
 const settingsPrefix = ref('');
@@ -83,8 +89,10 @@ async function saveSettings() {
         <AppButton v-if="editable" :loading="busy" data-test="generate" @click="run(() => api.post(`${base}/generate`))">{{ period.status === 'generated' ? t('periods.regenerate') : t('periods.generate') }}</AppButton>
         <AppButton v-if="period.status === 'generated'" variant="secondary" :loading="busy" data-test="delete-drafts" @click="run(() => api.del(`${base}/drafts`))">{{ t('periods.deleteDrafts') }}</AppButton>
         <AppButton v-if="period.status === 'generated'" :loading="busy" data-test="publish" @click="publish">{{ t('periods.publish') }}</AppButton>
+        <AppButton v-if="period.status === 'published'" variant="secondary" :loading="busy" data-test="send-period" @click="sendAll">{{ t('emails.sendPeriod') }}</AppButton>
       </div>
     </div>
+    <p v-if="bulk" class="mb-2 text-sm text-emerald-700" data-test="send-period-result">{{ t('emails.result', bulk) }}</p>
     <p v-if="error" class="mb-2 text-sm text-red-600" data-test="error">{{ error }}</p>
     <p v-if="!editable" class="mb-2 text-sm text-slate-600">{{ t('periods.locked') }}</p>
     <ul v-if="period.warnings.length" class="mb-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-900" data-test="warnings">

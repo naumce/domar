@@ -26,6 +26,19 @@ async function voidPayment(id: string) {
   if (!reason) return;
   try { await api.post(`/api/payments/${id}/void`, { reason }); await load(); } catch { error.value = t('app.error'); }
 }
+const sending = ref(false);
+const sendState = ref<'idle' | 'sent' | 'failed'>('idle');
+async function sendEmail() {
+  sending.value = true; sendState.value = 'idle';
+  try {
+    const res = await api.post<{ status: 'sent' | 'failed' }>(`/api/invoices/${props.id}/send`);
+    sendState.value = res.status;
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    error.value = code === 'no_email' ? t('emails.errors.no_email') : code === 'invoice_not_sendable' ? t('emails.errors.invoice_not_sendable') : t('app.error');
+    sendState.value = 'failed';
+  } finally { sending.value = false; }
+}
 const groups = computed(() => {
   const ls = inv.value?.lines ?? [];
   return ([['service', ls.filter((l) => l.kind === 'service' || l.kind === 'manual')], ['management_fee', ls.filter((l) => l.kind === 'management_fee')], ['reserve_fund', ls.filter((l) => l.kind === 'reserve_fund')]] as [InvoiceLine['kind'], InvoiceLine[]][]).filter(([, x]) => x.length);
@@ -43,9 +56,13 @@ async function remove() { try { await api.del(`/api/invoices/${props.id}`); awai
         <a :href="`${API_BASE}/api/invoices/${inv.id}/html`" target="_blank" rel="noopener" class="rounded-md bg-white px-3 py-2 text-sm ring-1 ring-slate-300" data-test="open-html">{{ t('invoices.openHtml') }}</a>
         <a :href="`${API_BASE}/api/invoices/${inv.id}/pdf`" target="_blank" rel="noopener" class="rounded-md bg-emerald-600 px-3 py-2 text-sm text-white">{{ t('invoices.downloadPdf') }}</a>
         <AppButton v-if="inv.status !== 'draft'" data-test="record-payment" @click="payOpen = true">{{ t('payments.record') }}</AppButton>
+        <AppButton v-if="inv.status !== 'draft'" variant="secondary" :loading="sending" :disabled="!inv.contact.email" data-test="send-email" @click="sendEmail">{{ t('emails.send') }}</AppButton>
         <AppButton v-if="inv.status === 'draft'" variant="danger" @click="remove">{{ t('invoices.deleteDraft') }}</AppButton>
       </div>
     </div>
+    <p v-if="inv.status !== 'draft'" class="mb-2 text-sm" :class="sendState === 'failed' ? 'text-red-600' : 'text-emerald-700'" data-test="send-email-status">
+      {{ !inv.contact.email ? t('emails.errors.no_email') : sendState === 'sent' ? t('emails.sent') : sendState === 'failed' ? t('emails.failed') : '' }}
+    </p>
     <p v-if="error" class="mb-2 text-sm text-red-600">{{ error }}</p>
     <div class="mb-4 grid grid-cols-2 gap-4 rounded-xl bg-white p-4 shadow-sm">
       <div><div class="text-sm text-slate-500">{{ t('invoices.owner') }}</div><div class="font-medium">{{ inv.contact.firstName }} {{ inv.contact.lastName }}</div><div class="text-sm text-slate-600">{{ inv.contact.address }}</div></div>

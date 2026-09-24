@@ -3,6 +3,7 @@ export interface CreatedUser { user: User; temporaryPassword: string }
 export interface Tenant {
   id: string; slug: string; name: string; countryCode: string; currency: string; locale: string; timezone: string;
   companyNumber: string | null; vatNumber: string | null; address: string | null; phone: string | null; email: string | null; bankName: string | null; bankAccount: string | null;
+  emailConfigured: boolean;
 }
 export interface TaxRate { id: string; name: string; rateBp: number; isDefault: boolean; isActive: boolean }
 export interface Contact { id: string; kind: 'person' | 'company'; firstName: string; lastName: string; companyNumber: string | null; vatNumber: string | null; email: string | null; phone: string | null; address: string | null; notes: string | null }
@@ -50,3 +51,13 @@ export interface OwnerOpeningBalance { contactId: string; firstName: string; las
 export interface OpeningBalanceList { rows: OwnerOpeningBalance[]; hasPublishedPeriod: boolean }
 export interface UnitImportRow { line: number; label: string; floor: string | null; kind: UnitKind; areaM2: number | null; ownershipShare: number | null; ownerFirstName: string | null; ownerLastName: string | null; ownerEmail: string | null; ownerPhone: string | null; openingBalanceMinor: number }
 export interface UnitImportResult { dryRun: boolean; rows: UnitImportRow[]; errors: { line: number; message: string }[]; counts: { units: number; newContacts: number; existingContacts: number; openingBalances: number; conflicts: number }; conflicts: string[]; hasPublishedPeriod: boolean; blocked: 'period_published' | null }
+export type ReminderReason = 'consecutive' | 'total';
+export type ReminderChannel = 'email' | 'letter';
+export type ReminderStatus = 'pending' | 'sent' | 'failed' | 'printed';
+export interface Reminder {
+  id: string; buildingId: string; contactId: string; reason: ReminderReason; invoiceIds: string[]; invoiceNumbers: string[];
+  totalOutstandingMinor: number; channel: ReminderChannel; status: ReminderStatus; sentAt: string | null; error: string | null;
+  contact: { id: string; firstName: string; lastName: string; email: string | null }; createdAt: string;
+}
+export interface EmailSendResult { id: string; status: 'sent' | 'failed'; to: string; error: string | null }
+export interface EmailBulkResult { sent: number; failed: number; skipped: number }

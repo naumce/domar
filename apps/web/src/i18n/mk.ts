@@ -71,6 +71,21 @@ export default {
     confirm: 'Потврди', ignore: 'Игнорирај', unmatch: 'Раздвои', suggested: 'Предложена фактура', chooseInvoice: 'Избери фактура', warnings: 'Предупредувања при увоз', counterparty: 'Уплаќач',
     unknownFormat: 'Форматот на датотеката не е препознаен (MT940 или CSV со колони date и amount).',
   },
+  reminders: {
+    title: 'Опомени', run: 'Изготви опомени', created: 'Изготвени опомени: {n}', none: 'Нема нови опомени.',
+    owner: 'Сопственик', reason: 'Основ', invoices: 'Пресметки', total: 'Долг', channel: 'Начин', status: 'Статус', sentAt: 'Испратено',
+    reasons: { consecutive: 'Две последователни неплатени', total: 'Три неплатени вкупно' },
+    channels: { email: 'Е-пошта', letter: 'Писмо' },
+    statuses: { pending: 'Чека печатење', sent: 'Испратена', failed: 'Неуспешна', printed: 'Испечатена' },
+    pdf: 'PDF', markPrinted: 'Означи како испечатена',
+    errors: { smtp_not_configured: 'Е-поштата не е конфигурирана на серверот.' },
+  },
+  emails: {
+    send: 'Испрати по е-пошта', sent: 'Испратено', failed: 'Испраќањето не успеа.',
+    sendPeriod: 'Испрати ги сите по е-пошта', result: 'Испратени: {sent}, неуспешни: {failed}, без е-пошта: {skipped}',
+    configured: 'Испраќањето е-пошта е конфигурирано.', notConfigured: 'Испраќањето е-пошта не е конфигурирано (SMTP_URL).',
+    errors: { no_email: 'Сопственикот нема е-пошта.', invoice_not_sendable: 'Само објавена пресметка може да се испрати.' },
+  },
   openingBalances: {
     title: 'Почетни салда', owner: 'Сопственик', regular: 'Редовен фонд', reserve: 'Резервен фонд', balance: 'Салдо',
     alreadyEntered: 'Веќе внесено', amount: 'Нов износ', fund: 'Фонд', save: 'Зачувај салда', saved: 'Почетните салда се внесени.',

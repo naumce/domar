@@ -14,6 +14,7 @@ const auth = useAuthStore();
 const timezones = ['Europe/Skopje', 'Europe/Belgrade', 'Europe/Sofia', 'Europe/Tirana', 'Europe/Zagreb', 'Europe/Ljubljana', 'UTC'];
 const loading = ref(true); const saving = ref(false); const error = ref(''); const saved = ref(false);
 const form = ref({ name: '', timezone: '', companyNumber: '', vatNumber: '', address: '', phone: '', email: '', bankName: '', bankAccount: '' });
+const emailConfigured = ref(false);
 
 onMounted(async () => {
   try {
@@ -22,6 +23,7 @@ onMounted(async () => {
       name: tenant.name, timezone: tenant.timezone, companyNumber: tenant.companyNumber ?? '', vatNumber: tenant.vatNumber ?? '',
       address: tenant.address ?? '', phone: tenant.phone ?? '', email: tenant.email ?? '', bankName: tenant.bankName ?? '', bankAccount: tenant.bankAccount ?? '',
     };
+    emailConfigured.value = tenant.emailConfigured;
   } catch { error.value = t('app.error'); } finally { loading.value = false; }
 });
 
@@ -61,6 +63,9 @@ async function save() {
     <p v-if="saved" class="col-span-2 text-sm text-emerald-700" data-test="settings-saved">{{ t('settings.saved') }}</p>
     <div class="col-span-2 flex justify-end"><AppButton type="submit" :loading="saving" data-test="settings-save">{{ t('app.save') }}</AppButton></div>
   </form>
+  <p class="mt-3 max-w-2xl text-sm" :class="emailConfigured ? 'text-emerald-700' : 'text-amber-700'" data-test="email-status">
+    {{ emailConfigured ? t('emails.configured') : t('emails.notConfigured') }}
+  </p>
   <UsersSection v-if="auth.user?.role === 'owner'" />
   <ChangePasswordForm />
 </template>

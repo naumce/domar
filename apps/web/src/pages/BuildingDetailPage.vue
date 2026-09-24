@@ -8,6 +8,7 @@ import BuildingServicesTab from '@/components/building/BuildingServicesTab.vue';
 import ImportTab from '@/components/building/ImportTab.vue';
 import OpeningBalancesTab from '@/components/building/OpeningBalancesTab.vue';
 import PeriodsTab from '@/components/building/PeriodsTab.vue';
+import RemindersTab from '@/components/building/RemindersTab.vue';
 import ReserveFundTab from '@/components/building/ReserveFundTab.vue';
 import StatementsTab from '@/components/building/StatementsTab.vue';
 import DataTable from '@/components/DataTable.vue';
@@ -23,9 +24,9 @@ const contacts = ref<Contact[]>([]);
 const units = useResource<Unit>(`/api/buildings/${props.id}/units`);
 const open = ref(false); const editing = ref<Unit | null>(null); const formError = ref<string | null>(null);
 const route = useRoute(); const router = useRouter();
-const tabs = ['units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'import'] as const;
+const tabs = ['units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'reminders', 'import'] as const;
 const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'units'));
-const tabLabel = (k: string) => ({ units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
+const tabLabel = (k: string) => ({ units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), reminders: t('reminders.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
 
 async function loadContactsAndUnits() {
   contacts.value = (await api.get<{ rows: Contact[] }>('/api/contacts', { pageSize: 200 })).rows;
@@ -70,6 +71,7 @@ async function onSubmit(payload: UnitCreatePayload) {
     <ReserveFundTab v-else-if="tab === 'reserve-fund'" :building-id="id" />
     <OpeningBalancesTab v-else-if="tab === 'opening-balances'" :building-id="id" />
     <StatementsTab v-else-if="tab === 'statements'" :building-id="id" />
+    <RemindersTab v-else-if="tab === 'reminders'" :building-id="id" />
     <ImportTab v-else-if="tab === 'import'" :building-id="id" @imported="swallow(loadContactsAndUnits())" />
     <PeriodsTab v-else :building-id="id" />
   </div>
