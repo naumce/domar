@@ -75,7 +75,10 @@ the request goes through Caddy:
 `. ./.env` reads `JOB_TOKEN` and `DOMAIN` out of the same file compose uses; every value in `.env`
 that contains spaces must be quoted for that to work (`.env.example` already quotes `EMAIL_FROM`).
 The job is idempotent: a reminder is never created twice for the same debt inside 30 days, so a
-missed night or a double run costs nothing. The endpoint answers `401` without the header, `403`
+missed night or a double run costs nothing. `-m 300` only gives up on the response — the run itself
+continues on the server, so a timed-out line in the log is not a reason to fire the job again. The
+answer counts what happened: `{"tenants","buildings","reminders","failed"}`, where `failed` is the
+number of buildings whose run threw. The endpoint answers `401` without the header, `403`
 with the wrong token and `503` when `JOB_TOKEN` is unset on the server.
 
 Without `SMTP_URL` the mailer is a no-op, so every reminder is queued as a printable letter instead:

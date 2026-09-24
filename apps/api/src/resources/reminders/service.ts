@@ -201,6 +201,7 @@ export async function runAllTenants(db: Db, rt: ReminderRuntime, now: Date = new
   const tenants = await db.select({ id: T.id }).from(T);
   let buildings = 0;
   let reminders = 0;
+  let failed = 0;
   for (const tenant of tenants) {
     const ctx: TenantContext = { tenantId: tenant.id, userId: null, role: 'owner' };
     const rows = await db.select({ id: B.id }).from(B).where(eq(B.tenantId, tenant.id));
@@ -211,9 +212,11 @@ export async function runAllTenants(db: Db, rt: ReminderRuntime, now: Date = new
         buildings += 1;
         reminders += res.rows.length;
       } catch (err) {
+        // Counted, not just logged: the cron log must tell "nothing was due" from "everything threw".
+        failed += 1;
         rt.log.warn({ err, tenantId: tenant.id, buildingId: b.id }, 'reminder run failed for building; skipped');
       }
     }
   }
-  return { tenants: tenants.length, buildings, reminders };
+  return { tenants: tenants.length, buildings, reminders, failed };
 }

@@ -158,7 +158,7 @@ describe('reminders', () => {
   it('runs the cron job over every tenant and creates nothing inside the window', async () => {
     const res = await t.app.inject({ method: 'POST', url: '/api/jobs/reminders', headers: { 'x-job-token': 'cron-secret' } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ tenants: 2, buildings: 2, reminders: 0 });
+    expect(res.json()).toEqual({ tenants: 2, buildings: 2, reminders: 0, failed: 0 });
   });
 
   it('hides another tenant\'s reminders', async () => {

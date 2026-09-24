@@ -14,4 +14,4 @@ export const reminderOut = z.object({
 });
 
 export const reminderListOut = z.object({ rows: z.array(reminderOut) });
-export const jobResultOut = z.object({ tenants: z.number().int(), buildings: z.number().int(), reminders: z.number().int() });
+export const jobResultOut = z.object({ tenants: z.number().int(), buildings: z.number().int(), reminders: z.number().int(), failed: z.number().int() });
