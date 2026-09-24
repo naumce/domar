@@ -81,6 +81,8 @@ describe('portal data', () => {
     expect(inv.lines.some((l: { kind: string }) => l.kind === 'reserve_fund')).toBe(true);
     expect(inv.payments).toHaveLength(1);
     expect(inv.payments[0].amountMinor).toBe(256099);
+    // The manager's own bookkeeping fields never reach the owner, not even unrendered in the JSON.
+    for (const field of ['note', 'statementLineId', 'voidReason']) expect(inv.payments[0]).not.toHaveProperty(field);
     expect(inv.reserveFundBuildingBalanceMinor).toBe(3500000);
     expect(inv.building.name).toBe('Партизанска 12');
   });
@@ -99,6 +101,7 @@ describe('portal data', () => {
     expect(res.json().total).toBe(1);
     expect(res.json().rows[0]).toMatchObject({ amountMinor: 256099, method: 'bank_transfer', status: 'completed' });
     expect(res.json().rows[0].contact.id).toBe(A.owners.O1);
+    for (const field of ['note', 'statementLineId', 'voidReason']) expect(res.json().rows[0]).not.toHaveProperty(field);
   });
 
   it('returns the owner statement with a running balance that nets to zero', async () => {

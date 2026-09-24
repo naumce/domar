@@ -2,21 +2,21 @@
 import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
-import type { Payment } from '@/api/types';
+import type { PortalPayment } from '@/api/types';
 import DataTable from '@/components/DataTable.vue';
 import { usePortalStore } from '@/stores/portal';
 import { formatMoney } from '@/utils/money';
 
 const { t } = useI18n();
 const portal = usePortalStore();
-const rows = ref<Payment[]>([]);
+const rows = ref<PortalPayment[]>([]);
 const error = ref('');
 
 async function load() {
   const contactId = portal.selectedContactId;
   if (!contactId) { rows.value = []; return; }
   error.value = '';
-  try { rows.value = (await api.get<{ rows: Payment[]; total: number }>('/api/portal/payments', { contactId, page: 1, pageSize: 50 })).rows; }
+  try { rows.value = (await api.get<{ rows: PortalPayment[]; total: number }>('/api/portal/payments', { contactId, page: 1, pageSize: 50 })).rows; }
   catch { error.value = t('app.error'); }
 }
 onMounted(load);

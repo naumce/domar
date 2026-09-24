@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { pageQuery } from '../resources/common.js';
+import { invoiceDetailOut } from '../resources/invoices/schema.js';
+import { paymentOut } from '../resources/payments/schema.js';
 import { fundEnum } from '../resources/reserve-fund/schema.js';
 
 export const portalInviteOut = z.object({
@@ -29,6 +31,14 @@ export const portalMeOut = z.object({
   account: z.object({ id: z.string(), email: z.string() }),
   links: z.array(portalLinkOut),
 });
+
+/**
+ * The owner's view of a payment: the manager's own bookkeeping fields — the free-text `note`, the
+ * `voidReason` and the bank-statement line it was matched against — are not an owner's business and
+ * are dropped from the wire, not merely left unrendered.
+ */
+export const portalPaymentOut = paymentOut.omit({ note: true, statementLineId: true, voidReason: true });
+export const portalInvoiceDetailOut = invoiceDetailOut.extend({ payments: z.array(portalPaymentOut) });
 
 export const portalContactQuery = z.object({ contactId: z.string().uuid() });
 export const portalInvoiceListQuery = pageQuery.extend({ contactId: z.string().uuid() });

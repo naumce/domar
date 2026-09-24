@@ -3,11 +3,10 @@ import { z } from 'zod';
 import { AppError } from '../errors.js';
 import { htmlToPdf } from '../pdf/html-to-pdf.js';
 import { idParam } from '../resources/common.js';
-import { invoiceDetailOut, invoiceRowOut } from '../resources/invoices/schema.js';
-import { paymentOut } from '../resources/payments/schema.js';
+import { invoiceRowOut } from '../resources/invoices/schema.js';
 import { statementOut } from '../resources/contacts/schema.js';
 import { portalBuildingFund, portalInvoice, portalInvoiceHtml, portalInvoices, portalPayments, portalStatement } from './repo.js';
-import { portalContactQuery, portalFundOut, portalInvoiceListQuery, portalPaymentListQuery, portalStatementQuery } from './schema.js';
+import { portalContactQuery, portalFundOut, portalInvoiceDetailOut, portalInvoiceListQuery, portalPaymentListQuery, portalPaymentOut, portalStatementQuery } from './schema.js';
 
 /** Read-only, scoped by link. Nothing here writes, and nothing here sees a request-supplied tenant. */
 export const portalDataRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -16,7 +15,7 @@ export const portalDataRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get('/invoices', { schema: { querystring: portalInvoiceListQuery, response: { 200: z.object({ rows: z.array(invoiceRowOut), total: z.number() }) } } }, async (req) =>
     portalInvoices(req.db, req.portal!, req.query));
 
-  app.get('/invoices/:id', { schema: { params: idParam, querystring: portalContactQuery, response: { 200: invoiceDetailOut } } }, async (req) =>
+  app.get('/invoices/:id', { schema: { params: idParam, querystring: portalContactQuery, response: { 200: portalInvoiceDetailOut } } }, async (req) =>
     portalInvoice(req.db, req.portal!, req.query.contactId, req.params.id));
 
   app.get('/invoices/:id/pdf', { schema: { params: idParam, querystring: portalContactQuery } }, async (req, reply) => {
@@ -32,7 +31,7 @@ export const portalDataRoutes: FastifyPluginAsyncZod = async (app) => {
     return reply.type('application/pdf').header('content-disposition', `inline; filename="${name}.pdf"`).send(pdf);
   });
 
-  app.get('/payments', { schema: { querystring: portalPaymentListQuery, response: { 200: z.object({ rows: z.array(paymentOut), total: z.number() }) } } }, async (req) =>
+  app.get('/payments', { schema: { querystring: portalPaymentListQuery, response: { 200: z.object({ rows: z.array(portalPaymentOut), total: z.number() }) } } }, async (req) =>
     portalPayments(req.db, req.portal!, req.query));
 
   app.get('/statement', { schema: { querystring: portalStatementQuery, response: { 200: statementOut } } }, async (req) =>

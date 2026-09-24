@@ -31,6 +31,9 @@ export type Invoice = Omit<InvoiceRow, 'contact' | 'building'> & {
 };
 export type PaymentMethod = 'cash' | 'bank_transfer' | 'card' | 'cheque' | 'other';
 export interface Payment { id: string; buildingId: string; invoiceId: string | null; contactId: string; amountMinor: number; method: PaymentMethod; paidAt: string; reference: string | null; note: string | null; statementLineId: string | null; status: 'completed' | 'voided'; voidReason: string | null; voidedAt: string | null; createdAt: string; contact: { id: string; firstName: string; lastName: string }; invoice: { id: string; number: string | null } | null; building: { id: string; name: string } }
+/** What `/api/portal/payments` returns: the manager's own bookkeeping fields are not on the wire. */
+export type PortalPayment = Omit<Payment, 'note' | 'statementLineId' | 'voidReason'>;
+export type PortalInvoice = Omit<Invoice, 'payments'> & { payments: PortalPayment[] };
 export interface PaymentSummary { totalMinor: number; completedCount: number; voidedCount: number; byMethod: { method: PaymentMethod; totalMinor: number }[] }
 export type MatchStatus = 'unmatched' | 'suggested' | 'matched' | 'ignored';
 export interface BankStatement { id: string; buildingId: string; filename: string; format: string; accountNumber: string | null; lineCount: number; matchedCount: number; skippedCount: number; importedAt: string }

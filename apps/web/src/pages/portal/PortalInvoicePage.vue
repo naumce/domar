@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api, API_BASE } from '@/api/client';
-import type { Invoice } from '@/api/types';
+import type { PortalInvoice } from '@/api/types';
 import DataTable from '@/components/DataTable.vue';
 import { usePortalStore } from '@/stores/portal';
 import { formatMoney, percentFromBp } from '@/utils/money';
@@ -10,13 +10,13 @@ import { formatMoney, percentFromBp } from '@/utils/money';
 const props = defineProps<{ id: string }>();
 const { t } = useI18n();
 const portal = usePortalStore();
-const inv = ref<Invoice | null>(null);
+const inv = ref<PortalInvoice | null>(null);
 const error = ref('');
 
 onMounted(async () => {
   const contactId = portal.selectedContactId;
   if (!contactId) return;
-  try { inv.value = await api.get<Invoice>(`/api/portal/invoices/${props.id}`, { contactId }); }
+  try { inv.value = await api.get<PortalInvoice>(`/api/portal/invoices/${props.id}`, { contactId }); }
   catch { error.value = t('app.error'); }
 });
 // Same shape as the manager's link, so the PDF works in dev (port 3001) and in the single-origin image.
