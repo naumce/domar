@@ -3,14 +3,14 @@ import {
   type ComplianceSnapshot, type CountryCode, evaluateBuildingCompliance, evaluateOwner,
   getCountryPack, localDayStart,
 } from '@domar/domain';
-import { and, asc, countDistinct, desc, eq, max, sql } from 'drizzle-orm';
+import { and, asc, countDistinct, desc, eq, max } from 'drizzle-orm';
 import { countEvents, lastEventAt } from '../../legal-events.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { overdueByOwner, priorRemindersByOwner } from '../reminders/repo.js';
 
 const B = schema.buildings; const BP = schema.billingPeriods; const BC = schema.buildingContracts;
-const OCL = schema.ownerContactLinks; const U = schema.units; const R = schema.reminders; const T = schema.tenants;
+const OCL = schema.ownerContactLinks; const U = schema.units; const T = schema.tenants;
 
 /** One day wider than the 30-day suppression rule, exactly as `runBuildingReminders` reads it. */
 const PRIOR_WINDOW_MS = 31 * 24 * 3600 * 1000;
@@ -40,13 +40,13 @@ async function reminderState(db: Db, ctx: TenantContext, buildingId: string, now
       if (oldestThresholdSince === null || due < oldestThresholdSince) oldestThresholdSince = due;
     }
   }
-  const [lastRow] = await db.select({ sentAt: R.sentAt, createdAt: R.createdAt }).from(R)
-    .where(and(eq(R.tenantId, ctx.tenantId), eq(R.buildingId, buildingId)))
-    .orderBy(desc(sql`coalesce(${R.sentAt}, ${R.createdAt})`)).limit(1);
+  // From legal events, not the reminders table: only a delivered reminder writes `reminder_sent`
+  // (`resources/reminders/service.ts`), so a failed send is never shown as evidence here.
+  const lastReminder = await lastEventAt(db, ctx, buildingId, 'reminder_sent');
   return {
     ownersOverThreshold,
     oldestThresholdSince: oldestThresholdSince === null ? null : new Date(oldestThresholdSince).toISOString(),
-    lastReminderAt: lastRow ? (lastRow.sentAt ?? lastRow.createdAt).toISOString() : null,
+    lastReminderAt: lastReminder ? lastReminder.toISOString() : null,
   };
 }
 
@@ -54,8 +54,9 @@ async function reminderState(db: Db, ctx: TenantContext, buildingId: string, now
 export async function buildComplianceSnapshot(db: Db, ctx: TenantContext, building: typeof B.$inferSelect, now: Date): Promise<ComplianceSnapshot> {
   const { pack } = await tenantPack(db, ctx);
   const [[published], [linked], [contract], reminders, assemblyCount, lastAssemblyHeldAt, lastAssemblyInvitedAt, lastAnnualReportAt, lastHandoverReportAt, fundStatementAvailableAt, extraordinaryCostCount] = await Promise.all([
+    // Regular periods only: an extraordinary one-off must not satisfy the monthly Art. 19/33 duty.
     db.select({ at: max(BP.publishedAt) }).from(BP)
-      .where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.buildingId, building.id), eq(BP.status, 'published'))),
+      .where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.buildingId, building.id), eq(BP.status, 'published'), eq(BP.kind, 'regular'))),
     db.select({ n: countDistinct(OCL.contactId) }).from(OCL)
       .innerJoin(U, and(eq(U.tenantId, OCL.tenantId), eq(U.ownerContactId, OCL.contactId)))
       .where(and(eq(OCL.tenantId, ctx.tenantId), eq(U.buildingId, building.id))),

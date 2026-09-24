@@ -103,6 +103,11 @@ describe('compliance', () => {
 
   it('turns reminders amber while owners are over the Art. 28 threshold and green once they are reminded', async () => {
     B = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(20) });
+    // An owner without an email gets a letter, which stays pending until printed; give every owner
+    // an address so the run delivers by email and the legal event lands before the response returns.
+    for (const k of ['O1', 'O2', 'O3'] as const) {
+      await t.app.inject({ method: 'PATCH', url: `/api/contacts/${B.owners[k]}`, headers: { cookie: a.cookie }, payload: { email: `${k.toLowerCase()}@firma-comp-other.mk` } });
+    }
     const p10 = (await post(`/api/buildings/${B.buildingId}/periods`, { period: '2026-10' })).json().id;
     await post(`/api/buildings/${B.buildingId}/periods/${p10}/generate`);
     await post(`/api/buildings/${B.buildingId}/periods/${p10}/publish`, { dueAt: daysAgo(10) });
@@ -138,5 +143,30 @@ describe('compliance', () => {
     expect((await get('/api/compliance', readonlyCookie)).statusCode).toBe(200);
     expect((await get(`/api/buildings/${A.buildingId}/compliance`, b.cookie)).statusCode).toBe(404);
     expect((await get('/api/compliance', b.cookie)).json().rows).toEqual([]);
+  });
+
+  it('never shows a failed reminder send as evidence, only a delivered one', async () => {
+    const C = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(20) });
+    for (const k of ['O1', 'O2', 'O3'] as const) {
+      await t.app.inject({ method: 'PATCH', url: `/api/contacts/${C.owners[k]}`, headers: { cookie: a.cookie }, payload: { email: `${k.toLowerCase()}@firma-comp.mk` } });
+    }
+    const p10 = (await post(`/api/buildings/${C.buildingId}/periods`, { period: '2026-10' })).json().id;
+    await post(`/api/buildings/${C.buildingId}/periods/${p10}/generate`);
+    await post(`/api/buildings/${C.buildingId}/periods/${p10}/publish`, { dueAt: daysAgo(10) });
+
+    const send = vi.spyOn(t.app.mailer, 'send').mockResolvedValue({ error: 'connection refused' });
+    const rows: { id: string; status: string }[] = (await post(`/api/buildings/${C.buildingId}/reminders/run`)).json().rows;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.status === 'failed')).toBe(true);
+    send.mockRestore();
+
+    const before = await duty(C.buildingId, 'reminders');
+    expect(before.lastEvidenceAt).toBeNull();
+
+    const resent = await post(`/api/reminders/${rows[0]!.id}/resend`);
+    expect(resent.json().status).toBe('sent');
+
+    const after = await duty(C.buildingId, 'reminders');
+    expect(after.lastEvidenceAt).not.toBeNull();
   });
 });
