@@ -34,6 +34,10 @@ export interface CountryLabels {
   payment: string;
   paymentVoid: string;
   openingBalance: string;
+  /** Opening sentence of the Art. 28 reminder document. */
+  reminderIntro: string;
+  /** The legal sentence of the reminder: the citation plus the statement that no fee is charged. */
+  reminderLegal: string;
 }
 
 export interface CountryPack {
