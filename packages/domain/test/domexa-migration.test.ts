@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildingKeyOf, DEFAULT_SEPARATORS, domexaAmountToMinor, domexaBuildingServicesToDomar, domexaBuildingsToDomar,
-  domexaReserveFundToDomar, domexaServicesToDomar, domexaTaxRatesToDomar, domexaUnitsToImportRows,
-  mergeReports, reportToMarkdown, separatorsFromOrganization, statementToOpeningBalance,
+  buildingKeyOf, DEFAULT_FIELD_MAP, DEFAULT_SEPARATORS, domexaAmountToMinor, domexaBuildingServicesToDomar,
+  domexaBuildingsToDomar, domexaReserveFundToDomar, domexaServiceNamesById, domexaServicesToDomar,
+  domexaTaxRatesToDomar, domexaUnitsToImportRows, mergeReports, reportToMarkdown,
+  separatorsFromOrganization, statementToOpeningBalance,
 } from '../src/migration/domexa.js';
 import { rowsToCanonicalCsv } from '../src/import/serialize.js';
 import { parseUnitImport } from '../src/import/units.js';
@@ -187,6 +188,30 @@ describe('domexaBuildingsToDomar, building services and the reserve fund', () =>
       { buildingKey: 'b1', serviceName: 'Чистење', priceMinor: 35000, pricing: null, frequency: 'monthly', intervalMonths: 1, startsPeriod: '2026-01', endsPeriod: null },
       { buildingKey: 'b1', serviceName: 'Лифт', priceMinor: null, pricing: null, frequency: 'every_n_months', intervalMonths: 3, startsPeriod: '2026-09', endsPeriod: null },
     ]);
+  });
+
+  it('notes a frequency it cannot turn into an interval and falls back to monthly', () => {
+    const { rows, report } = domexaBuildingServicesToDomar(
+      [
+        { id: 'bs1', serviceId: 's1', frequency: 'quarterly' },
+        { id: 'bs2', serviceId: 's2', frequency: 'quarterly', intervalMonths: 3 },
+        { id: 'bs3', serviceId: 's3', frequency: 'месечно' },
+      ],
+      'b1', { s1: 'Чистење', s2: 'Лифт', s3: 'Портир' }, '2026-09',
+    );
+    expect(rows.map((r) => [r.serviceName, r.frequency, r.intervalMonths])).toEqual([
+      ['Чистење', 'monthly', 1],
+      ['Лифт', 'every_n_months', 3],
+      ['Портир', 'monthly', 1],
+    ]);
+    expect(report.notes).toEqual(['building service Чистење: frequency "quarterly" carries no interval in months → monthly']);
+  });
+
+  it('indexes service names through the map, so an override reaches the building services', () => {
+    const services = [{ id: 's1', title: 'Чистење' }, { id: 's2', naziv: 'Лифт' }, { id: 's3' }];
+    expect(domexaServiceNamesById(services)).toEqual({ s1: 'Чистење' }); // `title` is a default path
+    expect(domexaServiceNamesById(services, { ...DEFAULT_FIELD_MAP, service: { ...DEFAULT_FIELD_MAP.service, name: ['naziv'] } }))
+      .toEqual({ s2: 'Лифт' });
   });
 
   it('reads the reserve fund setting and its balance', () => {

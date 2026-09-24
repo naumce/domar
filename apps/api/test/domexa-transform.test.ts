@@ -95,6 +95,19 @@ describe('runTransform', () => {
     expect(JSON.parse(await readFile(join(gap, 'domar', 'building-services.json'), 'utf8'))).toEqual([]);
   });
 
+  it('resolves a building service through the service name the map file names', async () => {
+    const mapped = await mkdtemp(join(tmpdir(), 'domexa-raw-'));
+    for (const [name, data] of Object.entries(RAW)) await writeFile(join(mapped, name), JSON.stringify(data), 'utf8');
+    await writeFile(join(mapped, 'services.json'), JSON.stringify([{ id: 's1', title: 'Чистење' }]), 'utf8');
+    const mapFile = join(mapped, 'map.json');
+    await writeFile(mapFile, JSON.stringify({ service: { name: ['title'] } }), 'utf8');
+
+    await runTransform({ dir: mapped, fromPeriod: '2026-09', mapFile, log: () => {} });
+    expect(JSON.parse(await readFile(join(mapped, 'domar', 'building-services.json'), 'utf8'))).toMatchObject([
+      { buildingKey: 'b1', serviceName: 'Чистење' },
+    ]);
+  });
+
   it('survives a folder with nothing but buildings in it', async () => {
     const bare = await mkdtemp(join(tmpdir(), 'domexa-raw-'));
     await writeFile(join(bare, 'buildings.json'), JSON.stringify([{ id: 'b9', name: 'Само зграда' }]), 'utf8');

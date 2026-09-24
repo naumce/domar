@@ -388,6 +388,21 @@ export function domexaServicesToDomar(
   return { rows: out, report };
 }
 
+/**
+ * The id → name index `domexaBuildingServicesToDomar` resolves a `serviceId` through. It reads the
+ * name through the same map as the service catalogue, so a `--map` override of `service.name`
+ * applies to both and a building service is not skipped as "not in the export".
+ */
+export function domexaServiceNamesById(services: unknown[], map: DomexaFieldMap = DEFAULT_FIELD_MAP): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const s of services) {
+    const id = text(firstOf(s, ['id']));
+    const name = text(firstOf(s, map.service.name));
+    if (id && name) out[id] = name;
+  }
+  return out;
+}
+
 // ------------------------------------- buildings, building services, the fund
 
 export interface DomarBuildingPlan { key: string; name: string; address: string; city: string; postalCode: string }
@@ -424,6 +439,9 @@ export interface DomarBuildingServicePlan {
   frequency: 'monthly' | 'every_n_months'; intervalMonths: number; startsPeriod: string; endsPeriod: string | null;
 }
 
+/** The frequency words that mean exactly what domar's `monthly` means, so they need no note. */
+const MONTHLY_FREQUENCIES = ['monthly', 'month', 'месечно'];
+
 /** `2026-01-01`, `2026-01-01T00:00:00Z` and `2026-01` all read as the period `2026-01`. */
 function periodOf(value: unknown): string | null {
   const m = /^(\d{4})-(\d{2})/.exec(text(value));
@@ -449,8 +467,15 @@ export function domexaBuildingServicesToDomar(
     const rawPricing = text(firstOf(r, map.buildingService.pricing));
     const pricing = rawPricing ? PRICING[squash(rawPricing)] ?? null : null;
     if (rawPricing && !pricing) report.notes.push(`building service ${serviceName}: pricing "${rawPricing}" is unknown → the catalogue model applies`);
-    const intervalRaw = Number(text(firstOf(r, map.buildingService.intervalMonths)));
+    const interval = firstOf(r, map.buildingService.intervalMonths);
+    const intervalRaw = Number(text(interval));
     const intervalMonths = Number.isFinite(intervalRaw) && intervalRaw >= 1 && intervalRaw <= 24 ? Math.trunc(intervalRaw) : 1;
+    // domar bills monthly or every N months; a Domexa frequency word we cannot turn into an N is a
+    // guess the operator has to check, not a silent monthly.
+    const rawFrequency = text(firstOf(r, map.buildingService.frequency));
+    if (rawFrequency && !MONTHLY_FREQUENCIES.includes(squash(rawFrequency)) && interval === undefined) {
+      report.notes.push(`building service ${serviceName}: frequency "${rawFrequency}" carries no interval in months → monthly`);
+    }
     const startsPeriod = periodOf(firstOf(r, map.buildingService.startsAt)) ?? fallbackStartsPeriod;
 
     out.push({

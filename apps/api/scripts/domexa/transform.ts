@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   buildingKeyOf, DEFAULT_FIELD_MAP, domexaBuildingServicesToDomar, domexaBuildingsToDomar,
-  domexaReserveFundToDomar, domexaServicesToDomar, domexaTaxRatesToDomar, domexaUnitsToImportRows,
-  type DomexaFieldMap, emptyReport, type MigrationReport, mergeReports, reportToMarkdown,
-  rowsToCanonicalCsv, separatorsFromOrganization,
+  domexaReserveFundToDomar, domexaServiceNamesById, domexaServicesToDomar, domexaTaxRatesToDomar,
+  domexaUnitsToImportRows, type DomexaFieldMap, emptyReport, type MigrationReport, mergeReports,
+  reportToMarkdown, rowsToCanonicalCsv, separatorsFromOrganization,
 } from '@domar/domain';
 
 export interface TransformOptions {
@@ -93,12 +93,7 @@ export async function runTransform(o: TransformOptions): Promise<void> {
   const services = domexaServicesToDomar(rawServices, taxRates, map, sep);
   reports.push(services.report);
   await writeJson('services.json', services.rows);
-  const serviceNamesById: Record<string, string> = {};
-  for (const s of rawServices) {
-    const id = idOf(s);
-    const name = isRecord(s) && typeof s.name === 'string' ? s.name : '';
-    if (id && name) serviceNamesById[id] = name;
-  }
+  const serviceNamesById = domexaServiceNamesById(rawServices, map);
 
   const rawBuildings = await readJson<unknown[]>('buildings.json', []);
   const buildings = domexaBuildingsToDomar(rawBuildings, map);
