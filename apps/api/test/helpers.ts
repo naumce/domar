@@ -3,9 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
 
-export async function createTestApp(): Promise<{ app: FastifyInstance; db: Awaited<ReturnType<typeof createTestDatabase>>['db']; close(): Promise<void> }> {
+export async function createTestApp(env: Record<string, string> = {}): Promise<{ app: FastifyInstance; db: Awaited<ReturnType<typeof createTestDatabase>>['db']; close(): Promise<void> }> {
   const t = await createTestDatabase();
-  const config = loadConfig({ ...process.env, DATABASE_URL: t.url, NODE_ENV: 'test' });
+  const config = loadConfig({ ...process.env, DATABASE_URL: t.url, NODE_ENV: 'test', ...env });
   const app = await buildApp({ db: t.db, sql: t.sql, config });
   await app.ready();
   return {

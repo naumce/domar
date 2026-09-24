@@ -17,6 +17,11 @@ API http://localhost:3001/api/health, web http://localhost:5173, OpenAPI http://
 
 (needs Google Chrome; uses the dev database on port 5180 for the web server)
 
+## Deploy
+
+Production runs from the root `Dockerfile` and `docker-compose.prod.yml` (Postgres, the API serving
+the built web app, Caddy for HTTPS). See `docs/DEPLOY.md`.
+
 ## Billing
 
 Define services (organization-wide), attach them to a building with a price and a frequency, set the

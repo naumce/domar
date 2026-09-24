@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
 const schema = z.object({
@@ -8,6 +9,8 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   TRUST_PROXY: z.string().default('false'),
   PDF_BROWSER_CHANNEL: z.string().default('chrome'),
+  SERVE_WEB: z.enum(['true', 'false']).default('false'),
+  WEB_DIST: z.string().default(''),
 });
 
 export interface Config {
@@ -19,7 +22,12 @@ export interface Config {
   env: 'development' | 'test' | 'production';
   trustProxy: boolean | string | number;
   pdfBrowserChannel: string;
+  serveWeb: boolean;
+  webDist: string;
 }
+
+/** apps/web/dist, resolved from apps/api/src/config.ts, so it works in the repo and in the image. */
+const DEFAULT_WEB_DIST = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 function parseTrustProxy(value: string): boolean | string | number {
   if (value === 'false') return false;
@@ -39,5 +47,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     env: parsed.NODE_ENV,
     trustProxy: parseTrustProxy(parsed.TRUST_PROXY),
     pdfBrowserChannel: parsed.PDF_BROWSER_CHANNEL,
+    serveWeb: parsed.SERVE_WEB === 'true',
+    webDist: parsed.WEB_DIST || DEFAULT_WEB_DIST,
   };
 }

@@ -1,6 +1,7 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import type { Db } from '@domar/db';
@@ -49,8 +50,13 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(authPlugin);
   app.decorate('config', opts.config);
 
+  // `wildcard: false`: no catch-all GET route, so unknown paths reach the not-found handler below
+  // and only that handler decides between the SPA shell and the JSON envelope.
+  if (opts.config.serveWeb) await app.register(fastifyStatic, { root: opts.config.webDist, wildcard: false });
+
   app.setNotFoundHandler((req, reply) => {
-    reply.status(404).send({ error: { code: 'not_found', message: `Route ${req.method} ${req.url} not found` } });
+    if (opts.config.serveWeb && req.method === 'GET' && !req.url.startsWith('/api')) return reply.sendFile('index.html');
+    return reply.status(404).send({ error: { code: 'not_found', message: `Route ${req.method} ${req.url} not found` } });
   });
 
   app.setErrorHandler((err, _req, reply) => {
