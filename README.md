@@ -30,3 +30,9 @@ building services; edit or add lines by hand, `generate` to produce draft invoic
 and `publish` to number them, book the charges and lock the period. Rendering an invoice to PDF needs
 Google Chrome installed (or set `PDF_BROWSER_CHANNEL` to another installed channel). Invoice numbering
 uses the server's local time, so set `TZ` (see `.env.example`) on the machine running the API.
+
+## Migrating from another system
+
+The building "Import" tab takes CSV and XLSX with a column-mapping step. A whole company can be
+brought over from Domexa with `pnpm --filter @domar/api migrate:domexa -- export|transform|apply`;
+see `docs/MIGRATION.md`.

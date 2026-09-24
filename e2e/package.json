@@ -1,1 +1,1 @@
-{ "name": "@domar/e2e", "private": true, "type": "module", "scripts": { "test:e2e": "playwright test", "typecheck": "tsc --noEmit" }, "devDependencies": { "@playwright/test": "^1.48.0", "typescript": "^5.6.3" } }
+{ "name": "@domar/e2e", "private": true, "type": "module", "scripts": { "test:e2e": "playwright test", "typecheck": "tsc --noEmit" }, "devDependencies": { "@playwright/test": "^1.48.0", "typescript": "^5.6.3", "xlsx": "0.18.5" } }
