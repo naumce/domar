@@ -47,6 +47,17 @@ export async function priorRemindersByOwner(db: Db, ctx: TenantContext, building
   return out;
 }
 
+/** The invoices a reminder covers, oldest period first, for the plain-text body of the email. */
+export async function coveredInvoices(db: Db, ctx: TenantContext, invoiceIds: string[]) {
+  if (invoiceIds.length === 0) return [];
+  const rows = await db.select({ number: INV.number, period: BP.period, dueAt: INV.dueAt, totalMinor: INV.totalMinor, paidMinor: paidMinorSql })
+    .from(INV).innerJoin(BP, eq(BP.id, INV.periodId))
+    .where(and(eq(INV.tenantId, ctx.tenantId), inArray(INV.id, invoiceIds)));
+  return rows
+    .map((r) => ({ number: r.number, period: r.period, dueAt: r.dueAt, outstandingMinor: r.totalMinor - Number(r.paidMinor) }))
+    .sort((x, y) => x.period.localeCompare(y.period));
+}
+
 export type ReminderRecord = typeof R.$inferSelect;
 
 /** Adds the owner and the covered invoice numbers to raw reminder rows, keeping their order. */

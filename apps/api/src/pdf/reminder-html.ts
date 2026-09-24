@@ -28,7 +28,9 @@ const L = {
 } as const;
 
 const e = escapeHtml;
-const d = (x: Date | string | null) => (x ? new Date(x).toLocaleDateString('mk-MK', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+/** The date format of the letter, shared with the plain-text body of the reminder email. */
+export const formatDocumentDate = (x: Date | string | null) => (x ? new Date(x).toLocaleDateString('mk-MK', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+const d = formatDocumentDate;
 
 /**
  * The Art. 28 letter. There is deliberately no fee row anywhere in this template: the `mk` pack sets

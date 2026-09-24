@@ -6,10 +6,10 @@ import { logEmail } from '../../email/log.js';
 import type { Mailer } from '../../email/mailer.js';
 import { conflict } from '../../errors.js';
 import { htmlToPdf } from '../../pdf/html-to-pdf.js';
-import { renderReminderHtml, type ReminderHtmlInvoice } from '../../pdf/reminder-html.js';
+import { formatDocumentDate, renderReminderHtml, type ReminderHtmlInvoice } from '../../pdf/reminder-html.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
-import { decorate, getReminderRow, listByIds, overdueByOwner, priorRemindersByOwner, type ReminderRecord } from './repo.js';
+import { coveredInvoices, decorate, getReminderRow, listByIds, overdueByOwner, priorRemindersByOwner, type ReminderRecord } from './repo.js';
 
 const R = schema.reminders; const INV = schema.invoices; const C = schema.contacts; const B = schema.buildings; const T = schema.tenants;
 const PRIOR_WINDOW_MS = 31 * 24 * 3600 * 1000; // one day wider than the 30-day rule the pure function applies
@@ -118,10 +118,13 @@ async function markSendFailed(db: Db, ctx: TenantContext, id: string, err: unkno
 
 async function sendReminderEmail(db: Db, ctx: TenantContext, row: ReminderRecord, to: string, buildingName: string, pack: Pack, rt: ReminderRuntime) {
   const subject = `Опомена за неплатени пресметки — ${buildingName}`;
+  const covered = await coveredInvoices(db, ctx, row.invoiceIds);
   const text = [
     buildingName,
     '',
     pack.labels.reminderIntro,
+    '',
+    ...covered.map((i) => `${i.number ?? '—'} · ${i.period} · рок: ${formatDocumentDate(i.dueAt)} · ${pack.formatMoney(i.outstandingMinor)}`),
     '',
     `Вкупен долг: ${pack.formatMoney(row.totalOutstandingMinor)}`,
     '',
@@ -131,7 +134,8 @@ async function sendReminderEmail(db: Db, ctx: TenantContext, row: ReminderRecord
   try {
     attachments = [{ filename: `opomena-${row.id}.pdf`, content: await htmlToPdf(row.documentHtml, rt.pdfBrowserChannel), contentType: 'application/pdf' }];
   } catch (err) {
-    // The letter stays available at GET /reminders/:id/pdf; the debt list is in the plain-text body.
+    // The owner still gets the itemised debt: the body lists every covered invoice, and the letter
+    // itself stays available at GET /reminders/:id/pdf.
     rt.log.warn({ err, reminderId: row.id }, 'reminder pdf render failed; sending without attachment');
   }
   const res = await rt.mailer.send({ to, subject, text, ...(attachments ? { attachments } : {}) });

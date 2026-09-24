@@ -83,6 +83,8 @@ describe('reminders', () => {
     expect(msg.to).toBe('marko@firma-rem.mk');
     expect(msg.subject).toBe('Опомена за неплатени пресметки — Партизанска 12');
     expect(msg.text).toContain('член 28');
+    // One line per covered invoice, so the debt is itemised even when the PDF fails to render.
+    expect(msg.text.match(/INV-\d{4}\/\d{4} · \d{4}-\d{2} · рок: /g)).toHaveLength(2);
     expect(msg.attachments).toHaveLength(1);
     expect(msg.attachments![0]!.contentType).toBe('application/pdf');
     expect(msg.attachments![0]!.filename).toMatch(/^opomena-[0-9a-f-]{36}\.pdf$/);
