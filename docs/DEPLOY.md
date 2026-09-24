@@ -78,10 +78,11 @@ The job is idempotent: a reminder is never created twice for the same debt insid
 missed night or a double run costs nothing. The endpoint answers `401` without the header, `403`
 with the wrong token and `503` when `JOB_TOKEN` is unset on the server.
 
-Without `SMTP_URL` the mailer is a no-op: reminders are still created and their letters are still
-rendered at `GET /api/reminders/:id/pdf`, but every email reminder is recorded as `failed` with
-`smtp_not_configured`. The building's "Reminders" tab shows that state, and Settings shows whether
-email is configured at all.
+Without `SMTP_URL` the mailer is a no-op, so every reminder is queued as a printable letter instead:
+it is created as `pending`, its letter is rendered at `GET /api/reminders/:id/pdf`, and the manager
+records the delivery with "mark printed". When SMTP is configured but a send fails, the reminder is
+recorded as `failed` and the "Reminders" tab offers both a resend and "mark printed". Settings shows
+whether email is configured at all.
 
 For local development, `docker compose up -d mailpit` gives SMTP on `localhost:1025` and a web
 inbox on `http://localhost:8025`; point `SMTP_URL=smtp://localhost:1025` at it.

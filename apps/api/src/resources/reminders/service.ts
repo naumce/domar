@@ -22,13 +22,18 @@ export interface ReminderRuntime {
   log: { warn(obj: unknown, msg: string): void };
 }
 
+/** The tenant row and its country pack. `tenants.country_code` is a plain varchar, so an unsupported value arrives here as undefined. */
+async function tenantPack(db: Db, ctx: TenantContext) {
+  const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
+  const pack = getCountryPack(tenant.countryCode as CountryCode) as Pack | undefined;
+  if (!pack) throw new Error(`unknown country pack: ${tenant.countryCode}`);
+  return { tenant, pack };
+}
+
 /** Evaluates one building now, inserts the due reminders, then sends the email ones after the commit. */
 export async function runBuildingReminders(db: Db, ctx: TenantContext, buildingId: string, rt: ReminderRuntime, now: Date = new Date()) {
   const building = await getBuilding(db, ctx, buildingId);
-  const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  // `tenants.country_code` is a plain varchar, so an unsupported value arrives here as undefined.
-  const pack = getCountryPack(tenant.countryCode as CountryCode) as Pack | undefined;
-  if (!pack) throw new Error(`unknown country pack: ${tenant.countryCode}`);
+  const { tenant, pack } = await tenantPack(db, ctx);
 
   // Evaluate and insert under a lock on the building row: two overlapping runs serialise, and the
   // second one then reads the first one's reminders as priors instead of duplicating them.
@@ -72,7 +77,9 @@ export async function runBuildingReminders(db: Db, ctx: TenantContext, buildingI
       });
       return {
         tenantId: ctx.tenantId, buildingId, contactId: p.contactId, reason: p.reason, invoiceIds: p.invoiceIds,
-        totalOutstandingMinor, channel: (contact.email ? 'email' : 'letter') as 'email' | 'letter',
+        // Without a configured mailer the reminder is a printable letter from the start: a failed
+        // email row would otherwise block a new reminder for 30 days with nothing the manager can do.
+        totalOutstandingMinor, channel: (contact.email && rt.mailer.configured ? 'email' : 'letter') as 'email' | 'letter',
         status: 'pending' as const, documentHtml,
       };
     });
@@ -138,19 +145,51 @@ async function sendReminderEmail(db: Db, ctx: TenantContext, row: ReminderRecord
   });
 }
 
-/** Claim-first: only a pending letter can be marked printed. */
+/**
+ * Claim-first: a reminder that was never delivered can be marked printed. That is any pending letter
+ * and, of either channel, a failed one — paper is the fallback when the email never left the server.
+ */
 export async function markPrinted(db: Db, ctx: TenantContext, id: string) {
   return db.transaction(async (tx) => {
     const [claimed] = await tx.update(R).set({ status: 'printed', sentAt: new Date() })
-      .where(and(eq(R.tenantId, ctx.tenantId), eq(R.id, id), eq(R.channel, 'letter'), eq(R.status, 'pending'))).returning();
+      .where(and(eq(R.tenantId, ctx.tenantId), eq(R.id, id), inArray(R.status, ['pending', 'failed']))).returning();
     if (!claimed) {
-      await getReminderRow(tx, ctx, id); // 404 across tenants, otherwise it is simply not pending
-      throw conflict('not_pending', 'Only a pending letter reminder can be marked printed');
+      await getReminderRow(tx, ctx, id); // 404 across tenants, otherwise it is already sent or printed
+      throw conflict('not_pending', 'Only a pending or failed reminder can be marked printed');
     }
     await writeAudit(tx, ctx, { action: 'reminder.printed', entityType: 'reminder', entityId: id, after: { status: 'printed' } });
     const [out] = await decorate(tx, ctx, [claimed]);
     return out!;
   });
+}
+
+/**
+ * Claim-first retry of a failed email reminder: the row goes back to `pending` inside the claiming
+ * transaction, so two clicks cannot send twice, and the send path then writes the outcome as usual.
+ */
+export async function resendReminder(db: Db, ctx: TenantContext, id: string, rt: ReminderRuntime) {
+  const { row, email } = await db.transaction(async (tx) => {
+    const [claimed] = await tx.update(R).set({ status: 'pending', sentAt: null, error: null })
+      .where(and(eq(R.tenantId, ctx.tenantId), eq(R.id, id), eq(R.status, 'failed'))).returning();
+    if (!claimed) {
+      await getReminderRow(tx, ctx, id); // 404 across tenants, otherwise it simply did not fail
+      throw conflict('not_resendable', 'Only a failed reminder can be resent');
+    }
+    const contact = await tx.query.contacts.findFirst({ where: and(eq(C.tenantId, ctx.tenantId), eq(C.id, claimed.contactId)) });
+    // The throw rolls the claim back, so a reminder to an owner without an address stays failed.
+    if (!contact?.email) throw conflict('no_email', 'This owner has no email address');
+    return { row: claimed, email: contact.email };
+  });
+  const building = await getBuilding(db, ctx, row.buildingId);
+  const { pack } = await tenantPack(db, ctx);
+  try {
+    await sendReminderEmail(db, ctx, row, email, building.name, pack, rt);
+  } catch (err) {
+    rt.log.warn({ err, tenantId: ctx.tenantId, reminderId: id }, 'reminder resend threw; marked failed');
+    await markSendFailed(db, ctx, id, err);
+  }
+  const { rows } = await listByIds(db, ctx, [id]);
+  return rows[0]!;
 }
 
 /** The cron entry point: every building of every tenant, with a null user in the audit trail. */

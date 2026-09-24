@@ -200,4 +200,84 @@ describe('reminders', () => {
     expect((r1.json().rows as Row[]).length + (r2.json().rows as Row[]).length).toBe(3);
     expect((await get(`/api/buildings/${D.buildingId}/reminders`)).json().rows).toHaveLength(3);
   });
+
+  it('records a rejected send as failed, resends it and prints the other one', async () => {
+    const E = await overdueBuilding();
+    for (const k of ['O1', 'O2'] as const) {
+      await t.app.inject({ method: 'PATCH', url: `/api/contacts/${E.owners[k]}`, headers: { cookie: a.cookie }, payload: { email: `${k.toLowerCase()}@firma-rem.mk` } });
+    }
+    const send = vi.spyOn(t.app.mailer, 'send').mockResolvedValue({ error: 'connection refused' });
+    const rows = (await post(`/api/buildings/${E.buildingId}/reminders/run`)).json().rows as Row[];
+    const failed = rows.filter((r) => r.status === 'failed');
+    expect(failed).toHaveLength(2);
+    for (const r of failed) expect(r.channel).toBe('email');
+    send.mockRestore();
+
+    // The retry goes through the same send path, so the row, the email log and the audit all move on.
+    const one = failed.find((r) => r.contactId === E.owners.O1)!;
+    const resent = await post(`/api/reminders/${one.id}/resend`);
+    expect(resent.statusCode).toBe(200);
+    expect(resent.json().status).toBe('sent');
+    expect(resent.json().error).toBeNull();
+    expect(resent.json().sentAt).not.toBeNull();
+    expect((await post(`/api/reminders/${one.id}/resend`)).json().error.code).toBe('not_resendable');
+    const logs = await t.db.select().from(schema.emailLog).where(eq(schema.emailLog.refId, one.id));
+    expect(logs.map((l) => l.status)).toEqual(['failed', 'sent']);
+
+    // The second one is delivered on paper instead.
+    const other = failed.find((r) => r.contactId === E.owners.O2)!;
+    const printed = await post(`/api/reminders/${other.id}/printed`);
+    expect(printed.statusCode).toBe(200);
+    expect(printed.json().status).toBe('printed');
+  });
+
+  it('refuses to resend a reminder to an owner without an email', async () => {
+    const F = await overdueBuilding();
+    const send = vi.spyOn(t.app.mailer, 'send').mockResolvedValue({ error: 'connection refused' });
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${F.owners.O1}`, headers: { cookie: a.cookie }, payload: { email: 'temp@firma-rem.mk' } });
+    const rows = (await post(`/api/buildings/${F.buildingId}/reminders/run`)).json().rows as Row[];
+    const failed = rows.find((r) => r.status === 'failed')!;
+    send.mockRestore();
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${F.owners.O1}`, headers: { cookie: a.cookie }, payload: { email: null } });
+    const res = await post(`/api/reminders/${failed.id}/resend`);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('no_email');
+    // The rolled-back claim leaves the row failed, so it can still be printed.
+    expect((await get(`/api/reminders/${failed.id}/pdf`)).statusCode).toBe(200);
+    expect((await post(`/api/reminders/${failed.id}/printed`)).json().status).toBe('printed');
+  });
+});
+
+/** Same building, but the server has no SMTP_URL: nothing may end up as an undeliverable email row. */
+describe('reminders without a configured mailer', () => {
+  let t: Awaited<ReturnType<typeof createTestApp>>;
+  let a: Awaited<ReturnType<typeof registerTenant>>;
+  let G: Awaited<ReturnType<typeof setupPublishedBuilding>>;
+
+  const post = (url: string, payload: Record<string, unknown> = {}) => t.app.inject({ method: 'POST', url, headers: { cookie: a.cookie }, payload });
+
+  beforeAll(async () => {
+    t = await createTestApp();
+    a = await registerTenant(t.app, 'firma-nomail');
+    G = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(120) });
+    await t.app.inject({ method: 'PATCH', url: `/api/contacts/${G.owners.O1}`, headers: { cookie: a.cookie }, payload: { email: 'marko@firma-nomail.mk' } });
+    const p = (await post(`/api/buildings/${G.buildingId}/periods`, { period: '2026-10' })).json().id;
+    await post(`/api/buildings/${G.buildingId}/periods/${p}/generate`);
+    await post(`/api/buildings/${G.buildingId}/periods/${p}/publish`, { dueAt: daysAgo(90) });
+  });
+  afterAll(async () => { await t.close(); });
+
+  it('queues an owner with an email as a printable letter', async () => {
+    expect(t.app.mailer.configured).toBe(false);
+    const rows = (await post(`/api/buildings/${G.buildingId}/reminders/run`)).json().rows as Row[];
+    expect(rows).toHaveLength(3);
+    for (const r of rows) {
+      expect(r.channel).toBe('letter');
+      expect(r.status).toBe('pending');
+    }
+    const o1 = rows.find((r) => r.contactId === G.owners.O1)!;
+    const printed = await post(`/api/reminders/${o1.id}/printed`);
+    expect(printed.statusCode).toBe(200);
+    expect(printed.json().status).toBe('printed');
+  });
 });

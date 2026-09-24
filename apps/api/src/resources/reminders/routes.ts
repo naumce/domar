@@ -9,7 +9,7 @@ import { idParam } from '../common.js';
 import { buildingParam } from '../units/schema.js';
 import { getReminderRow, listByBuilding } from './repo.js';
 import { jobResultOut, reminderListOut, reminderOut } from './schema.js';
-import { markPrinted, runAllTenants, runBuildingReminders, type ReminderRuntime } from './service.js';
+import { markPrinted, resendReminder, runAllTenants, runBuildingReminders, type ReminderRuntime } from './service.js';
 
 const runtime = (app: FastifyInstance): ReminderRuntime => ({ mailer: app.mailer, pdfBrowserChannel: app.config.pdfBrowserChannel, log: app.log });
 
@@ -42,6 +42,8 @@ export const reminderRoutes: FastifyPluginAsyncZod = async (app) => {
   });
   app.post('/:id/printed', { preHandler: requireRole(...WRITE_ROLES), schema: { params: idParam, response: { 200: reminderOut } } }, async (req) =>
     markPrinted(req.db, req.ctx!, req.params.id));
+  app.post('/:id/resend', { preHandler: requireRole(...WRITE_ROLES), schema: { params: idParam, response: { 200: reminderOut } } }, async (req) =>
+    resendReminder(req.db, req.ctx!, req.params.id, runtime(app)));
 };
 
 /** No session: the nightly cron authenticates with a shared token (spec §18.3). */
