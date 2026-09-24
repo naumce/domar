@@ -90,7 +90,7 @@ export default {
     done: 'Imported {units} units, {contacts} new contacts and {balances} opening balances.',
     failure: {
       label_conflict: 'These units already exist: {labels}. Choose “skip” or change the labels.',
-      period_published: 'This building has a published period, so opening balances cannot be imported.',
+      period_published: 'The building has a published period; tick “Enter opening balances despite a published period” to continue.',
       too_many_rows: 'The file has more than 5000 rows.',
     },
   },
