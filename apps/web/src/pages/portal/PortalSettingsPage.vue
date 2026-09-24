@@ -18,7 +18,7 @@ const wording = (e: unknown) => {
 
 async function addCode() {
   codeError.value = ''; codeDone.value = false; codeBusy.value = true;
-  try { await portal.addCode(code.value); code.value = ''; codeDone.value = true; }
+  try { await portal.addCode(code.value.trim()); code.value = ''; codeDone.value = true; }
   catch (e) { codeError.value = wording(e); } finally { codeBusy.value = false; }
 }
 async function changePassword() {
