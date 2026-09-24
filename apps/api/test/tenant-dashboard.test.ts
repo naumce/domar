@@ -24,7 +24,7 @@ describe('tenant settings, dashboard and owner statement', () => {
   it('computes dashboard stats in the tenant month', async () => {
     await t.app.inject({ method: 'POST', url: `/api/invoices/${fx.invoices.O1.id}/payments`, headers: h(), payload: { amountMinor: 100000, method: 'cash', paidAt: new Date().toISOString() } });
     const s = (await t.app.inject({ method: 'GET', url: '/api/dashboard/stats', headers: h() })).json();
-    expect(s).toMatchObject({ totalProperties: 1, totalUnits: 5, assignedOwners: 3, unpaidInvoices: 3, paidThisMonthMinor: 100000 });
+    expect(s).toMatchObject({ totalProperties: 1, totalUnits: 5, assignedOwners: 3, unpaidInvoices: 3, paidThisMonthMinor: 100000, complianceAttention: 1 });
     expect(s.billedThisMonthMinor).toBe(256099 + 354057 + 454376); // published now
     expect(s.outstandingMinor).toBe(256099 + 354057 + 454376 - 100000);
   });

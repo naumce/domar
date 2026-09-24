@@ -7,7 +7,7 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { sta
 
 const duty = (key: string, status: string, extra: Record<string, unknown> = {}) => ({
   key, article: '42/45', status, dueAt: null, lastEvidenceAt: null, howToFix: '?tab=compliance#fund-accounts',
-  count: null, label: `Наслов ${key}`, hint: `Совет ${key}`, ...extra,
+  count: null, label: `Наслов ${key}`, hint: `Совет ${key}`, flags: [], ...extra,
 });
 
 const compliance = {
@@ -78,5 +78,22 @@ describe('ComplianceTab', () => {
     expect((patch[1] as RequestInit).method).toBe('PATCH');
     expect(JSON.parse(String((patch[1] as RequestInit).body))).toEqual({ regularFundAccount: '210-0000000000-19', reserveFundAccount: '210-0000000000-96' });
     await vi.waitFor(() => expect(w.get('[data-test=compliance-card-fund_accounts-status]').text()).toBe('Во ред'));
+  });
+
+  it('shows a flag as a warning on the card that carries it', async () => {
+    const flagged = {
+      ...compliance,
+      duties: compliance.duties.map((x) => (x.key === 'assembly' ? { ...x, flags: ['late_invitation'] } : x)),
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(flagged))
+      .mockResolvedValueOnce(json(building))
+      .mockResolvedValueOnce(json(events));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(ComplianceTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await vi.waitFor(() => expect(w.findAll('[data-test^=compliance-card-]').length).toBeGreaterThan(0));
+
+    expect(w.get('[data-test=compliance-card-assembly] [data-test=compliance-flag]').text()).toBe('Задоцнета покана (помалку од 15 дена)');
+    expect(w.find('[data-test=compliance-card-invoices] [data-test=compliance-flag]').exists()).toBe(false);
   });
 });

@@ -70,6 +70,7 @@ async function saveAccounts() {
           <dt>{{ t('compliance.dueAt') }}</dt><dd>{{ fmtDate(duty.dueAt) }}</dd>
           <template v-if="duty.count !== null"><dt>{{ t('compliance.count') }}</dt><dd>{{ duty.count }}</dd></template>
         </dl>
+        <p v-for="f in duty.flags" :key="f" data-test="compliance-flag" class="mt-1 text-xs text-amber-700">{{ t(`compliance.flags.${f}`) }}</p>
         <RouterLink :to="fixLink(duty)" class="text-sm font-medium text-emerald-700 underline" :data-test="`compliance-fix-${duty.key}`">{{ t('compliance.fix') }}</RouterLink>
       </section>
     </div>

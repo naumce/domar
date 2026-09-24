@@ -4,6 +4,7 @@ import { and, count, countDistinct, eq, gte, inArray, isNotNull, lt, sql } from 
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { notFound } from '../../errors.js';
+import { tenantCompliance } from '../compliance/snapshot.js';
 
 const B = schema.buildings; const U = schema.units; const INV = schema.invoices; const PAY = schema.payments; const T = schema.tenants;
 const UNPAID_STATUSES = ['published', 'partially_paid'] as const;
@@ -12,6 +13,8 @@ const statsOut = z.object({
   totalProperties: z.number().int(), totalUnits: z.number().int(), assignedOwners: z.number().int(),
   billedThisMonthMinor: z.number().int(), paidThisMonthMinor: z.number().int(),
   unpaidInvoices: z.number().int(), outstandingMinor: z.number().int(),
+  /** Buildings whose worst compliance status is `due` or `overdue` (spec §11). */
+  complianceAttention: z.number().int(),
 });
 
 /** `YYYY-MM` for the given instant, as observed in the given IANA zone. */
@@ -31,7 +34,7 @@ export const dashboardRoutes: FastifyPluginAsyncZod = async (app) => {
     const start = periodStartDate(period, tenant.timezone);
     const end = periodStartDate(nextPeriod(period), tenant.timezone);
 
-    const [[properties], [units], [owners], [billed], [paid], [unpaid], [paidOfUnpaid]] = await Promise.all([
+    const [[properties], [units], [owners], [billed], [paid], [unpaid], [paidOfUnpaid], compliance] = await Promise.all([
       db.select({ n: count() }).from(B).where(eq(B.tenantId, ctx.tenantId)),
       db.select({ n: count() }).from(U).where(eq(U.tenantId, ctx.tenantId)),
       db.select({ n: countDistinct(U.ownerContactId) }).from(U).where(and(eq(U.tenantId, ctx.tenantId), isNotNull(U.ownerContactId))),
@@ -43,6 +46,7 @@ export const dashboardRoutes: FastifyPluginAsyncZod = async (app) => {
         .where(and(eq(INV.tenantId, ctx.tenantId), inArray(INV.status, [...UNPAID_STATUSES]))),
       db.select({ total: sql<string>`coalesce(sum(${PAY.amountMinor}), 0)` }).from(PAY).innerJoin(INV, eq(INV.id, PAY.invoiceId))
         .where(and(eq(PAY.tenantId, ctx.tenantId), eq(PAY.status, 'completed'), eq(INV.tenantId, ctx.tenantId), inArray(INV.status, [...UNPAID_STATUSES]))),
+      tenantCompliance(db, ctx),
     ]);
 
     return {
@@ -53,6 +57,7 @@ export const dashboardRoutes: FastifyPluginAsyncZod = async (app) => {
       paidThisMonthMinor: Number(paid?.total ?? 0),
       unpaidInvoices: Number(unpaid?.n ?? 0),
       outstandingMinor: Number(unpaid?.total ?? 0) - Number(paidOfUnpaid?.total ?? 0),
+      complianceAttention: compliance.counts.due + compliance.counts.overdue,
     };
   });
 };

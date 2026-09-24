@@ -27,6 +27,7 @@ export default {
     article: 'Art. {article}', lastEvidence: 'Last evidence', dueAt: 'Due', count: 'Count', fix: 'Fix', none: '—',
     building: 'Building', worst: 'Status', duties: 'Duties', evaluatedAt: 'As of {date}',
     status: { ok: 'OK', due: 'Due', overdue: 'Overdue', na: 'Not applicable' },
+    flags: { late_invitation: 'Late invitation (less than 15 days)' },
     fundAccounts: { title: 'Fund bank accounts', regular: 'Regular fund account', reserve: 'Reserve fund account', saved: 'Saved.' },
     events: 'Recent legal events',
     eventKinds: {

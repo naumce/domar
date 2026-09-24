@@ -43,7 +43,7 @@ export interface StatementLine {
   suggestedInvoice: { id: string; number: string | null; contactLastName: string; outstandingMinor: number } | null;
   payment: { id: string; amountMinor: number; status: 'completed' | 'voided' } | null;
 }
-export interface DashboardStats { totalProperties: number; totalUnits: number; assignedOwners: number; billedThisMonthMinor: number; paidThisMonthMinor: number; unpaidInvoices: number; outstandingMinor: number }
+export interface DashboardStats { totalProperties: number; totalUnits: number; assignedOwners: number; billedThisMonthMinor: number; paidThisMonthMinor: number; unpaidInvoices: number; outstandingMinor: number; complianceAttention: number }
 export interface OwnerStatement {
   contact: { id: string; firstName: string; lastName: string };
   building: { id: string; name: string } | null;
@@ -81,7 +81,7 @@ export type ComplianceDutyKey = 'invoices' | 'reminders' | 'assembly' | 'annual_
 export interface ComplianceDuty {
   key: ComplianceDutyKey; article: string; status: ComplianceStatus; dueAt: string | null; lastEvidenceAt: string | null;
   /** Query string relative to `/app/buildings/<id>`. */
-  howToFix: string; count: number | null; label: string; hint: string;
+  howToFix: string; count: number | null; label: string; hint: string; flags: string[];
 }
 export interface ComplianceCounts { ok: number; due: number; overdue: number; na: number }
 export interface BuildingCompliance {

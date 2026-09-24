@@ -27,6 +27,7 @@ export default {
     article: 'чл. {article}', lastEvidence: 'Последен доказ', dueAt: 'Рок', count: 'Број', fix: 'Среди', none: '—',
     building: 'Зграда', worst: 'Статус', duties: 'Обврски', evaluatedAt: 'Состојба на {date}',
     status: { ok: 'Во ред', due: 'Доспева', overdue: 'Задоцнето', na: 'Не се однесува' },
+    flags: { late_invitation: 'Задоцнета покана (помалку од 15 дена)' },
     fundAccounts: { title: 'Сметки на фондовите', regular: 'Сметка редовен фонд', reserve: 'Сметка резервен фонд', saved: 'Зачувано.' },
     events: 'Последни правни настани',
     eventKinds: {
