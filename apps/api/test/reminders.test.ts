@@ -19,17 +19,17 @@ import { createTestApp } from './helpers.js';
 
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
 
+interface Row {
+  id: string; contactId: string; reason: string; invoiceIds: string[]; invoiceNumbers: string[];
+  totalOutstandingMinor: number; channel: string; status: string; sentAt: string | null;
+}
+
 describe('reminders', () => {
   let t: Awaited<ReturnType<typeof createTestApp>>;
   let a: Awaited<ReturnType<typeof registerTenant>>;
   let b: Awaited<ReturnType<typeof registerTenant>>;
   let A: Awaited<ReturnType<typeof setupPublishedBuilding>>;
   let o1Total = 0;
-
-  interface Row {
-    id: string; contactId: string; reason: string; invoiceIds: string[]; invoiceNumbers: string[];
-    totalOutstandingMinor: number; channel: string; status: string; sentAt: string | null;
-  }
 
   const post = (url: string, payload: Record<string, unknown> = {}, cookie?: string) =>
     t.app.inject({ method: 'POST', url, headers: { cookie: cookie ?? a.cookie }, payload });
@@ -247,6 +247,38 @@ describe('reminders', () => {
     // The rolled-back claim leaves the row failed, so it can still be printed.
     expect((await get(`/api/reminders/${failed.id}/pdf`)).statusCode).toBe(200);
     expect((await post(`/api/reminders/${failed.id}/printed`)).json().status).toBe('printed');
+  });
+
+  it('drops a paid invoice and lowers the total by a partial payment', async () => {
+    const P = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(120) });
+    for (const [period, days] of [['2026-10', 90], ['2026-11', 60]] as const) {
+      const p = (await post(`/api/buildings/${P.buildingId}/periods`, { period })).json().id;
+      await post(`/api/buildings/${P.buildingId}/periods/${p}/generate`);
+      await post(`/api/buildings/${P.buildingId}/periods/${p}/publish`, { dueAt: daysAgo(days) });
+    }
+    const inv = async (period: string) => (await get(`/api/invoices?buildingId=${P.buildingId}&period=${period}&pageSize=200`)).json().rows as { id: string; contactId: string; totalMinor: number }[];
+    const [sep, oct, nov] = [await inv('2026-09'), await inv('2026-10'), await inv('2026-11')];
+    const of = (rows: { id: string; contactId: string; totalMinor: number }[], k: 'O1' | 'O2') => rows.find((r) => r.contactId === P.owners[k])!;
+    const paidAt = new Date().toISOString();
+    // O1 settles the oldest invoice; O2 pays 100,00 ден. off theirs.
+    await post(`/api/invoices/${of(sep, 'O1').id}/payments`, { amountMinor: of(sep, 'O1').totalMinor, method: 'bank_transfer', paidAt });
+    await post(`/api/invoices/${of(sep, 'O2').id}/payments`, { amountMinor: 10000, method: 'cash', paidAt });
+
+    const rows = (await post(`/api/buildings/${P.buildingId}/reminders/run`)).json().rows as Row[];
+    const r1 = rows.find((r) => r.contactId === P.owners.O1)!;
+    expect(r1.invoiceIds).toHaveLength(2);
+    expect(r1.invoiceIds).not.toContain(of(sep, 'O1').id);
+    expect(r1.totalOutstandingMinor).toBe(of(oct, 'O1').totalMinor + of(nov, 'O1').totalMinor);
+    const r2 = rows.find((r) => r.contactId === P.owners.O2)!;
+    expect(r2.invoiceIds).toHaveLength(3);
+    expect(r2.totalOutstandingMinor).toBe(of(sep, 'O2').totalMinor + of(oct, 'O2').totalMinor + of(nov, 'O2').totalMinor - 10000);
+  });
+
+  it('rate-limits the job route to six calls a minute', async () => {
+    // A wrong token is enough: the limit is counted before the handler, so no run is started.
+    let last;
+    for (let i = 0; i < 7; i++) last = await t.app.inject({ method: 'POST', url: '/api/jobs/reminders', headers: { 'x-job-token': 'nope' } });
+    expect(last!.statusCode).toBe(429);
   });
 });
 
