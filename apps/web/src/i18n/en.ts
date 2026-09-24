@@ -7,7 +7,16 @@ export default {
   },
   dashboard: { welcome: 'Welcome, {name}', buildings: 'Buildings', units: 'Units', owners: 'Owners', billed: 'Billed this month', unpaid: 'Unpaid invoices', paid: 'Paid this month', outstanding: 'Outstanding' },
   taxRates: { title: 'Tax rates', name: 'Name', rate: 'Rate (%)', isDefault: 'Default', add: 'Add rate', makeDefault: 'Make default' },
-  contacts: { title: 'Contacts', add: 'Add contact', kind: 'Kind', person: 'Person', company: 'Company', companyNumber: 'Company number', vatNumber: 'VAT number', phone: 'Phone', address: 'Address', notes: 'Notes', statement: 'Statement', balance: 'Balance', allBuildings: 'All buildings', date: 'Date' },
+  contacts: {
+    title: 'Contacts', add: 'Add contact', kind: 'Kind', person: 'Person', company: 'Company', companyNumber: 'Company number', vatNumber: 'VAT number', phone: 'Phone', address: 'Address', notes: 'Notes', statement: 'Statement', balance: 'Balance', allBuildings: 'All buildings', date: 'Date',
+    portalAccess: {
+      title: 'Portal access', status: 'Status', none: 'No access', invited: 'Code issued', linked: 'Linked',
+      issue: 'Issue code', reissue: 'Issue a new code', code: 'Access code', hint: 'Write it down now — it is shown only once.',
+      copy: 'Copy', copied: 'Copied', dismiss: 'Close',
+      emailed: 'The code was also emailed.', notEmailed: 'This contact has no email — hand the code over in person.',
+      expires: 'Valid until', linkedAt: 'Linked on',
+    },
+  },
   buildings: {
     title: 'Buildings', add: 'Add building', name: 'Name', address: 'Address', city: 'City', postalCode: 'Postal code', representative: 'Representative', none: '— none —', shareBasis: 'Share basis',
     shareBasisOptions: { area: 'By area (m²)', equal: 'Equal', custom: 'Ownership share' }, regularFundAccount: 'Regular fund account', reserveFundAccount: 'Reserve fund account', unitCount: 'Units',

@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
 import type { Building, OwnerStatement } from '@/api/types';
+import PortalAccessBox from '@/components/contacts/PortalAccessBox.vue';
 import DataTable from '@/components/DataTable.vue';
 import AppSelect from '@/components/ui/AppSelect.vue';
 import { formatMoney } from '@/utils/money';
@@ -29,6 +30,7 @@ watch(buildingId, load);
 <template>
   <h1 v-if="statement" class="mb-1 text-2xl font-semibold">{{ statement.contact.firstName }} {{ statement.contact.lastName }}</h1>
   <p class="mb-4 text-slate-600">{{ t('contacts.statement') }}</p>
+  <PortalAccessBox :contact-id="id" />
   <AppSelect v-model="buildingId" :label="t('invoices.building')" :options="[{ value: null, label: t('contacts.allBuildings') }, ...buildings.map((b) => ({ value: b.id, label: b.name }))]" class="mb-4 max-w-xs" />
   <p v-if="error" class="mb-2 text-sm text-red-600" data-test="page-error">{{ error }}</p>
   <DataTable v-if="statement" :columns="[{ key: 'bookedAt', label: t('contacts.date') }, { key: 'label', label: t('billing.description') }, { key: 'kind', label: t('billing.status') }, { key: 'fund', label: t('billing.fund') }, { key: 'amountMinor', label: t('billing.amount') }, { key: 'balanceMinor', label: t('contacts.balance') }]" :rows="statement.rows">

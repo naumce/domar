@@ -7,7 +7,16 @@ export default {
   },
   dashboard: { welcome: 'Добредојде, {name}', buildings: 'Згради', units: 'Единици', owners: 'Сопственици', billed: 'Фактурирано овој месец', unpaid: 'Неплатени фактури', paid: 'Платено овој месец', outstanding: 'Ненаплатено' },
   taxRates: { title: 'Даночни стапки', name: 'Име', rate: 'Стапка (%)', isDefault: 'Стандардна', add: 'Додади стапка', makeDefault: 'Постави стандардна' },
-  contacts: { title: 'Контакти', add: 'Додади контакт', kind: 'Тип', person: 'Физичко лице', company: 'Правно лице', companyNumber: 'Матичен број', vatNumber: 'Даночен број', phone: 'Телефон', address: 'Адреса', notes: 'Белешки', statement: 'Картица', balance: 'Салдо', allBuildings: 'Сите згради', date: 'Датум' },
+  contacts: {
+    title: 'Контакти', add: 'Додади контакт', kind: 'Тип', person: 'Физичко лице', company: 'Правно лице', companyNumber: 'Матичен број', vatNumber: 'Даночен број', phone: 'Телефон', address: 'Адреса', notes: 'Белешки', statement: 'Картица', balance: 'Салдо', allBuildings: 'Сите згради', date: 'Датум',
+    portalAccess: {
+      title: 'Пристап до порталот', status: 'Статус', none: 'Нема пристап', invited: 'Испратен код', linked: 'Поврзан',
+      issue: 'Издади код', reissue: 'Издади нов код', code: 'Код за пристап', hint: 'Запишете го сега — нема да се прикаже повторно.',
+      copy: 'Копирај', copied: 'Копирано', dismiss: 'Затвори',
+      emailed: 'Кодот е испратен и по е-пошта.', notEmailed: 'Контактот нема е-пошта — предајте му го кодот лично.',
+      expires: 'Важи до', linkedAt: 'Поврзан на',
+    },
+  },
   buildings: {
     title: 'Згради', add: 'Додади зграда', name: 'Име', address: 'Адреса', city: 'Град', postalCode: 'Поштенски број', representative: 'Претставник', none: '— нема —', shareBasis: 'Основ за распределба',
     shareBasisOptions: { area: 'По површина (m²)', equal: 'Рамномерно', custom: 'Сопственички удел' }, regularFundAccount: 'Сметка редовен фонд', reserveFundAccount: 'Сметка резервен фонд', unitCount: 'Единици',
