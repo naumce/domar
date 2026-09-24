@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { schema } from '@domar/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { LocalDiskStore } from '../src/documents/store.js';
+import { contentDisposition, LocalDiskStore } from '../src/documents/store.js';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
@@ -87,6 +87,12 @@ describe('documents', () => {
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['content-disposition']).toBe(`attachment; filename="________.pdf"; filename*=UTF-8''${encodeURIComponent('записник.pdf')}`);
     expect(res.rawPayload.equals(PDF)).toBe(true);
+  });
+
+  it('percent-encodes the characters RFC 5987 does not allow in filename*', async () => {
+    const header = contentDisposition('Записник (2026).pdf');
+    expect(header).toBe("attachment; filename=\"__________2026_.pdf\"; filename*=UTF-8''%D0%97%D0%B0%D0%BF%D0%B8%D1%81%D0%BD%D0%B8%D0%BA%20%282026%29.pdf");
+    expect(header.split("UTF-8''")[1]).not.toMatch(/[!'()*]/);
   });
 
   it('lists the documents of a building and filters by kind', async () => {

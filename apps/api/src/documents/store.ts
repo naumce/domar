@@ -28,12 +28,18 @@ export function documentStorageKey(tenantId: string, documentId: string, mime: s
 }
 
 /**
+ * RFC 5987 percent-encoding: `encodeURIComponent` leaves `!'()*` alone, and none of them is an
+ * attr-char, so a name like `Записник (2026).pdf` would otherwise yield a non-conforming value.
+ */
+const rfc5987 = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
+/**
  * A Cyrillic file name survives in `filename*`; the ASCII `filename` is the fallback for clients
  * that ignore RFC 5987, and it is sanitised so a quote or a semicolon cannot break out of the header.
  */
 export function contentDisposition(fileName: string, type: 'attachment' | 'inline' = 'attachment'): string {
   const ascii = fileName.replace(/[^A-Za-z0-9_.-]/g, '_') || 'document';
-  return `${type}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${rfc5987(fileName)}`;
 }
 
 export interface StoredFile { sizeBytes: number; sha256: string }
