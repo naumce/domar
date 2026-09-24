@@ -1,4 +1,4 @@
-import { index, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { tenants } from './tenant.js';
 
 export const userRole = pgEnum('user_role', ['owner', 'accountant', 'technician', 'readonly']);
@@ -13,6 +13,7 @@ export const users = pgTable(
     firstName: text('first_name').notNull(),
     lastName: text('last_name').notNull(),
     role: userRole('role').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

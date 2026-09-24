@@ -29,6 +29,16 @@ describe('migrations', () => {
     expect(pk.length).toBe(1);
   });
 
+  it('users carry an is_active flag defaulting to true', async () => {
+    const [col] = await t!.sql<{ data_type: string; column_default: string; is_nullable: string }[]>`
+      select data_type, column_default, is_nullable from information_schema.columns
+      where table_name = 'users' and column_name = 'is_active'`;
+    expect(col).toBeDefined();
+    expect(col!.data_type).toBe('boolean');
+    expect(col!.column_default).toBe('true');
+    expect(col!.is_nullable).toBe('NO');
+  });
+
   it('every tenant-scoped table has tenant_id and an index starting with it', async () => {
     const tables = await t!.sql<{ table_name: string }[]>`
       select table_name from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'`;

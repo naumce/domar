@@ -29,6 +29,13 @@
       "when": 1790051970616,
       "tag": "0003_plain_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790229448624,
+      "tag": "0004_sturdy_thing",
+      "breakpoints": true
     }
   ]
 }
