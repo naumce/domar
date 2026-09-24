@@ -29,15 +29,19 @@ export const buildingDocumentRoutes: FastifyPluginAsyncZod = async (app) => {
     await getBuilding(req.db, req.ctx!, req.params.buildingId); // 404 across tenants, before a byte is read
     const part = await req.file();
     if (!part) throw badRequest('file_required', 'A file part is required');
+    // busboy calls an `application/octet-stream` part a file even without a filename, so this is
+    // reachable and has to be rejected before a byte is written.
+    const filename = part.filename ?? '';
+    if (!filename) throw badRequest('file_required', 'The file part must carry a filename');
     const kind = documentKindEnum.safeParse(fieldValue(part.fields as Record<string, unknown>, 'kind'));
     if (!kind.success) throw badRequest('validation', 'kind must be one of contract, minutes, report, invoice_supplier, photo, other');
-    const title = (fieldValue(part.fields as Record<string, unknown>, 'title') ?? part.filename).slice(0, 200).trim();
+    const title = (fieldValue(part.fields as Record<string, unknown>, 'title') ?? filename).slice(0, 200).trim();
     if (!title) throw badRequest('validation', 'title is required');
     const created = await createDocument(req.db, req.ctx!, app.documents, {
       buildingId: req.params.buildingId,
       kind: kind.data as DocumentKind,
       title,
-      fileName: part.filename.slice(0, 255),
+      fileName: filename.slice(0, 255),
       mime: part.mimetype,
       stream: part.file,
       isTruncated: () => part.file.truncated,
@@ -64,7 +68,7 @@ export const documentRoutes: FastifyPluginAsyncZod = async (app) => {
   });
 
   app.delete('/:id', { preHandler: requireRole(...WRITE_ROLES), schema: { params: idParam } }, async (req, reply) => {
-    await deleteDocument(req.db, req.ctx!, app.documents, req.params.id);
+    await deleteDocument(req.db, req.ctx!, app.documents, req.params.id, app.log);
     return reply.status(204).send();
   });
 };

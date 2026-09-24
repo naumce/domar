@@ -4,7 +4,7 @@ dist
 .env.*
 !.env.example
 backups
-data
+/data
 domexa-export
 coverage
 playwright-report

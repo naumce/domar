@@ -1,11 +1,17 @@
-import { access } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { access, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
+import { schema } from '@domar/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { LocalDiskStore } from '../src/documents/store.js';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
 
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n', 'latin1');
+const PDF_SHA256 = createHash('sha256').update(PDF).digest('hex');
 
 /** A multipart body `app.inject` can post. Fields come first: busboy only exposes what precedes the file. */
 function multipart(fields: Record<string, string>, file: { filename: string; mime: string; content: Buffer }) {
@@ -16,6 +22,19 @@ function multipart(fields: Record<string, string>, file: { filename: string; mim
   }
   parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.filename}"\r\nContent-Type: ${file.mime}\r\n\r\n`, 'utf8'));
   parts.push(file.content);
+  parts.push(Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'));
+  return { payload: Buffer.concat(parts), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
+}
+
+/** busboy calls an `application/octet-stream` part a file even with no `filename` attribute. */
+function multipartNoFilename(fields: Record<string, string>, content: Buffer) {
+  const boundary = `----domar${Math.random().toString(36).slice(2)}`;
+  const parts: Buffer[] = [];
+  for (const [k, v] of Object.entries(fields)) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`, 'utf8'));
+  }
+  parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"\r\nContent-Type: application/octet-stream\r\n\r\n`, 'utf8'));
+  parts.push(content);
   parts.push(Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'));
   return { payload: Buffer.concat(parts), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
 }
@@ -32,6 +51,8 @@ describe('documents', () => {
     return t.app.inject({ method: 'POST', url: `/api/buildings/${buildingId}/documents`, headers: { cookie: cookie ?? a.cookie, ...m.headers }, payload: m.payload });
   };
   const get = (url: string, cookie?: string) => t.app.inject({ method: 'GET', url, headers: { cookie: cookie ?? a.cookie } });
+  /** The files tenant A actually has on disk this year. */
+  const storedFiles = () => readdir(join(t.dataDir, 'documents', a.tenantId, String(new Date().getUTCFullYear()))).catch(() => [] as string[]);
 
   beforeAll(async () => {
     t = await createTestApp();
@@ -51,8 +72,7 @@ describe('documents', () => {
     expect(doc.fileName).toBe('записник.pdf');
     expect(doc.mime).toBe('application/pdf');
     expect(doc.sizeBytes).toBe(PDF.length);
-    // sha256 of the exact bytes above; recompute with `openssl dgst -sha256` if PDF ever changes.
-    expect(doc.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(doc.sha256).toBe(PDF_SHA256); // the sha256 of the exact bytes that were posted
     expect(doc.buildingId).toBe(A.buildingId);
     expect(doc.storageKey).toBeUndefined(); // the storage layout never leaves the server
     const meta = (await get(`/api/documents/${minutesId}`)).json();
@@ -79,19 +99,33 @@ describe('documents', () => {
   });
 
   it('refuses a mime outside the allowlist and an empty file', async () => {
+    const before = (await storedFiles()).length;
     const bad = await upload(A.buildingId, { kind: 'other', title: 'x' }, { filename: 'run.sh', mime: 'application/x-sh', content: Buffer.from('#!/bin/sh\n') });
     expect(bad.statusCode).toBe(400);
     expect(bad.json().error.code).toBe('unsupported_media_type');
     const empty = await upload(A.buildingId, { kind: 'other', title: 'x' }, { filename: 'empty.txt', mime: 'text/plain', content: Buffer.alloc(0) });
     expect(empty.statusCode).toBe(400);
     expect(empty.json().error.code).toBe('empty_file');
+    // Neither rejection may leave bytes behind.
+    expect(await storedFiles()).toHaveLength(before);
+  });
+
+  it('refuses a file part with no filename before writing anything', async () => {
+    const before = (await storedFiles()).length;
+    const m = multipartNoFilename({ kind: 'other', title: 'x' }, Buffer.from('bytes'));
+    const res = await t.app.inject({ method: 'POST', url: `/api/buildings/${A.buildingId}/documents`, headers: { cookie: a.cookie, ...m.headers }, payload: m.payload });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('file_required');
+    expect(await storedFiles()).toHaveLength(before);
   });
 
   it('refuses a file over 20 MB', async () => {
+    const before = (await storedFiles()).length;
     const tooBig = await upload(A.buildingId, { kind: 'other', title: 'голема' }, { filename: 'big.txt', mime: 'text/plain', content: Buffer.alloc(20 * 1024 * 1024 + 1024, 0x41) });
     expect(tooBig.statusCode).toBe(413);
     expect(tooBig.json().error.code).toBe('file_too_large');
     expect((await get(`/api/buildings/${A.buildingId}/documents`)).json().rows).toHaveLength(2);
+    expect(await storedFiles()).toHaveLength(before); // the truncated file was deleted, not kept
   });
 
   it('is invisible to another tenant', async () => {
@@ -131,5 +165,49 @@ describe('documents', () => {
     const invoiceDoc = (await get(`/api/buildings/${A.buildingId}/documents?kind=invoice_supplier`)).json().rows[0];
     const forbidden = await t.app.inject({ method: 'GET', url: `/api/portal/documents/${invoiceDoc.id}/download?contactId=${A.owners.O1}`, headers: { cookie: owner } });
     expect(forbidden.statusCode).toBe(404);
+  });
+
+  it('refuses to delete a document a contract points at', async () => {
+    const created = (await upload(A.buildingId, { kind: 'contract', title: 'Договор' }, { filename: 'dogovor.pdf', mime: 'application/pdf', content: PDF })).json();
+    // Task 6 owns the contracts API; until it lands the reference is made directly in the table.
+    await t.db.insert(schema.buildingContracts).values({
+      tenantId: a.tenantId, buildingId: A.buildingId, kind: 'management', title: 'Управување',
+      startsOn: '2026-01-01', documentId: created.id,
+    });
+    const res = await t.app.inject({ method: 'DELETE', url: `/api/documents/${created.id}`, headers: { cookie: a.cookie } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('document_referenced');
+    // The row survives and so do its bytes.
+    expect((await get(`/api/documents/${created.id}`)).statusCode).toBe(200);
+    await expect(access(join(t.dataDir, 'documents', a.tenantId, String(new Date().getUTCFullYear()), `${created.id}.pdf`))).resolves.toBeUndefined();
+  });
+});
+
+describe('LocalDiskStore', () => {
+  let root = '';
+  beforeAll(async () => { root = await mkdtemp(join(tmpdir(), 'domar-store-')); });
+  afterAll(async () => { await rm(root, { recursive: true, force: true }); });
+
+  it('leaves nothing behind when the source stream fails mid-write', async () => {
+    const store = new LocalDiskStore(root);
+    const tenantId = randomUUID();
+    const key = `documents/${tenantId}/2026/${randomUUID()}.pdf`;
+    // The failure is driven by the reader, so it cannot land before `pipeline` is listening.
+    let sent = false;
+    const source = new Readable({
+      read() {
+        if (sent) { this.destroy(new Error('connection reset')); return; }
+        sent = true;
+        this.push(Buffer.alloc(1024, 0x41));
+      },
+    });
+    await expect(store.put(key, source)).rejects.toThrow('connection reset');
+    await expect(readdir(join(root, 'documents', tenantId, '2026'))).resolves.toEqual([]);
+  });
+
+  it('refuses a key that is not a server-generated document key', async () => {
+    const store = new LocalDiskStore(root);
+    await expect(store.open('../../etc/passwd')).rejects.toThrow('invalid storage key');
+    await expect(store.remove('documents/../../escape.pdf')).rejects.toThrow('invalid storage key');
   });
 });

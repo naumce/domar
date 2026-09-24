@@ -66,7 +66,13 @@ export class LocalDiskStore implements DocumentStore {
     const meter = new Transform({
       transform(chunk: Buffer, _enc, cb) { hash.update(chunk); sizeBytes += chunk.length; cb(null, chunk); },
     });
-    await pipeline(data, meter, createWriteStream(abs, { flags: 'wx', mode: 0o600 }));
+    try {
+      await pipeline(data, meter, createWriteStream(abs, { flags: 'wx', mode: 0o600 }));
+    } catch (err) {
+      // An aborted or errored upload has already written part of the file; `put` owns that mess.
+      await rm(abs, { force: true }).catch(() => {});
+      throw err;
+    }
     return { sizeBytes, sha256: hash.digest('hex') };
   }
 

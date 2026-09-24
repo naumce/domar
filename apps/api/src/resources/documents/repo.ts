@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { type Db, schema } from '@domar/db';
 import { and, desc, eq } from 'drizzle-orm';
+import type { FastifyBaseLogger } from 'fastify';
 import { writeAudit } from '../../audit.js';
 import { ALLOWED_MIME, documentStorageKey, MAX_DOCUMENT_BYTES, type DocumentStore } from '../../documents/store.js';
 import { AppError, badRequest, conflict, notFound } from '../../errors.js';
@@ -82,15 +83,22 @@ export async function createDocument(db: Db, ctx: TenantContext, store: Document
 }
 
 /** Spec §4/addendum 13: a document a contract or an expense points at is not deletable. */
-export async function deleteDocument(db: Db, ctx: TenantContext, store: DocumentStore, id: string) {
+export async function deleteDocument(db: Db, ctx: TenantContext, store: DocumentStore, id: string, log?: FastifyBaseLogger) {
   const row = await getDocumentRow(db, ctx, id);
-  const [contract] = await db.select({ id: BC.id }).from(BC).where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.documentId, id))).limit(1);
-  const [expense] = await db.select({ id: E.id }).from(E).where(and(eq(E.tenantId, ctx.tenantId), eq(E.documentId, id))).limit(1);
-  if (contract || expense) throw conflict('document_referenced', 'This document is attached to a contract or an expense');
   await db.transaction(async (tx) => {
+    // Inside the transaction: a contract or an expense that claims the document between the check
+    // and the delete cannot end up pointing at a row that is no longer there.
+    const [contract] = await tx.select({ id: BC.id }).from(BC).where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.documentId, id))).limit(1);
+    const [expense] = await tx.select({ id: E.id }).from(E).where(and(eq(E.tenantId, ctx.tenantId), eq(E.documentId, id))).limit(1);
+    if (contract || expense) throw conflict('document_referenced', 'This document is attached to a contract or an expense');
     await tx.delete(D).where(and(eq(D.tenantId, ctx.tenantId), eq(D.id, id)));
     await writeAudit(tx, ctx, { action: 'document.delete', entityType: 'document', entityId: id, before: publicDocument(row) });
   });
-  // After the commit: a removed file with a surviving row would be worse than a stray file.
-  await store.remove(row.storageKey);
+  // After the commit: a removed file with a surviving row would be worse than a stray file, and a
+  // stray file must not turn a committed delete into a 500 either.
+  try {
+    await store.remove(row.storageKey);
+  } catch (err) {
+    log?.warn({ err, documentId: id }, 'document row deleted but its file could not be removed');
+  }
 }
