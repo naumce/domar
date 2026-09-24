@@ -29,6 +29,7 @@ import { contactRoutes } from './resources/contacts/routes.js';
 import { contractRoutes } from './resources/contracts/routes.js';
 import { buildingDocumentRoutes, documentRoutes } from './resources/documents/routes.js';
 import { dashboardRoutes } from './resources/dashboard/routes.js';
+import { extraordinaryCostRoutes } from './resources/extraordinary/routes.js';
 import { invoiceEmailRoutes, periodEmailRoutes } from './email/routes.js';
 import { invoiceRoutes } from './resources/invoices/routes.js';
 import { importRoutes } from './resources/import/routes.js';
@@ -135,6 +136,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(reserveFundRoutes, { prefix: '/buildings/:buildingId/reserve-fund' });
     await api.register(openingBalanceRoutes, { prefix: '/buildings/:buildingId/opening-balances' });
     await api.register(importRoutes, { prefix: '/buildings/:buildingId/import' });
+    await api.register(extraordinaryCostRoutes, { prefix: '/buildings/:buildingId/extraordinary-costs' });
     await api.register(periodRoutes, { prefix: '/buildings/:buildingId/periods' });
     await api.register(invoicingRoutes, { prefix: '/buildings/:buildingId/periods' });
     await api.register(periodEmailRoutes, { prefix: '/buildings/:buildingId/periods' });

@@ -80,7 +80,7 @@ export async function listPeriods(db: Db, ctx: TenantContext, buildingId: string
   // "billing_periods"."id" is hard-coded: drizzle renders single-table select columns unqualified
   // inside raw sql, so an unqualified `id` here would bind to the subquery's own `invoices.id`.
   const rows = await db.select({ p: BP, invoiceCount: sql<number>`(select count(*) from ${INV} i where i.period_id = "billing_periods"."id")`.mapWith(Number), totalMinor: sql<string>`(select coalesce(sum(i.total_minor),0) from ${INV} i where i.period_id = "billing_periods"."id")` })
-    .from(BP).where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.buildingId, buildingId))).orderBy(desc(BP.period));
+    .from(BP).where(and(eq(BP.tenantId, ctx.tenantId), eq(BP.buildingId, buildingId))).orderBy(desc(BP.period), asc(BP.kind), asc(BP.createdAt));
   return { rows: rows.map((r) => ({ ...toPeriod(r.p), invoiceCount: r.invoiceCount, totalMinor: Number(r.totalMinor) })) };
 }
 
@@ -133,7 +133,8 @@ export async function refreshAutoLines(db: Db, ctx: TenantContext, buildingId: s
     // A manual copy of a service (an edited auto line) wins: don't hand the period a second line for it.
     const kept = await tx.select({ serviceId: PL.serviceId }).from(PL).where(and(eq(PL.tenantId, ctx.tenantId), eq(PL.periodId, id)));
     const keptServiceIds = new Set(kept.map((l) => l.serviceId).filter((s): s is string => s !== null));
-    const rebuilt = (await buildAutoLines(tx, ctx, buildingId, period.period)).filter((l) => l.serviceId === null || !keptServiceIds.has(l.serviceId));
+    // An Art. 47(5) period carries only the one line the manager entered (plan addendum 18).
+    const rebuilt = period.kind === 'extraordinary' ? [] : (await buildAutoLines(tx, ctx, buildingId, period.period)).filter((l) => l.serviceId === null || !keptServiceIds.has(l.serviceId));
     await insertLines(tx, ctx, id, rebuilt);
     await writeAudit(tx, ctx, { action: 'period.refresh_lines', entityType: 'billing_period', entityId: id });
     return getPeriod(tx, ctx, buildingId, id);

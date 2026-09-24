@@ -20,7 +20,9 @@ export async function buildCalcInput(db: Db, ctx: TenantContext, buildingId: str
     id: l.id, kind: l.serviceId ? 'service' : 'manual', description: l.description, pricing: l.pricing, quantity: l.quantity,
     unitPriceMinor: l.unitPriceMinor, taxRateBp: l.taxRateBp, appliesTo: l.appliesTo as UnitKind[], fund: l.fund,
   }));
-  const rf = await getReserveFundSetting(db, ctx, buildingId);
+  // An Art. 47(5) period carries exactly the one line the manager entered: no reserve-fund
+  // contribution and no management fee slip into an extraordinary charge (plan addendum 18).
+  const rf = period.kind === 'extraordinary' ? null : await getReserveFundSetting(db, ctx, buildingId);
   if (rf?.active && rf.amountMinor > 0) {
     lines.push({ id: `reserve-fund:${rf.id}`, kind: 'reserve_fund', description: pack.labels.reserveFund, pricing: rf.basis === 'per_m2' ? 'per_m2' : 'fixed_per_unit', quantity: 1, unitPriceMinor: rf.amountMinor, taxRateBp: 0, appliesTo: rf.appliesTo as UnitKind[], fund: 'reserve' });
   }
@@ -28,7 +30,8 @@ export async function buildCalcInput(db: Db, ctx: TenantContext, buildingId: str
     lines.push({ id: `management-fee:${period.id}`, kind: 'management_fee', description: pack.labels.managementFee, pricing: 'fixed_per_unit', quantity: 1, unitPriceMinor: period.managementFeeMinor, taxRateBp: period.managementFeeTaxRateBp, appliesTo: period.managementFeeAppliesTo as UnitKind[], fund: 'regular' });
   }
   return {
-    building: { id: building.id, shareBasis: building.shareBasis },
+    // The extraordinary period's own basis wins over the building's default (plan addendum 17).
+    building: { id: building.id, shareBasis: period.distributionBasis ?? building.shareBasis },
     units: units.map((u) => ({ id: u.id, label: u.label, kind: u.kind, areaM2: u.areaM2 === null ? null : Number(u.areaM2), ownershipShare: u.ownershipShare === null ? null : Number(u.ownershipShare), ownerContactId: u.ownerContactId, attachedToUnitId: u.attachedToUnitId })),
     lines,
     previousBalances: await ownerBalances(db, ctx, buildingId),

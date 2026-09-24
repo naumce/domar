@@ -9,7 +9,9 @@ export const lineOut = z.object({
   taxRateBp: z.number().int(), appliesTo: z.array(unitKindEnum), fund: fundEnum, source: z.enum(['auto', 'manual']), note: z.string().nullable(), sortOrder: z.number().int(),
 });
 export const periodOut = z.object({
-  id: z.string(), buildingId: z.string(), period: z.string(), status: periodStatusEnum, managementFeeMinor: z.number().int(), managementFeeTaxRateBp: z.number().int(),
+  id: z.string(), buildingId: z.string(), period: z.string(), status: periodStatusEnum,
+  kind: z.enum(['regular', 'extraordinary']), distributionBasis: z.enum(['area', 'equal', 'custom']).nullable(),
+  managementFeeMinor: z.number().int(), managementFeeTaxRateBp: z.number().int(),
   managementFeeAppliesTo: z.array(unitKindEnum), numberPrefix: z.string(), numberSuffix: z.string(), currency: z.string(),
   issuedAt: z.date().or(z.string()).nullable(), dueAt: z.date().or(z.string()).nullable(), generatedAt: z.date().or(z.string()).nullable(), publishedAt: z.date().or(z.string()).nullable(),
   warnings: z.array(z.record(z.unknown())), invoiceCount: z.number().int(), totalMinor: z.number().int(), createdAt: z.date().or(z.string()), updatedAt: z.date().or(z.string()),
