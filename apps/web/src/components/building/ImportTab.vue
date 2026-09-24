@@ -34,10 +34,15 @@ function readText(f: File): Promise<string> {
   });
 }
 
+/** A commit is only allowed on a previewed file, so anything that changes what would be sent clears it. */
+function resetPreview() {
+  result.value = null; done.value = false; error.value = ''; force.value = false;
+}
+
 function onFile(e: Event) {
   file.value = (e.target as HTMLInputElement).files?.[0] ?? null;
   fileName.value = file.value?.name ?? '';
-  result.value = null; done.value = false; error.value = ''; force.value = false;
+  resetPreview();
 }
 
 function fail(e: unknown) {
@@ -96,13 +101,13 @@ function downloadTemplate() {
     </label>
     <label class="text-sm">
       <span class="mb-1 block font-medium text-slate-700">{{ t('imports.mode') }}</span>
-      <select v-model="mode" data-test="import-mode" class="rounded-md border border-slate-300 bg-white px-3 py-2">
+      <select v-model="mode" data-test="import-mode" @change="resetPreview" class="rounded-md border border-slate-300 bg-white px-3 py-2">
         <option value="fail">{{ t('imports.modeFail') }}</option>
         <option value="skip">{{ t('imports.modeSkip') }}</option>
       </select>
     </label>
     <AppButton variant="secondary" :loading="busy" data-test="import-preview" @click="preview">{{ t('imports.preview') }}</AppButton>
-    <AppButton :loading="busy" :disabled="busy || (result?.blocked === 'period_published' && !force)" data-test="import-commit" @click="commit">{{ t('imports.commit') }}</AppButton>
+    <AppButton :loading="busy" :disabled="busy || !result?.dryRun || (result.blocked === 'period_published' && !force)" data-test="import-commit" @click="commit">{{ t('imports.commit') }}</AppButton>
     <AppButton variant="secondary" data-test="import-template" @click="downloadTemplate">{{ t('imports.template') }}</AppButton>
   </div>
   <p v-if="error" class="mb-2 text-sm text-red-600" data-test="import-error">{{ error }}</p>

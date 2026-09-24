@@ -29,6 +29,7 @@ describe('ImportTab', () => {
     const input = w.get('[data-test=import-file]');
     Object.defineProperty(input.element, 'files', { value: [new File([CSV], 'units.csv', { type: 'text/csv' })] });
     await input.trigger('change');
+    expect(w.get('[data-test=import-commit]').attributes('disabled')).toBeDefined();
     await w.get('[data-test=import-preview]').trigger('click');
 
     await vi.waitFor(() => expect(w.text()).toContain('unknown kind: кутија'));
