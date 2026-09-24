@@ -47,4 +47,5 @@ export const portalFundOut = z.object({
     bookedAt: z.date().or(z.string()),
     description: z.string().nullable(),
   })),
+  truncated: z.boolean(),
 });

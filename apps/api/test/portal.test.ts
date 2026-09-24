@@ -112,6 +112,21 @@ describe('portal data', () => {
     expect(st.rows.some((r: { kind: string }) => r.kind === 'payment')).toBe(true);
   });
 
+  it('narrows the statement to a building the contact owns a unit in, and 404s any other', async () => {
+    const res = await portalGet(`/api/portal/statement?contactId=${A.owners.O1}&buildingId=${A.buildingId}`);
+    expect(res.statusCode).toBe(200);
+    const st = res.json();
+    expect(st.building).toEqual({ id: A.buildingId, name: 'Партизанска 12' });
+    expect(st.rows.length).toBeGreaterThan(0);
+    expect(st.balanceMinor).toBe(0);
+
+    // Same tenant, same link — but the contact owns nothing there, so not even the name leaks.
+    const other = (await staffPost('/api/buildings', { name: 'Трета зграда' })).json().id;
+    const res2 = await portalGet(`/api/portal/statement?contactId=${A.owners.O1}&buildingId=${other}`);
+    expect(res2.statusCode).toBe(404);
+    expect(res2.json().error.code).toBe('not_found');
+  });
+
   it('shows both building funds with 12 months of transactions and no owner names', async () => {
     const res = await portalGet(`/api/portal/buildings/${A.buildingId}/fund?contactId=${A.owners.O1}`);
     expect(res.statusCode).toBe(200);
