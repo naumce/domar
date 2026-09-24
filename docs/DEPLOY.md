@@ -20,7 +20,7 @@ create the rest of the staff from Settings → Users.
 
 ## Environment
 
-Only five variables come from `.env`; compose interpolates them into the stack:
+Only eight variables come from `.env`; compose interpolates them into the stack:
 
 | Variable | Used by | Default |
 | --- | --- | --- |
@@ -29,6 +29,9 @@ Only five variables come from `.env`; compose interpolates them into the stack:
 | `POSTGRES_DB` | `db`, `DATABASE_URL` | `domar` |
 | `DOMAIN` | Caddy's site address and the api's `CORS_ORIGINS` | none — compose fails without it |
 | `TZ` | `db` and `api` | `Europe/Skopje` |
+| `SMTP_URL` | `api` — outgoing mail; empty disables email | empty |
+| `EMAIL_FROM` | `api` — envelope sender | `domar <no-reply@$DOMAIN>` |
+| `JOB_TOKEN` | `api` — the reminder cron's shared secret | none — compose fails without it |
 
 `POSTGRES_PASSWORD` is substituted into `DATABASE_URL` unescaped, so keep it URL-safe: letters,
 digits, `-` and `_`. `BACKUP_DIR` is read from `.env` by `scripts/backup.sh` only.
@@ -59,6 +62,29 @@ If the failed migration got part way through, roll the database back too: restor
     docker compose -f docker-compose.prod.yml up -d --build api
 
 Caddy waits for the api's health check (`GET /api/health`) before it is considered up.
+
+## Reminders
+
+domar has no in-process scheduler. `POST /api/jobs/reminders` evaluates every building of every
+tenant and is authenticated by the `x-job-token` header alone, so anything that can make an HTTPS
+request can drive it. One host crontab line is enough — the api container only `expose`s 3001, so
+the request goes through Caddy:
+
+    5 3 * * * cd /srv/domar && . ./.env && curl -fsS -m 300 -X POST -H "x-job-token: $JOB_TOKEN" "https://$DOMAIN/api/jobs/reminders" >> /var/log/domar-reminders.log 2>&1
+
+`. ./.env` reads `JOB_TOKEN` and `DOMAIN` out of the same file compose uses; every value in `.env`
+that contains spaces must be quoted for that to work (`.env.example` already quotes `EMAIL_FROM`).
+The job is idempotent: a reminder is never created twice for the same debt inside 30 days, so a
+missed night or a double run costs nothing. The endpoint answers `401` without the header, `403`
+with the wrong token and `503` when `JOB_TOKEN` is unset on the server.
+
+Without `SMTP_URL` the mailer is a no-op: reminders are still created and their letters are still
+rendered at `GET /api/reminders/:id/pdf`, but every email reminder is recorded as `failed` with
+`smtp_not_configured`. The building's "Reminders" tab shows that state, and Settings shows whether
+email is configured at all.
+
+For local development, `docker compose up -d mailpit` gives SMTP on `localhost:1025` and a web
+inbox on `http://localhost:8025`; point `SMTP_URL=smtp://localhost:1025` at it.
 
 ## Why the image runs `tsx`
 
