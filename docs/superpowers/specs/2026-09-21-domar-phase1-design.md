@@ -251,3 +251,42 @@ Templates are Vue SFC-free plain HTML with a tiny template function to keep rend
 - All user-facing strings in the web app go through i18n; Macedonian first, English second.
 - No secrets in the repo; `.env.example` documents every variable.
 - Commit after every green test cycle; conventional commit messages.
+
+## 17. Sub-plan "Pilot ready" (added 2026-09-24)
+
+Inserted before sub-plans 4–6 so one design-partner company can run a real billing month. Four
+deliverables; anything else waits for feedback from that month.
+
+1. **Owner opening balances.** A migrating building carries existing owner debts and credits.
+   `POST /buildings/:id/opening-balances` books one owner posting per row: `account 'owner'`,
+   `kind 'opening'`, `refType 'opening_balance'`, signed `amountMinor` (positive = owner owes),
+   `fund` regular or reserve, `bookedAt` (default now), optional note. Owner account only — fund
+   cash is not touched (fund opening balances already exist under `/reserve-fund/opening-balance`).
+   Bulk body `{ rows: [...] }` in one transaction. Refused with `409 period_published` when the
+   building already has a published period unless `force: true` (audited). Web: "Opening balances"
+   tab listing owners with current balance and an amount input per owner.
+2. **Staff users.** Owners manage their own staff without email: `GET /users`, `POST /users`
+   (owner only; server generates a 16-char temporary password returned once in the response),
+   `PATCH /users/:id` (role, `isActive`), `POST /users/:id/reset-password` (owner only; new temporary
+   password returned once), `POST /auth/change-password` (self; current + new password). `users`
+   gains `is_active boolean not null default true`. Login and existing sessions are refused for an
+   inactive user; deactivating deletes the user's sessions. The last active owner cannot be
+   deactivated or demoted (`409 last_owner`). Web: a "Users" section on the settings page plus a
+   change-password form for the signed-in user.
+3. **CSV import of units and owners.** Fixed template, header names accepted in English or
+   Macedonian: `label;floor;kind;areaM2;ownershipShare;ownerFirstName;ownerLastName;ownerEmail;
+   ownerPhone;openingBalance` (`;` or `,`, UTF-8 with optional BOM, decimal comma or point). Parsing
+   and validation live in `packages/domain/src/import/units.ts` (pure): returns rows with
+   `{ ok, errors[] }` per line and never throws. `POST /buildings/:id/import/units?dryRun=true`
+   returns the preview (rows, per-row errors, counts, existing-label conflicts); without `dryRun`
+   it creates in one transaction: contacts (matched by email when present, else by exact
+   first+last name within the tenant, else created), units (existing label → `409` unless
+   `mode: 'skip'`), and opening balances for non-zero `openingBalance`. Web: "Import" tab with
+   file input, preview table with row errors, template download, commit button.
+4. **Production packaging.** Multi-stage `Dockerfile` (root) building `@domar/api` and
+   `@domar/web`; the API serves `apps/web/dist` through `@fastify/static` with an SPA fallback
+   when `SERVE_WEB=true`; migrations run on container start (`pnpm --filter @domar/db migrate`);
+   `docker-compose.prod.yml` with `db`, `api`, and `caddy` (automatic HTTPS from `DOMAIN`);
+   `scripts/backup.sh` (pg_dump to a dated file, keeps 14); `docs/DEPLOY.md`. Session cookie
+   `secure` follows `isProduction`. Chrome for PDFs comes from the `mcr.microsoft.com/playwright`
+   base image.
