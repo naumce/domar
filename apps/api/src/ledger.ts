@@ -28,13 +28,14 @@ export async function addPosting(db: Db, ctx: TenantContext, p: NewPosting) {
   return row!;
 }
 
+/** Inserts a batch in one statement; the returned rows keep the order of `ps`. */
 export async function addPostings(db: Db, ctx: TenantContext, ps: NewPosting[]) {
-  if (ps.length === 0) return;
+  if (ps.length === 0) return [];
   const now = new Date();
-  await db.insert(P).values(ps.map((p) => ({
+  return db.insert(P).values(ps.map((p) => ({
     tenantId: ctx.tenantId, buildingId: p.buildingId, account: p.account, fund: p.fund, contactId: p.contactId ?? null, kind: p.kind,
     amountMinor: p.amountMinor, refType: p.refType, refId: p.refId ?? null, period: p.period ?? null, bookedAt: p.bookedAt ?? now,
-  })));
+  }))).returning();
 }
 
 const sum = sql<string>`coalesce(sum(${P.amountMinor}), 0)`;

@@ -2,7 +2,7 @@ import { type Db, schema } from '@domar/db';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { badRequest, conflict } from '../../errors.js';
-import { addPosting, ownerBalancesByFund } from '../../ledger.js';
+import { addPostings, ownerBalancesByFund } from '../../ledger.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { dedupe } from '../common.js';
@@ -26,24 +26,27 @@ export async function hasPublishedPeriod(db: Db, ctx: TenantContext, buildingId:
  * no published-period guard, no building lookup — `addOpeningBalances` and the CSV import do those.
  */
 export async function insertOpeningBalances(tx: Db, ctx: TenantContext, buildingId: string, rows: OpeningBalanceRow[]): Promise<InsertedOpening[]> {
+  if (rows.length === 0) return [];
+  // Owning a unit in this building implies the contact is ours, since both units and the building
+  // are tenant-scoped — so this one query covers tenant membership as well. An opening for anyone
+  // else would never be billed and would show up on no screen.
   const contactIds = dedupe(rows.map((r) => r.contactId));
-  const known = new Set((await tx.query.contacts.findMany({
-    where: and(eq(C.tenantId, ctx.tenantId), inArray(C.id, contactIds)), columns: { id: true },
-  })).map((c) => c.id));
-  const missing = contactIds.find((id) => !known.has(id));
-  if (missing) throw badRequest('invalid_reference', `contactId ${missing} does not belong to this organization`);
+  const owners = new Set((await tx
+    .selectDistinct({ id: U.ownerContactId })
+    .from(U)
+    .where(and(eq(U.tenantId, ctx.tenantId), eq(U.buildingId, buildingId), inArray(U.ownerContactId, contactIds)))
+  ).map((u) => u.id));
+  const strangers = contactIds.filter((id) => !owners.has(id));
+  if (strangers.length > 0) throw badRequest('invalid_reference', 'Some contacts do not own a unit in this building', { contactIds: strangers });
 
   const now = new Date();
-  const out: InsertedOpening[] = [];
-  for (const r of rows) {
-    const posting = await addPosting(tx, ctx, {
-      buildingId, account: 'owner', contactId: r.contactId, fund: r.fund, kind: 'opening',
-      amountMinor: r.amountMinor, refType: 'opening_balance',
-      bookedAt: r.bookedAt ? new Date(r.bookedAt) : now,
-    });
-    out.push({ id: posting.id, contactId: r.contactId, fund: r.fund, amountMinor: r.amountMinor, bookedAt: posting.bookedAt, note: r.note ?? null });
-  }
-  return out;
+  const postings = await addPostings(tx, ctx, rows.map((r) => ({
+    buildingId, account: 'owner' as const, contactId: r.contactId, fund: r.fund, kind: 'opening' as const,
+    amountMinor: r.amountMinor, refType: 'opening_balance', bookedAt: r.bookedAt ? new Date(r.bookedAt) : now,
+  })));
+  return rows.map((r, i) => ({
+    id: postings[i]!.id, contactId: r.contactId, fund: r.fund, amountMinor: r.amountMinor, bookedAt: postings[i]!.bookedAt, note: r.note ?? null,
+  }));
 }
 
 export async function addOpeningBalances(db: Db, ctx: TenantContext, buildingId: string, input: OpeningBalanceCreate) {

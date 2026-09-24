@@ -57,6 +57,19 @@ describe('owner opening balances', () => {
     expect((await post(base(), { rows: [{ contactId: foreign, amountMinor: 1000 }] }, b.cookie)).statusCode).toBe(404);
   });
 
+  it('rejects a contact of ours who owns no unit in the building', async () => {
+    const stranger = (await post('/api/contacts', { firstName: 'Без', lastName: 'Стан' })).json().id;
+    const res = await post(base(), { rows: [{ contactId: o1, amountMinor: 1000 }, { contactId: stranger, amountMinor: 1000 }] });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('invalid_reference');
+    expect(res.json().error.details).toMatchObject({ contactIds: [stranger] });
+
+    // nothing was written: the o1 row of the batch rolled back with it
+    const rows: { contactId: string; regularMinor: number; reserveMinor: number }[] = (await get(base())).json().rows;
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.contactId === o1)).toMatchObject({ regularMinor: 120000, reserveMinor: -20000 });
+  });
+
   it('a generated invoice starts from the opening balance', async () => {
     periodId = (await post(`/api/buildings/${buildingId}/periods`, { period: '2026-09' })).json().id;
     await post(`/api/buildings/${buildingId}/periods/${periodId}/generate`, {});
