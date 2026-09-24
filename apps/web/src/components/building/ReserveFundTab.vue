@@ -81,8 +81,9 @@ async function voidExpense(id: string) {
     </form>
     <div>
       <h3 class="mb-2 font-semibold">{{ t('reserveFund.expenses') }}</h3>
-      <form class="mb-3 grid grid-cols-6 items-end gap-3" @submit.prevent="addExpense">
+      <form class="mb-3 grid grid-cols-7 items-end gap-3" @submit.prevent="addExpense">
         <AppInput v-model="expense.description" :label="t('billing.description')" data-test="exp-description" class="col-span-2" />
+        <AppInput v-model="expense.supplierText" :label="t('reserveFund.payee')" data-test="exp-supplier-text" />
         <AppSelect v-model="expense.supplierId" :label="t('reserveFund.supplier')" :options="[{ value: null, label: t('reserveFund.noSupplier') }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]" data-test="exp-supplier-id" />
         <AppSelect v-model="expense.documentId" :label="t('contracts.document')" :options="[{ value: null, label: t('contracts.noDocument') }, ...documents.map((d) => ({ value: d.id, label: d.title }))]" data-test="exp-document-id" />
         <AppInput v-model="expense.amount" :label="t('billing.amount')" data-test="exp-amount" />

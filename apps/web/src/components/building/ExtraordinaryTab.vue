@@ -11,7 +11,8 @@ import { formatMoney, toMinor } from '@/utils/money';
 const props = defineProps<{ buildingId: string }>();
 const { t, te } = useI18n();
 const KINDS: UnitKind[] = ['apartment', 'commercial', 'parking', 'storage', 'other'];
-const form = ref({ description: '', amount: '', fund: 'reserve' as Fund, distribution: 'share' as Distribution, dueDays: '15', documentId: null as string | null, appliesTo: ['apartment', 'commercial'] as UnitKind[] });
+// Empty = every unit kind, exactly like a period line.
+const form = ref({ description: '', amount: '', fund: 'reserve' as Fund, distribution: 'share' as Distribution, dueDays: '15', documentId: null as string | null, appliesTo: [] as UnitKind[] });
 const documents = ref<DocumentMeta[]>([]);
 const history = ref<LegalEvent[]>([]);
 const result = ref<ExtraordinaryCostResult | null>(null);
@@ -25,6 +26,7 @@ async function load() {
 }
 onMounted(load);
 function toggleKind(k: UnitKind) { const i = form.value.appliesTo.indexOf(k); if (i >= 0) form.value.appliesTo.splice(i, 1); else form.value.appliesTo.push(k); }
+const periodLink = (r: ExtraordinaryCostResult) => `/app/buildings/${props.buildingId}/periods/${r.periodId}`;
 
 /** Every refusal this endpoint can throw, named for the manager: the unit labels it lists, or the status of the period blocking it. */
 function show(e: unknown) {
@@ -63,12 +65,14 @@ async function submit() {
       <AppInput v-model="form.dueDays" :label="t('extraordinary.dueDays')" data-test="extra-due-days" />
       <AppSelect v-model="form.documentId" :label="t('contracts.document')" :options="[{ value: null, label: t('contracts.noDocument') }, ...documents.map((d) => ({ value: d.id, label: d.title }))]" data-test="extra-document" />
       <fieldset class="col-span-2 text-sm"><legend class="mb-1 font-medium text-slate-700">{{ t('services.appliesTo') }}</legend>
+        <p class="mb-1 text-xs text-slate-500">{{ t('extraordinary.appliesToHint') }}</p>
         <label v-for="k in KINDS" :key="k" class="mr-3 inline-flex items-center gap-1"><input type="checkbox" :checked="form.appliesTo.includes(k)" :data-test="`extra-kind-${k}`" @change="toggleKind(k)" /> {{ t(`units.kinds.${k}`) }}</label></fieldset>
       <AppButton type="button" :loading="saving" data-test="extra-submit" @click="submit">{{ t('extraordinary.submit') }}</AppButton>
     </form>
     <p v-if="error" class="text-sm text-red-600" data-test="extra-error">{{ error }}</p>
     <p v-if="result" class="text-sm text-emerald-700" data-test="extra-result">
       {{ t('extraordinary.done', { count: result.invoiceCount, period: result.period, total: formatMoney(result.totalMinor) }) }}
+      <RouterLink :to="periodLink(result)" class="ml-1 underline" data-test="extra-period-link">{{ t('extraordinary.viewPeriod') }}</RouterLink>
     </p>
     <div>
       <h3 class="mb-2 font-semibold">{{ t('extraordinary.history') }}</h3>

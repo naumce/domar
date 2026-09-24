@@ -76,7 +76,7 @@ async function remove(id: string) {
       <template #cell-sizeBytes="{ row }">{{ fmtSize(row.sizeBytes) }}</template>
       <template #cell-createdAt="{ row }">{{ fmtDate(row.createdAt) }}</template>
       <template #actions="{ row }">
-        <a class="mr-2 text-sm text-emerald-700 underline" :href="downloadUrl(row.id)" data-test="doc-download">{{ t('documents.download') }}</a>
+        <a class="mr-2 text-sm text-emerald-700 underline" :href="downloadUrl(row.id)" target="_blank" rel="noopener" data-test="doc-download">{{ t('documents.download') }}</a>
         <AppButton variant="danger" data-test="doc-delete" @click="remove(row.id)">{{ t('app.delete') }}</AppButton>
       </template>
     </DataTable>

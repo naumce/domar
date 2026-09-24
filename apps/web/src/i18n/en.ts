@@ -81,7 +81,7 @@ export default {
   },
   reserveFund: {
     title: 'Reserve fund', basis: 'Basis', perUnit: 'Per unit', perM2: 'Per m²', active: 'Active', balance: 'Balance', billed: 'Billed to owners',
-    openingBalance: 'Opening balance', addOpening: 'Enter opening balance', expenses: 'Expenses', addExpense: 'Record expense', supplier: 'Supplier', paidAt: 'Paid on',
+    openingBalance: 'Opening balance', addOpening: 'Enter opening balance', expenses: 'Expenses', addExpense: 'Record expense', supplier: 'Supplier', payee: 'Paid to (free text)', paidAt: 'Paid on',
     void: 'Void', voided: 'Voided', transactions: 'Transactions', voidReason: 'Reason for voiding', noSupplier: '— no supplier —',
     kind: { opening: 'Opening balance', expense: 'Expense', adjustment: 'Adjustment', payment: 'Payment', charge: 'Charge' },
   },
@@ -209,18 +209,23 @@ export default {
   },
   suppliers: {
     title: 'Suppliers', add: 'Add supplier', name: 'Name', iban: 'Account',
+    showInactive: 'Show inactive', activate: 'Activate', deactivate: 'Deactivate',
     errors: { supplier_referenced: 'This supplier is used in a contract or an expense; deactivate it instead of deleting it.' },
   },
   contracts: {
     title: 'Contracts', contractTitle: 'Title', kind: 'Kind', supplier: 'Supplier', ownContract: 'Own management contract',
     document: 'Document', noDocument: '— no document —', startsOn: 'From', endsOn: 'To', noticeDays: 'Notice period (days)',
     kinds: { management: 'Management', service: 'Service', insurance: 'Insurance', other: 'Other' },
-    errors: { invalid_reference: 'The selected supplier or document does not exist.', validation: 'Check the dates.' },
+    errors: {
+      invalid_reference: 'The selected supplier or document does not exist.',
+      validation: 'Check the fields.',
+      dateOrder: 'The end date cannot be before the start date.',
+    },
   },
   extraordinary: {
     title: 'Extraordinary costs',
     intro: 'An extraordinary cost under Art. 47(5) is distributed to the owners as a separate charge and published right away.',
-    distribution: 'Distribution', dueDays: 'Due in (days)', submit: 'Distribute',
+    distribution: 'Distribution', dueDays: 'Due in (days)', submit: 'Distribute', appliesToHint: 'If none are checked, it applies to every kind.', viewPeriod: 'Open period',
     distributions: { share: 'By ownership share', equal: 'Equally per unit', area: 'By area' },
     done: 'Created {count} charges for {period}, totalling {total}.',
     invoices: '{count} charges', history: 'Previous distributions',

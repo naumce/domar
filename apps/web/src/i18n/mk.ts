@@ -81,7 +81,7 @@ export default {
   },
   reserveFund: {
     title: 'Резервен фонд', basis: 'Основ', perUnit: 'По единица', perM2: 'По m²', active: 'Активен', balance: 'Состојба', billed: 'Фактурирано на сопственици',
-    openingBalance: 'Почетно салдо', addOpening: 'Внеси почетно салдо', expenses: 'Трошоци', addExpense: 'Евидентирај трошок', supplier: 'Добавувач', paidAt: 'Платено на',
+    openingBalance: 'Почетно салдо', addOpening: 'Внеси почетно салдо', expenses: 'Трошоци', addExpense: 'Евидентирај трошок', supplier: 'Добавувач', payee: 'Исплатено на (слободен текст)', paidAt: 'Платено на',
     void: 'Поништи', voided: 'Поништено', transactions: 'Трансакции', voidReason: 'Причина за поништување', noSupplier: '— без добавувач —',
     kind: { opening: 'Почетно салдо', expense: 'Трошок', adjustment: 'Корекција', payment: 'Уплата', charge: 'Задолжување' },
   },
@@ -209,18 +209,23 @@ export default {
   },
   suppliers: {
     title: 'Добавувачи', add: 'Додади добавувач', name: 'Име', iban: 'Сметка',
+    showInactive: 'Прикажи неактивни', activate: 'Активирај', deactivate: 'Деактивирај',
     errors: { supplier_referenced: 'Добавувачот се користи во договор или трошок; деактивирајте го наместо да го бришете.' },
   },
   contracts: {
     title: 'Договори', contractTitle: 'Наслов', kind: 'Тип', supplier: 'Добавувач', ownContract: 'Сопствен договор за управување',
     document: 'Документ', noDocument: '— без документ —', startsOn: 'Од', endsOn: 'До', noticeDays: 'Отказен рок (дена)',
     kinds: { management: 'Управување', service: 'Услуга', insurance: 'Осигурување', other: 'Друго' },
-    errors: { invalid_reference: 'Избраниот добавувач или документ не постои.', validation: 'Проверете ги датумите.' },
+    errors: {
+      invalid_reference: 'Избраниот добавувач или документ не постои.',
+      validation: 'Проверете ги полињата.',
+      dateOrder: 'Датумот „До“ не смее да биде пред датумот „Од“.',
+    },
   },
   extraordinary: {
     title: 'Вонредни трошоци',
     intro: 'Вонредниот трошок по член 47(5) се распределува на сопствениците како посебна пресметка и веднаш се објавува.',
-    distribution: 'Распределба', dueDays: 'Рок на плаќање (дена)', submit: 'Распредели',
+    distribution: 'Распределба', dueDays: 'Рок на плаќање (дена)', submit: 'Распредели', appliesToHint: 'Ако не изберете ниту еден тип, се однесува на сите.', viewPeriod: 'Отвори период',
     distributions: { share: 'По сопственички удел', equal: 'Рамномерно по единица', area: 'По површина' },
     done: 'Создадени се {count} пресметки за {period}, вкупно {total}.',
     invoices: '{count} пресметки', history: 'Претходни распределби',

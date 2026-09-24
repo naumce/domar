@@ -66,4 +66,37 @@ describe('DocumentsTab', () => {
     await vi.waitFor(() => expect(w.find('[data-test=doc-error]').exists()).toBe(true));
     expect(w.get('[data-test=doc-error]').text()).toBe('Тој тип на датотека не е дозволен.');
   });
+
+  it('maps a 413 response to the file-too-large message', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ rows: [] }))
+      .mockResolvedValueOnce(json({ error: { code: 'file_too_large', message: 'too big' } }, 413));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(DocumentsTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n] } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const file = new File([new Uint8Array([1, 2, 3])], 'big.pdf', { type: 'application/pdf' });
+    const input = w.get('[data-test=doc-file]');
+    Object.defineProperty(input.element, 'files', { value: [file] });
+    await input.trigger('change');
+    await w.get('[data-test=doc-upload]').trigger('click');
+    await vi.waitFor(() => expect(w.find('[data-test=doc-error]').exists()).toBe(true));
+    expect(w.get('[data-test=doc-error]').text()).toBe('Датотеката е поголема од 20 MB.');
+  });
+
+  it('deletes a document and refreshes the list', async () => {
+    vi.stubGlobal('confirm', () => true);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ rows: [doc] }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ rows: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(DocumentsTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n] } });
+    await vi.waitFor(() => expect(w.text()).toContain('Записник од собир'));
+    await w.get('[data-test=doc-delete]').trigger('click');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const [url, init] = fetchMock.mock.calls[1]! as [string, RequestInit];
+    expect(String(url)).toBe('http://localhost:3001/api/documents/d1');
+    expect(init.method).toBe('DELETE');
+    await vi.waitFor(() => expect(w.text()).not.toContain('Записник од собир'));
+  });
 });

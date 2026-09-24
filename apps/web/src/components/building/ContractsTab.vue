@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api } from '@/api/client';
 import type { BuildingContract, ContractKind, DocumentMeta, Supplier } from '@/api/types';
@@ -19,6 +19,8 @@ const form = ref({ kind: 'management' as ContractKind, title: '', startsOn: '', 
 const error = ref('');
 const saving = ref(false);
 const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString('mk-MK') : '—');
+// A management contract is the manager's own — the API rejects a supplierId on it.
+watch(() => form.value.kind, (k) => { if (k === 'management') form.value.supplierId = null; });
 
 async function load() {
   rows.value = (await api.get<{ rows: BuildingContract[] }>(`/api/buildings/${props.buildingId}/contracts`)).rows;
@@ -28,12 +30,19 @@ async function load() {
 onMounted(load);
 
 async function submit() {
-  error.value = ''; saving.value = true;
+  error.value = '';
+  // Caught here with a specific message; the API would otherwise refuse it as a generic validation error.
+  if (form.value.endsOn && form.value.endsOn < form.value.startsOn) { error.value = t('contracts.errors.dateOrder'); return; }
+  let amountMinor: number | null = null;
+  if (form.value.amount.trim()) {
+    amountMinor = toMinor(form.value.amount);
+    if (amountMinor === null) { error.value = t('auth.errors.validation'); return; }
+  }
+  saving.value = true;
   try {
-    const amountMinor = form.value.amount ? toMinor(form.value.amount) : null;
     await api.post(`/api/buildings/${props.buildingId}/contracts`, {
       kind: form.value.kind, title: form.value.title, startsOn: form.value.startsOn,
-      endsOn: form.value.endsOn || null, supplierId: form.value.supplierId || null, documentId: form.value.documentId || null,
+      endsOn: form.value.endsOn || null, supplierId: form.value.kind === 'management' ? null : (form.value.supplierId || null), documentId: form.value.documentId || null,
       noticeDays: Number(form.value.noticeDays) || 0, amountMinor,
     });
     form.value = { kind: 'management', title: '', startsOn: '', endsOn: '', supplierId: null, documentId: null, noticeDays: '30', amount: '' };
@@ -56,7 +65,7 @@ async function remove(id: string) {
       <AppInput v-model="form.title" :label="t('contracts.contractTitle')" data-test="contract-title" />
       <AppInput v-model="form.startsOn" :label="t('contracts.startsOn')" type="date" data-test="contract-starts" />
       <AppInput v-model="form.endsOn" :label="t('contracts.endsOn')" type="date" data-test="contract-ends" />
-      <AppSelect v-model="form.supplierId" :label="t('contracts.supplier')" :options="[{ value: null, label: t('contracts.ownContract') }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]" data-test="contract-supplier" />
+      <AppSelect v-if="form.kind !== 'management'" v-model="form.supplierId" :label="t('contracts.supplier')" :options="[{ value: null, label: t('contracts.ownContract') }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]" data-test="contract-supplier" />
       <AppSelect v-model="form.documentId" :label="t('contracts.document')" :options="[{ value: null, label: t('contracts.noDocument') }, ...documents.map((d) => ({ value: d.id, label: d.title }))]" data-test="contract-document" />
       <AppInput v-model="form.noticeDays" :label="t('contracts.noticeDays')" data-test="contract-notice" />
       <div class="flex items-end gap-2"><AppInput v-model="form.amount" :label="t('billing.amount')" data-test="contract-amount" /><AppButton type="button" :loading="saving" data-test="contract-submit" @click="submit">{{ t('app.create') }}</AppButton></div>
