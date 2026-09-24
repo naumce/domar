@@ -145,6 +145,25 @@ describe('compliance', () => {
     expect((await get('/api/compliance', b.cookie)).json().rows).toEqual([]);
   });
 
+  it('dates the reminder deadline from the invoice that crossed the threshold, not the oldest unpaid one', async () => {
+    // Two unpaid months: the owner is over the Art. 28 threshold only once the *second* falls due,
+    // so the 30 days run from that one — on the first day a reminder is owed the duty is `due`.
+    const D = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(40) });
+    const dp = (await post(`/api/buildings/${D.buildingId}/periods`, { period: '2026-10' })).json().id;
+    await post(`/api/buildings/${D.buildingId}/periods/${dp}/generate`);
+    await post(`/api/buildings/${D.buildingId}/periods/${dp}/publish`, { dueAt: daysAgo(1) });
+    const fresh = await duty(D.buildingId, 'reminders');
+    expect(fresh.status).toBe('due');
+    expect(Date.parse(fresh.dueAt!)).toBeGreaterThan(Date.now());
+
+    // Thirty days after that second invoice fell due, the same duty is overdue.
+    const E = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(70) });
+    const ep = (await post(`/api/buildings/${E.buildingId}/periods`, { period: '2026-10' })).json().id;
+    await post(`/api/buildings/${E.buildingId}/periods/${ep}/generate`);
+    await post(`/api/buildings/${E.buildingId}/periods/${ep}/publish`, { dueAt: daysAgo(32) });
+    expect((await duty(E.buildingId, 'reminders')).status).toBe('overdue');
+  });
+
   it('never shows a failed reminder send as evidence, only a delivered one', async () => {
     const C = await setupPublishedBuilding(t.app, a.cookie, { dueAt: daysAgo(20) });
     for (const k of ['O1', 'O2', 'O3'] as const) {

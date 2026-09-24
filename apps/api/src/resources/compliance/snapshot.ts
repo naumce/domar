@@ -35,10 +35,17 @@ async function reminderState(db: Db, ctx: TenantContext, buildingId: string, now
     const ev = evaluateOwner({ invoices: o.invoices, priorReminders: priors.get(o.contactId) ?? [] }, rules, now);
     if (!ev.due) continue;
     ownersOverThreshold += 1;
+    // The threshold is crossed by the *newest* of the invoices the evaluation names: until that one
+    // fell due the owner was not yet over it, so the 30 days cannot start from an older invoice —
+    // otherwise the duty reads `overdue` on the very first day a reminder is owed.
+    const counted = new Set(ev.invoiceIds);
+    let crossedAt: number | null = null;
     for (const i of o.invoices) {
+      if (!counted.has(i.id)) continue;
       const due = Date.parse(i.dueAt);
-      if (oldestThresholdSince === null || due < oldestThresholdSince) oldestThresholdSince = due;
+      if (crossedAt === null || due > crossedAt) crossedAt = due;
     }
+    if (crossedAt !== null && (oldestThresholdSince === null || crossedAt < oldestThresholdSince)) oldestThresholdSince = crossedAt;
   }
   // From legal events, not the reminders table: only a delivered reminder writes `reminder_sent`
   // (`resources/reminders/service.ts`), so a failed send is never shown as evidence here.
