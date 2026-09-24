@@ -23,6 +23,11 @@ test('two overdue periods produce an emailed reminder with a PDF letter', async 
     expect(res.status(), `${path} → ${await res.text()}`).toBeLessThan(300);
     return res.json();
   };
+  // Every "Испратена" below needs a configured mailer. playwright.config.ts starts the api with
+  // SMTP_URL=json, but `reuseExistingServer` may hand us a dev api that was started without it.
+  const tenant = await (await page.request.get(`${API}/api/tenant`)).json();
+  expect(tenant.emailConfigured, 'the API is running without SMTP_URL: stop it and let playwright start it, or restart it with SMTP_URL=json').toBe(true);
+
   const taxRates = await (await page.request.get(`${API}/api/tax-rates`)).json();
   const vatId = taxRates.rows.find((r: { rateBp: number }) => r.rateBp === 1800).id;
   const owner = await post('/api/contacts', { firstName: 'Марко', lastName: 'Марков', email: `marko@${slug}.mk` });
