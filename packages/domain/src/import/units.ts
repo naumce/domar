@@ -52,11 +52,17 @@ const LIMITS: Partial<Record<Field, number>> = { label: 50, floor: 20, ownerFirs
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const norm = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
-/** "54,5" or "54.5" → 54.5; anything else → null. */
+/**
+ * "54,5" or "54.5" → 54.5, and the grouped forms a spreadsheet exports — "1.054,5" and "1,054.5" →
+ * 1054.5, the same reading `mkPack.parseAmountToMinor` gives the opening-balance column: the last
+ * separator is the decimal one and the other groups the integer digits. Anything else → null.
+ */
 function parseDecimal(raw: string): number | null {
   const s = raw.replace(/\s/g, '');
-  if (!/^-?\d+([.,]\d+)?$/.test(s)) return null;
-  return Number(s.replace(',', '.'));
+  if (/^-?\d+([.,]\d+)?$/.test(s)) return Number(s.replace(',', '.'));
+  const m = /^(-?)(\d{1,3}(?:([.,])\d{3})+)([.,])(\d+)$/.exec(s);
+  if (!m || m[3] === m[4]) return null;
+  return Number(`${m[1]}${m[2]!.replace(/[.,]/g, '')}.${m[5]}`);
 }
 
 /** Parses the fixed units/owners template. Never throws: bad rows become errors and are skipped. */
@@ -69,12 +75,20 @@ export function parseUnitImport(text: string): UnitImportResult {
 
   const headerLine = lines[headerIdx]!;
   const delim = headerLine.split(';').length >= headerLine.split(',').length ? ';' : ',';
-  const cols = splitCsvLine(headerLine, delim).map((c) => HEADERS[norm(c)] ?? null);
+  const headerCells = splitCsvLine(headerLine, delim);
+  const cols = headerCells.map((c) => HEADERS[norm(c)] ?? null);
   const at = (f: Field): number => cols.indexOf(f);
   for (const required of ['label', 'kind'] as const) {
     if (at(required) === -1) errors.push({ line: headerIdx + 1, message: `missing required column: ${required}` });
   }
   if (errors.length > 0) return { rows, errors };
+
+  // A header the template does not know imports as an empty column (a renamed "почетно салдо" would
+  // book every balance as 0), so name it while still parsing the rows.
+  for (const c of headerCells) {
+    const name = c.trim();
+    if (name !== '' && HEADERS[norm(c)] === undefined) errors.push({ line: headerIdx + 1, message: `unknown column: ${name}` });
+  }
 
   const seen = new Set<string>();
   for (let i = headerIdx + 1; i < lines.length; i++) {

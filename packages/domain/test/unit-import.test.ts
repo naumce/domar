@@ -87,6 +87,25 @@ describe('parseUnitImport', () => {
     ]);
   });
 
+  it('accepts the grouped decimals a spreadsheet exports', () => {
+    const text = 'label;kind;areaM2\n'
+      + 'A;стан;1.054,5\n'
+      + 'B;стан;1,054.5\n'
+      + 'C;стан;1054.5\n'
+      + 'D;стан;1054,5\n'
+      + 'E;стан;1.2.3\n';
+    const { rows, errors } = parseUnitImport(text);
+    expect(rows.map((r) => r.areaM2)).toEqual([1054.5, 1054.5, 1054.5, 1054.5]);
+    expect(errors).toEqual([{ line: 6, message: 'invalid areaM2: 1.2.3' }]);
+  });
+
+  it('names a header column it does not know and still parses the rows', () => {
+    const { rows, errors } = parseUnitImport('број;тип;Почетно салдо (ден.);\n1;стан;1.200,00\n');
+    expect(rows.map((r) => r.label)).toEqual(['1']);
+    expect(rows[0]!.openingBalanceMinor).toBe(0);
+    expect(errors).toEqual([{ line: 1, message: 'unknown column: Почетно салдо (ден.)' }]);
+  });
+
   it('reports an empty file instead of throwing', () => {
     expect(parseUnitImport('   \n\n')).toEqual({ rows: [], errors: [{ line: 1, message: 'empty file' }] });
   });
