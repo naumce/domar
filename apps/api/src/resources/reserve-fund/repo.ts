@@ -7,6 +7,8 @@ import { addPosting, billedToOwners, fundBalance } from '../../ledger.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import type { unitKindEnum } from '../common.js';
+import { assertDocumentInTenant } from '../documents/repo.js';
+import { assertSupplierInTenant } from '../suppliers/repo.js';
 import type { expenseCreate, openingBalanceBody, settingPut } from './schema.js';
 
 const RF = schema.reserveFundSettings;
@@ -71,7 +73,13 @@ export async function createExpense(db: Db, ctx: TenantContext, buildingId: stri
   return db.transaction(async (tx) => {
     await getBuilding(tx, ctx, buildingId);
     const paidAt = new Date(input.paidAt);
-    const [row] = await tx.insert(E).values({ tenantId: ctx.tenantId, buildingId, fund: input.fund, description: input.description, supplierText: input.supplierText ?? null, amountMinor: input.amountMinor, paidAt }).returning();
+    await assertSupplierInTenant(tx, ctx, input.supplierId);
+    await assertDocumentInTenant(tx, ctx, input.documentId);
+    const [row] = await tx.insert(E).values({
+      tenantId: ctx.tenantId, buildingId, fund: input.fund, description: input.description,
+      supplierText: input.supplierText ?? null, supplierId: input.supplierId ?? null, documentId: input.documentId ?? null,
+      amountMinor: input.amountMinor, paidAt,
+    }).returning();
     await addPosting(tx, ctx, { buildingId, account: 'fund', fund: input.fund, kind: 'expense', amountMinor: -input.amountMinor, refType: 'expense', refId: row!.id, bookedAt: paidAt });
     await writeAudit(tx, ctx, { action: 'expense.create', entityType: 'expense', entityId: row!.id, after: row });
     return row!;

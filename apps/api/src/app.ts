@@ -26,6 +26,7 @@ import { buildingServiceRoutes } from './resources/building-services/routes.js';
 import { buildingRoutes } from './resources/buildings/routes.js';
 import { buildingComplianceRoutes, complianceRoutes } from './resources/compliance/routes.js';
 import { contactRoutes } from './resources/contacts/routes.js';
+import { contractRoutes } from './resources/contracts/routes.js';
 import { buildingDocumentRoutes, documentRoutes } from './resources/documents/routes.js';
 import { dashboardRoutes } from './resources/dashboard/routes.js';
 import { invoiceEmailRoutes, periodEmailRoutes } from './email/routes.js';
@@ -40,6 +41,7 @@ import { buildingReminderRoutes, jobRoutes, reminderRoutes } from './resources/r
 import { reserveFundRoutes } from './resources/reserve-fund/routes.js';
 import { serviceRoutes } from './resources/services/routes.js';
 import { buildingStatementRoutes, statementLineRoutes, statementRoutes } from './resources/statements/routes.js';
+import { supplierRoutes } from './resources/suppliers/routes.js';
 import { taxRateRoutes } from './resources/tax-rates/routes.js';
 import { tenantRoutes } from './resources/tenant/routes.js';
 import { unitRoutes } from './resources/units/routes.js';
@@ -151,6 +153,8 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(complianceRoutes, { prefix: '/compliance' });
     await api.register(buildingDocumentRoutes, { prefix: '/buildings/:buildingId/documents' });
     await api.register(documentRoutes, { prefix: '/documents' });
+    await api.register(supplierRoutes, { prefix: '/suppliers' });
+    await api.register(contractRoutes, { prefix: '/buildings/:buildingId/contracts' });
     await api.register(reminderRoutes, { prefix: '/reminders' });
     await api.register(jobRoutes, { prefix: '/jobs' });
   }, { prefix: '/api' });
