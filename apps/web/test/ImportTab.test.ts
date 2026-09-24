@@ -128,6 +128,25 @@ describe('ImportTab column mapping', () => {
     expect(JSON.parse(String(init.body))).toEqual({ content: MAPPED_CSV, mode: 'fail', dryRun: true });
   });
 
+  it('will not preview or commit a spreadsheet until the mapping has been applied', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json(preview));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const w = mount(ImportTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n] } });
+    await choose(w, xlsxFile());
+    await vi.waitFor(() => expect(w.find('[data-test=import-map-label]').exists()).toBe(true));
+    // Previewing here would send the xlsx bytes as CSV text.
+    expect(w.get('[data-test=import-preview]').attributes('disabled')).toBeDefined();
+    expect(w.get('[data-test=import-commit]').attributes('disabled')).toBeDefined();
+
+    await w.get('[data-test=import-map-label]').setValue('0');
+    await w.get('[data-test=import-map-kind]').setValue('2');
+    await w.get('[data-test=import-map-apply]').trigger('click');
+
+    await vi.waitFor(() => expect(w.get('[data-test=import-preview]').attributes('disabled')).toBeUndefined());
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('refuses two targets on one column and never sends anything', async () => {
     const fetchMock = vi.fn().mockResolvedValue(json(preview));
     vi.stubGlobal('fetch', fetchMock);

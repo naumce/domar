@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { CANONICAL_HEADER, emptyImportRow, IMPORT_FIELDS, type ImportField, matchImportHeader, rowsToCanonicalCsv } from '@domar/domain';
 import { api } from '@/api/client';
@@ -34,6 +34,14 @@ const sourceRows = ref<string[][]>([]);
 const mapping = ref<Record<ImportField, string>>(blankMapping());
 const mappedCsv = ref<string | null>(null);
 const mapError = ref('');
+
+/**
+ * A spreadsheet has no canonical header, so it only ever reaches the server as the CSV the mapping
+ * step produces: sending its bytes as text would answer "missing required column" at best. Nothing
+ * is sent while that step is open either — the mapping on screen is not the one in `mappedCsv`.
+ */
+const sendBlocked = computed(() => mapOpen.value
+  || (mappedCsv.value === null && file.value !== null && /\.xlsx?$/i.test(file.value.name)));
 
 function blankMapping(): Record<ImportField, string> {
   return Object.fromEntries(IMPORT_FIELDS.map((f) => [f, ''])) as Record<ImportField, string>;
@@ -196,8 +204,8 @@ function downloadTemplate() {
         <option value="skip">{{ t('imports.modeSkip') }}</option>
       </select>
     </label>
-    <AppButton variant="secondary" :loading="busy" data-test="import-preview" @click="preview">{{ t('imports.preview') }}</AppButton>
-    <AppButton :loading="busy" :disabled="busy || !result?.dryRun || (result.blocked === 'period_published' && !force)" data-test="import-commit" @click="commit">{{ t('imports.commit') }}</AppButton>
+    <AppButton variant="secondary" :loading="busy" :disabled="sendBlocked" data-test="import-preview" @click="preview">{{ t('imports.preview') }}</AppButton>
+    <AppButton :loading="busy" :disabled="busy || sendBlocked || !result?.dryRun || (result.blocked === 'period_published' && !force)" data-test="import-commit" @click="commit">{{ t('imports.commit') }}</AppButton>
     <AppButton variant="secondary" data-test="import-template" @click="downloadTemplate">{{ t('imports.template') }}</AppButton>
     <AppButton variant="secondary" :disabled="!file" data-test="import-map-open" @click="openMapping">{{ t('imports.map.open') }}</AppButton>
   </div>
