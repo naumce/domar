@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { api, API_BASE } from '@/api/client';
 import type { PortalInvoice } from '@/api/types';
 import DataTable from '@/components/DataTable.vue';
@@ -10,6 +11,7 @@ import { formatMoney, percentFromBp } from '@/utils/money';
 const props = defineProps<{ id: string }>();
 const { t } = useI18n();
 const portal = usePortalStore();
+const router = useRouter();
 const inv = ref<PortalInvoice | null>(null);
 const error = ref('');
 
@@ -19,6 +21,9 @@ onMounted(async () => {
   try { inv.value = await api.get<PortalInvoice>(`/api/portal/invoices/${props.id}`, { contactId }); }
   catch { error.value = t('app.error'); }
 });
+// The invoice belongs to the contact that was selected when the page loaded; switching the shell's
+// contact makes it — and its PDF link — someone else's, so the page steps back to the list.
+watch(() => portal.selectedContactId, () => { void router.push('/portal/invoices'); });
 // Same shape as the manager's link, so the PDF works in dev (port 3001) and in the single-origin image.
 const pdfHref = computed(() => `${API_BASE}/api/portal/invoices/${props.id}/pdf?contactId=${portal.selectedContactId ?? ''}`);
 const date = (d: string | null) => (d ? new Date(d).toLocaleDateString('mk-MK') : '—');

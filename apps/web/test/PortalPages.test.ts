@@ -35,17 +35,22 @@ describe('PortalHomePage', () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(json(me))
       .mockResolvedValueOnce(json({ rows: [invoice], total: 1 }))
-      .mockResolvedValueOnce(json(statement));
+      .mockResolvedValueOnce(json(statement))
+      .mockResolvedValueOnce(json({ rows: [], total: 9 }))
+      .mockResolvedValueOnce(json({ rows: [invoice], total: 4 }));
     await primedStore(fetchMock);
     const w = mount(PortalHomePage, { global: { plugins: [i18n], stubs: { RouterLink: true } } });
     await flushPromises();
-    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
     expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/portal/invoices?contactId=c1&pageSize=12');
     expect(String(fetchMock.mock.calls[2]![0])).toBe('http://localhost:3001/api/portal/statement?contactId=c1');
+    // The open invoices are counted by the API, not by the twelve rows the card was built from.
+    expect(String(fetchMock.mock.calls[3]![0])).toBe('http://localhost:3001/api/portal/invoices?contactId=c1&status=published&pageSize=1');
+    expect(String(fetchMock.mock.calls[4]![0])).toBe('http://localhost:3001/api/portal/invoices?contactId=c1&status=partially_paid&pageSize=1');
     expect(w.get('[data-test=portal-card-manager]').text()).toBe('Фирма 1');
     expect(w.get('[data-test=portal-card-buildings]').text()).toBe('Партизанска 12');
     expect(w.get('[data-test=portal-card-balance]').text()).toBe('1.560,99 ден.');
-    expect(w.get('[data-test=portal-card-unpaid]').text()).toBe('1');
+    expect(w.get('[data-test=portal-card-unpaid]').text()).toBe('13');
     // mk-MK short dates carry the era suffix: `15.10.2026 г.`
     expect(w.get('[data-test=portal-card-last]').text()).toBe('2026-09 · 15.10.2026 г.');
   });

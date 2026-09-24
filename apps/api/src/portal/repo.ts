@@ -41,9 +41,11 @@ export async function assertOwnsUnitIn(db: Db, ctx: TenantContext, contactId: st
   if (!owned) throw notFound('Building');
 }
 
-export async function portalInvoices(db: Db, portal: PortalContext, q: { contactId: string; page: number; pageSize: number }) {
+export async function portalInvoices(db: Db, portal: PortalContext, q: { contactId: string; page: number; pageSize: number; status?: InvoiceStatus | undefined }) {
   const { ctx, contactId } = resolveLink(portal, q.contactId);
-  const { rows, total } = await listInvoices(db, ctx, { contactId, statuses: VISIBLE_STATUSES, page: q.page, pageSize: q.pageSize });
+  // One of the visible statuses, never `draft`: the query schema only admits the four visible ones.
+  const statuses = q.status ? [q.status] : VISIBLE_STATUSES;
+  const { rows, total } = await listInvoices(db, ctx, { contactId, statuses, page: q.page, pageSize: q.pageSize });
   return { rows, total };
 }
 
@@ -103,17 +105,17 @@ export async function portalBuildingFund(db: Db, portal: PortalContext, contactI
     db.select({ p: P, description: E.description }).from(P)
       .leftJoin(E, and(eq(E.id, P.refId), eq(E.tenantId, P.tenantId), inArray(P.refType, ['expense', 'expense_void'])))
       .where(and(eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'fund'), gte(P.bookedAt, since)))
-      .orderBy(desc(P.bookedAt), desc(P.createdAt)).limit(FUND_TX_LIMIT),
+      .orderBy(desc(P.bookedAt), desc(P.createdAt)).limit(FUND_TX_LIMIT + 1), // one extra row answers "is there more?"
   ]);
 
   return {
     building,
     regular: { balanceMinor: regularBalance, billedMinor: regularBilled },
     reserve: { balanceMinor: reserveBalance, billedMinor: reserveBilled },
-    transactions: rows.map((r) => ({
+    transactions: rows.slice(0, FUND_TX_LIMIT).map((r) => ({
       id: r.p.id, kind: r.p.kind, fund: r.p.fund, amountMinor: r.p.amountMinor, bookedAt: r.p.bookedAt,
       description: r.description ?? null,
     })),
-    truncated: rows.length === FUND_TX_LIMIT,
+    truncated: rows.length > FUND_TX_LIMIT,
   };
 }

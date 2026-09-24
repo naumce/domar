@@ -73,6 +73,13 @@ describe('portal data', () => {
     expect(JSON.stringify(body)).not.toContain('Бошковски'); // O2 is nowhere in the payload
   });
 
+  it('narrows the list by status, and refuses to be asked for drafts', async () => {
+    const totalOf = async (status: string) => (await portalGet(`/api/portal/invoices?contactId=${A.owners.O1}&status=${status}`)).json().total;
+    expect(await totalOf('paid')).toBe(1);
+    expect(await totalOf('published')).toBe(0);
+    expect((await portalGet(`/api/portal/invoices?contactId=${A.owners.O1}&status=draft`)).statusCode).toBe(400);
+  });
+
   it('returns one invoice with its lines and the owner’s own payments', async () => {
     const res = await portalGet(`/api/portal/invoices/${A.invoices.O1.id}?contactId=${A.owners.O1}`);
     expect(res.statusCode).toBe(200);

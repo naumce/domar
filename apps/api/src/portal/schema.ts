@@ -41,7 +41,9 @@ export const portalPaymentOut = paymentOut.omit({ note: true, statementLineId: t
 export const portalInvoiceDetailOut = invoiceDetailOut.extend({ payments: z.array(portalPaymentOut) });
 
 export const portalContactQuery = z.object({ contactId: z.string().uuid() });
-export const portalInvoiceListQuery = pageQuery.extend({ contactId: z.string().uuid() });
+/** Only the statuses the portal shows at all, so the filter cannot ask for drafts. */
+export const portalInvoiceStatusEnum = z.enum(['published', 'partially_paid', 'paid', 'cancelled']);
+export const portalInvoiceListQuery = pageQuery.extend({ contactId: z.string().uuid(), status: portalInvoiceStatusEnum.optional() });
 export const portalPaymentListQuery = pageQuery.extend({ contactId: z.string().uuid() });
 export const portalStatementQuery = portalContactQuery.extend({ buildingId: z.string().uuid().optional() });
 
