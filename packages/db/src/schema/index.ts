@@ -9,3 +9,4 @@ export * from './payments.js';
 export * from './reminders.js';
 export * from './portal.js';
 export * from './compliance.js';
+export * from './assembly.js';

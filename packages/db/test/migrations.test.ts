@@ -213,4 +213,104 @@ describe('migrations', () => {
     expect(basis!.udt_name).toBe('share_basis');
     expect(basis!.is_nullable).toBe('YES');
   });
+
+  it('creates the assembly tables', async () => {
+    const rows = await t!.sql<{ table_name: string }[]>`
+      select table_name from information_schema.tables where table_schema = 'public' order by 1`;
+    const names = rows.map((r) => r.table_name);
+    for (const n of ['assemblies', 'assembly_invitations', 'assembly_attendance', 'assembly_decisions', 'assembly_votes'])
+      expect(names).toContain(n);
+  });
+
+  it('an assembly carries its agenda, its quorum basis and its late-invitation stamp', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }[]>`
+      select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'assemblies' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual([
+      'agenda', 'building_id', 'cancel_reason', 'cancelled_at', 'created_at', 'created_by', 'held_at', 'id',
+      'invitation_html', 'invited_at', 'late_invitation', 'late_reason', 'location', 'minutes_document_id',
+      'minutes_html', 'quorum_basis', 'scheduled_at', 'status', 'tenant_id', 'updated_at']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['agenda']!.data_type).toBe('jsonb');
+    expect(by['agenda']!.is_nullable).toBe('NO');
+    expect(by['scheduled_at']!.is_nullable).toBe('NO');
+    expect(by['held_at']!.is_nullable).toBe('YES');
+    expect(by['invited_at']!.is_nullable).toBe('YES');
+    expect(by['minutes_document_id']!.is_nullable).toBe('YES');
+    expect(by['late_invitation']!.column_default).toBe('false');
+    expect(by['status']!.column_default).toContain('draft');
+    expect(by['quorum_basis']!.column_default).toContain('share');
+    const status = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'assembly_status' order by e.enumsortorder`;
+    expect(status.map((s) => s.enumlabel)).toEqual(['draft', 'invited', 'held', 'cancelled']);
+    const basis = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'quorum_basis' order by e.enumsortorder`;
+    expect(basis.map((s) => s.enumlabel)).toEqual(['share', 'count']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'assemblies'`;
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, building_id, scheduled_at)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, status, scheduled_at)'))).toBe(true);
+  });
+
+  it('one invitation per owner contact, with its channel and its email log', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'assembly_invitations' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(
+      ['assembly_id', 'channel', 'contact_id', 'created_at', 'email_log_id', 'error', 'id', 'sent_at', 'status', 'tenant_id']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['sent_at']!.is_nullable).toBe('YES');
+    expect(by['email_log_id']!.is_nullable).toBe('YES');
+    const channels = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'assembly_channel' order by e.enumsortorder`;
+    expect(channels.map((c) => c.enumlabel)).toEqual(['email', 'letter']);
+    const statuses = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'assembly_invitation_status' order by e.enumsortorder`;
+    expect(statuses.map((c) => c.enumlabel)).toEqual(['pending', 'sent', 'failed', 'printed']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'assembly_invitations'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(assembly_id, contact_id)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, assembly_id, created_at)'))).toBe(true);
+  });
+
+  it('attendance freezes the weight each owner carried at the assembly', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable from information_schema.columns where table_name = 'assembly_attendance' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(
+      ['assembly_id', 'contact_id', 'created_at', 'id', 'present', 'proxy_name', 'tenant_id', 'weight_bp']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['weight_bp']!.data_type).toBe('integer');
+    expect(by['weight_bp']!.is_nullable).toBe('NO');
+    expect(by['proxy_name']!.is_nullable).toBe('YES');
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'assembly_attendance'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(assembly_id, contact_id)'))).toBe(true);
+  });
+
+  it('a decision stores the tally it was decided by', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable from information_schema.columns where table_name = 'assembly_decisions' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual([
+      'abstain_weight', 'against_weight', 'assembly_id', 'basis_total', 'created_at', 'for_weight', 'id',
+      'present_weight', 'quorum_reached', 'result', 'sort_order', 'tenant_id', 'text', 'title', 'updated_at']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    for (const n of ['for_weight', 'against_weight', 'abstain_weight', 'present_weight', 'basis_total']) {
+      expect(by[n]!.data_type, n).toBe('integer');
+      expect(by[n]!.is_nullable, n).toBe('NO');
+    }
+    const results = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'decision_result' order by e.enumsortorder`;
+    expect(results.map((c) => c.enumlabel)).toEqual(['pending', 'passed', 'rejected', 'no_quorum']);
+  });
+
+  it('a contact can hold exactly one vote per decision', async () => {
+    const cols = await t!.sql<{ column_name: string }[]>`
+      select column_name from information_schema.columns where table_name = 'assembly_votes' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(
+      ['assembly_id', 'cast_at', 'choice', 'contact_id', 'created_at', 'decision_id', 'id', 'tenant_id', 'via']);
+    const choices = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'vote_choice' order by e.enumsortorder`;
+    expect(choices.map((c) => c.enumlabel)).toEqual(['for', 'against', 'abstain']);
+    const via = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'vote_via' order by e.enumsortorder`;
+    expect(via.map((c) => c.enumlabel)).toEqual(['portal', 'paper']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'assembly_votes'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(decision_id, contact_id)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, assembly_id, contact_id)'))).toBe(true);
+  });
 });
