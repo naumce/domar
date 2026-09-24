@@ -20,3 +20,8 @@ export const conflict = (code: string, message: string, details?: unknown) => ne
 export function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === '23505';
 }
+
+/** Postgres foreign_key_violation (23503): a `restrict` reference the caller's own check missed. */
+export function isForeignKeyViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code: unknown }).code === '23503';
+}

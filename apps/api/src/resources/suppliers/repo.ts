@@ -1,7 +1,7 @@
 import { type Db, schema } from '@domar/db';
 import { and, asc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
-import { badRequest, conflict, notFound } from '../../errors.js';
+import { badRequest, conflict, isForeignKeyViolation, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { stripUndefined } from '../common.js';
 import type { SupplierCreate, SupplierPatch } from './schema.js';
@@ -45,14 +45,27 @@ export async function updateSupplier(db: Db, ctx: TenantContext, id: string, pat
   });
 }
 
-/** Like a contact with financial history: a referenced supplier is deactivated, never deleted. */
+/**
+ * Like a contact with financial history: a referenced supplier is deactivated, never deleted.
+ *
+ * The row is locked before the two reference checks so a contract or an expense claiming this
+ * supplier in parallel waits for the delete to commit or roll back; `building_contracts.supplier_id`
+ * is `on delete restrict`, so a race the lock somehow lost would come back as a 23503 — mapped to
+ * the same 409 rather than a 500.
+ */
 export async function deleteSupplier(db: Db, ctx: TenantContext, id: string) {
-  const before = await getSupplier(db, ctx, id);
-  const [contract] = await db.select({ id: BC.id }).from(BC).where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.supplierId, id))).limit(1);
-  const [expense] = await db.select({ id: E.id }).from(E).where(and(eq(E.tenantId, ctx.tenantId), eq(E.supplierId, id))).limit(1);
-  if (contract || expense) throw conflict('supplier_referenced', 'This supplier is used by a contract or an expense; deactivate it instead');
-  await db.transaction(async (tx) => {
-    await tx.delete(S).where(and(eq(S.tenantId, ctx.tenantId), eq(S.id, id)));
-    await writeAudit(tx, ctx, { action: 'supplier.delete', entityType: 'supplier', entityId: id, before });
-  });
+  try {
+    await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(S).where(and(eq(S.tenantId, ctx.tenantId), eq(S.id, id))).for('update').limit(1);
+      if (!before) throw notFound('Supplier');
+      const [contract] = await tx.select({ id: BC.id }).from(BC).where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.supplierId, id))).limit(1);
+      const [expense] = await tx.select({ id: E.id }).from(E).where(and(eq(E.tenantId, ctx.tenantId), eq(E.supplierId, id))).limit(1);
+      if (contract || expense) throw conflict('supplier_referenced', 'This supplier is used by a contract or an expense; deactivate it instead');
+      await tx.delete(S).where(and(eq(S.tenantId, ctx.tenantId), eq(S.id, id)));
+      await writeAudit(tx, ctx, { action: 'supplier.delete', entityType: 'supplier', entityId: id, before });
+    });
+  } catch (err) {
+    if (isForeignKeyViolation(err)) throw conflict('supplier_referenced', 'This supplier is used by a contract or an expense; deactivate it instead');
+    throw err;
+  }
 }
