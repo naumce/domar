@@ -388,7 +388,8 @@ deliverables; anything else waits for feedback from that month.
    ignored and listed; a target mapped twice is an error. Kind values are normalised through the
    parser's existing aliases. Mapping is remembered per browser in `localStorage` keyed by the
    sorted source header list.
-2. **Domexa migration is a CLI, read-only against Domexa.** `apps/api/scripts/migrate-from-domexa.ts`
+2. **Domexa migration is a CLI, read-only against Domexa.** `apps/api/scripts/domexa/` — `cli.ts`
+   plus one module per command, rather than a single `migrate-from-domexa.ts` (accepted deviation)
    (run with `pnpm --filter @domar/api migrate:domexa -- <command>`): `export` logs in to
    `https://domexa.mk/api/auth/login` with `tenantSlug` in the body (base URL overridable via
    `DOMEXA_BASE_URL`; credentials from env `DOMEXA_ORG`, `DOMEXA_EMAIL`, `DOMEXA_PASSWORD`, or a

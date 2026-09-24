@@ -36,7 +36,13 @@ Writes raw, uninterpreted JSON into `domexa-export/`: `organization.json`, `tax-
 `services.json`, `service-categories.json`, `contacts.json`, `statements.json` (keyed by contact id),
 `buildings.json`, and `units.json`, `building-services.json`, `reserve-funds.json`,
 `reserve-fund-balances.json` (each keyed by building id). Every request is logged as method and path.
-An endpoint that answers 403 or 404 leaves a `null` behind and the export carries on.
+An endpoint that fails — 403, 404, a timeout — leaves a `null` behind and the export carries on. A
+sub-resource is never written as an empty list, so `transform` can tell "this building has no units"
+from "the units were never exported": a `null` in `units.json` or `building-services.json` becomes a
+line under **Skipped rows** in `report.md` (`building b7: units were not exported`) and that building
+gets no `units-<key>.csv` at all, which `apply` then counts as `missingCsv` instead of creating the
+building empty. A `null` `contacts.json` or `statements.json` becomes a line under **Notes** — every
+owner name, or every opening balance, is then missing. Re-run `export` before trusting the result.
 
 ## 2. Transform
 
@@ -53,12 +59,18 @@ Writes `domexa-export/domar/`:
   not touch tenant settings.
 - `report.md` — counts, every source field nothing consumed, every skipped row and every guess.
 
+Amounts are read with the organization's own separators (`/api/organization`). Under the mk defaults
+a lone `.` with a three-digit tail is a **thousands** group, so a Domexa `"1.500"` reads as 1500 and
+a `"1.234"` as 1234 — every export observed carries exactly two decimals, but if a rate ever arrives
+with three, check it by eye in `report.md` before applying.
+
 `--from` is the period a recurring service starts from when Domexa's row carries no start date; it
 defaults to the current month. A file `transform` cannot find (a missing `organization.json`, an
 absent building's `units.json`, …) is treated as empty and logged, not a fatal error; only a file
 that exists but fails to parse as JSON stops the run. Two Domexa buildings that would collapse into
-the same building key (a name collision after slugifying) is a fatal error, since the CSV filename
-and the JSON plans would then merge two buildings into one.
+the same building key (the key is the Domexa **id** with everything but letters and digits replaced
+by `-`, so `A 1` and `A/1` both become `a-1`) is a fatal error, since the CSV filename and the JSON
+plans would then merge two buildings into one.
 
 ### The mapping file
 
@@ -123,6 +135,15 @@ off, an existing setting is kept and logged, never overwritten.
   building, where only the first row is attached.
 - `reserveFund`: `settings.written` / `settings.kept` (see the table above) and `openingBalances`
   (postings actually made).
+
+## Dependencies
+
+The mapping step in the web Import tab parses spreadsheets with `xlsx@0.18.5`, the last release on
+npm. It carries two published advisories — prototype pollution (GHSA-4r6h-8v6p-xvw6) and a ReDoS
+(GHSA-5pgg-2g8v-p4x9), both fixed only in SheetJS's own CDN builds — so `pnpm audit` flags it. The
+exposure is one operator's browser parsing a file that operator chose; nothing server-side reads a
+workbook. Accepted for now; revisit by pinning the SheetJS CDN tarball if the tab ever takes a file
+from anyone but the operator.
 
 ## What is not migrated
 
