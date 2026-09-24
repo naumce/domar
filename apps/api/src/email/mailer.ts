@@ -36,9 +36,12 @@ export function createMailer(config: Config): Mailer {
     outbox,
     async send(msg: MailMessage): Promise<SendResult> {
       try {
+        // Nodemailer normalizes attachments in place (a Buffer becomes a base64 string), so hand it
+        // copies: the caller's message — and the outbox entry below — keeps its original content.
+        const attachments = msg.attachments?.map((a) => ({ ...a }));
         const info = await transport.sendMail({
           from: config.emailFrom, to: msg.to, subject: msg.subject, text: msg.text,
-          ...(msg.attachments ? { attachments: msg.attachments } : {}),
+          ...(attachments ? { attachments } : {}),
         });
         if (capture) outbox.push(msg);
         return { id: String(info.messageId) };
