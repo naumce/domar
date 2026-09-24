@@ -29,7 +29,7 @@ describe('the Domexa client', () => {
       json({ rows: [{ id: 'c3' }], total: 3, page: 3, pageSize: 1 }),
     ]);
     const lines: string[] = [];
-    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'domexa_session=s3cret', fetchImpl, log: (l) => lines.push(l), pageSize: 1 });
+    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'domexa_session=s3cret', fetchImpl, log: (l) => lines.push(l), pageSize: 1, delayMs: 0 });
 
     expect(await client.getAll('/api/contacts')).toEqual([{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }]);
     expect(calls.map((c) => c.method)).toEqual(['GET', 'GET', 'GET']);
@@ -49,19 +49,19 @@ describe('the Domexa client', () => {
 
   it('stops on an empty page and passes a plain array straight through', async () => {
     const empty = stub([json({ rows: [], total: 10 })]);
-    const a = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl: empty.fetchImpl, log: () => {} });
+    const a = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl: empty.fetchImpl, log: () => {}, delayMs: 0 });
     expect(await a.getAll('/api/services')).toEqual([]);
     expect(empty.calls).toHaveLength(1);
 
     const plain = stub([json([{ id: 't1' }])]);
-    const b = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl: plain.fetchImpl, log: () => {} });
+    const b = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl: plain.fetchImpl, log: () => {}, delayMs: 0 });
     expect(await b.getAll('/api/tax-rates')).toEqual([{ id: 't1' }]);
     expect(plain.calls).toHaveLength(1);
   });
 
   it('throws a DomexaHttpError carrying the status and the path', async () => {
     const { fetchImpl } = stub([json({ error: 'nope' }, 403)]);
-    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl, log: () => {} });
+    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl, log: () => {}, delayMs: 0 });
     const failed = client.get('/api/organization');
     await expect(failed).rejects.toBeInstanceOf(DomexaHttpError);
     await expect(failed).rejects.toThrow(/403 on \/api\/organization/);
@@ -70,7 +70,7 @@ describe('the Domexa client', () => {
   it('logs in once when no cookie was given and sends the session cookie afterwards', async () => {
     const login = new Response('{}', { status: 200, headers: { 'content-type': 'application/json', 'set-cookie': 'domexa_session=zzz; Path=/; HttpOnly' } });
     const { calls, fetchImpl } = stub([login, json({ id: 1, name: 'Test kompanija' })]);
-    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', email: 'a@b.mk', password: 'pw', fetchImpl, log: () => {} });
+    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', email: 'a@b.mk', password: 'pw', fetchImpl, log: () => {}, delayMs: 0 });
 
     await client.login();
     await client.get('/api/organization');
@@ -83,14 +83,36 @@ describe('the Domexa client', () => {
 
   it('skips the login entirely when DOMEXA_COOKIE was supplied', async () => {
     const { calls, fetchImpl } = stub([]);
-    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'domexa_session=captured', fetchImpl, log: () => {} });
+    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'domexa_session=captured', fetchImpl, log: () => {}, delayMs: 0 });
     await client.login();
     expect(calls).toHaveLength(0);
   });
 
   it('refuses to guess credentials', async () => {
     const { fetchImpl } = stub([]);
-    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', fetchImpl, log: () => {} });
+    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', fetchImpl, log: () => {}, delayMs: 0 });
     await expect(client.login()).rejects.toThrow(/DOMEXA_EMAIL/);
+  });
+
+  it('turns a fetch timeout into a DomexaHttpError with status 0', async () => {
+    const fetchImpl = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+    })) as unknown as typeof fetch;
+    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl, log: () => {}, delayMs: 0, timeoutMs: 20 });
+
+    const error = await client.get('/api/organization').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DomexaHttpError);
+    expect((error as DomexaHttpError).status).toBe(0);
+    expect((error as DomexaHttpError).path).toBe('/api/organization');
+  });
+
+  it('paces consecutive requests by delayMs', async () => {
+    const { fetchImpl } = stub([json({}), json({})]);
+    const client = new DomexaClient({ baseUrl: 'https://domexa.mk', org: 'naum', cookie: 'x=1', fetchImpl, log: () => {}, delayMs: 30 });
+
+    const start = Date.now();
+    await client.get('/api/a');
+    await client.get('/api/b');
+    expect(Date.now() - start).toBeGreaterThanOrEqual(25);
   });
 });

@@ -27,6 +27,10 @@ export interface DomexaClientOptions {
   fetchImpl?: typeof fetch;
   log?: (line: string) => void;
   pageSize?: number;
+  /** Per-request timeout, in ms. Default 30000. */
+  timeoutMs?: number;
+  /** Minimum gap, in ms, between the start of one request and the next. Default 150. */
+  delayMs?: number;
 }
 
 interface DomexaPage { rows?: unknown[]; total?: number; page?: number; pageSize?: number }
@@ -36,12 +40,17 @@ export class DomexaClient {
   private readonly fetchImpl: typeof fetch;
   private readonly log: (line: string) => void;
   private readonly pageSize: number;
+  private readonly timeoutMs: number;
+  private readonly delayMs: number;
+  private lastRequestAt: number | undefined;
 
   constructor(private readonly o: DomexaClientOptions) {
     this.cookie = o.cookie ?? '';
     this.fetchImpl = o.fetchImpl ?? fetch;
     this.log = o.log ?? ((l) => console.log(l));
     this.pageSize = o.pageSize ?? 200;
+    this.timeoutMs = o.timeoutMs ?? 30000;
+    this.delayMs = o.delayMs ?? 150;
   }
 
   async login(): Promise<void> {
@@ -72,18 +81,38 @@ export class DomexaClient {
     return rows;
   }
 
+  private async pace(): Promise<void> {
+    if (this.delayMs <= 0) return;
+    if (this.lastRequestAt !== undefined) {
+      const wait = this.delayMs - (Date.now() - this.lastRequestAt);
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    this.lastRequestAt = Date.now();
+  }
+
   private async send(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Response> {
     assertReadOnly(method, path);
     this.log(`${method} ${path}`); // method and path only — never a body, a cookie or a password
-    const res = await this.fetchImpl(`${this.o.baseUrl}${path}`, {
-      method,
-      headers: {
-        accept: 'application/json',
-        ...(this.cookie ? { cookie: this.cookie } : {}),
-        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-      },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
+    await this.pace();
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.o.baseUrl}${path}`, {
+        method,
+        signal: AbortSignal.timeout(this.timeoutMs),
+        headers: {
+          accept: 'application/json',
+          ...(this.cookie ? { cookie: this.cookie } : {}),
+          ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      });
+    } catch (e) {
+      const name = e instanceof Error ? e.name : '';
+      if (name === 'AbortError' || name === 'TimeoutError') {
+        throw new DomexaHttpError(0, path, `timed out after ${this.timeoutMs}ms`);
+      }
+      throw e;
+    }
     if (!res.ok) throw new DomexaHttpError(res.status, path, (await res.text()).slice(0, 300));
     return res;
   }
