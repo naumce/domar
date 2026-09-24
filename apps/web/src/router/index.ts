@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth';
+import { usePortalStore } from '@/stores/portal';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -24,11 +25,24 @@ export const router = createRouter({
         { path: 'settings', component: () => import('@/pages/SettingsPage.vue') },
       ],
     },
-    { path: '/portal', component: () => import('@/pages/portal/PortalHomePage.vue') },
+    { path: '/portal/login', component: () => import('@/pages/portal/PortalLoginPage.vue') },
+    { path: '/portal/register', component: () => import('@/pages/portal/PortalRegisterPage.vue') },
+    {
+      path: '/portal', component: () => import('@/layouts/PortalShell.vue'), meta: { portal: true },
+      children: [
+        { path: '', component: () => import('@/pages/portal/PortalHomePage.vue') },
+      ],
+    },
   ],
 });
 
 router.beforeEach(async (to) => {
+  // Two independent guards: an owner session never satisfies /app, a staff session never satisfies /portal.
+  if (to.meta.portal) {
+    const portal = usePortalStore();
+    if (!portal.ready) await portal.fetchMe();
+    return portal.account ? true : { path: '/portal/login' };
+  }
   if (!to.meta.auth) return true;
   const auth = useAuthStore();
   if (!auth.ready) await auth.fetchMe();

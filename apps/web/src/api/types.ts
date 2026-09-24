@@ -61,3 +61,13 @@ export interface Reminder {
 }
 export interface EmailSendResult { id: string; status: 'sent' | 'failed'; to: string; error: string | null }
 export interface EmailBulkResult { sent: number; failed: number; skipped: number }
+export interface PortalLink { tenantId: string; tenantName: string; contactId: string; contactName: string; buildings: { id: string; name: string }[] }
+export interface PortalMe { account: { id: string; email: string }; links: PortalLink[] }
+export interface PortalFund {
+  building: { id: string; name: string };
+  regular: { balanceMinor: number; billedMinor: number };
+  reserve: { balanceMinor: number; billedMinor: number };
+  transactions: { id: string; kind: FundTransaction['kind']; fund: Fund; amountMinor: number; bookedAt: string; description: string | null }[];
+}
+export interface PortalInvite { code: string; expiresAt: string; emailed: boolean }
+export interface PortalStatus { status: 'none' | 'invited' | 'linked'; expiresAt?: string; linkedAt?: string }
