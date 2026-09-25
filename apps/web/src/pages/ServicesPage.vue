@@ -20,7 +20,14 @@ const pricings: PricingModel[] = ['fixed_per_unit', 'per_m2', 'shared_total'];
 const blank = () => ({ name: '', category: '', pricing: 'fixed_per_unit' as PricingModel, price: '', taxRateId: taxRates.value.find((r) => r.isDefault)?.id ?? null, recurring: 'true', appliesTo: [] as UnitKind[] });
 const form = ref(blank());
 const formError = ref('');
-onMounted(async () => { await res.load(); taxRates.value = (await api.get<{ rows: TaxRate[] }>('/api/tax-rates')).rows; });
+// The default tax rate is only known once the rates are loaded; adding a service before that would
+// silently file it with no VAT, so the button waits.
+const ready = ref(false);
+onMounted(async () => {
+  const [, rates] = await Promise.all([res.load(), api.get<{ rows: TaxRate[] }>('/api/tax-rates')]);
+  taxRates.value = rates.rows;
+  ready.value = true;
+});
 function toggleKind(k: UnitKind) { const i = form.value.appliesTo.indexOf(k); if (i >= 0) form.value.appliesTo.splice(i, 1); else form.value.appliesTo.push(k); }
 async function submit() {
   formError.value = '';
@@ -33,7 +40,7 @@ async function submit() {
 }
 </script>
 <template>
-  <div class="mb-4 flex items-center justify-between"><h1 class="text-2xl font-semibold">{{ t('services.title') }}</h1><AppButton data-test="add" @click="form = blank(); open = true">{{ t('services.add') }}</AppButton></div>
+  <div class="mb-4 flex items-center justify-between"><h1 class="text-2xl font-semibold">{{ t('services.title') }}</h1><AppButton :disabled="!ready" data-test="add" @click="form = blank(); open = true">{{ t('services.add') }}</AppButton></div>
   <p v-if="res.error.value" class="mb-2 text-sm text-red-600" data-test="page-error">{{ t('app.error') }}</p>
   <DataTable :columns="[{ key: 'name', label: t('services.name') }, { key: 'pricing', label: t('services.pricing') }, { key: 'defaultPriceMinor', label: t('services.defaultPrice') }, { key: 'taxRateBp', label: t('services.taxRate') }, { key: 'recurring', label: t('services.recurring') }, { key: 'appliesTo', label: t('services.appliesTo') }]" :rows="res.rows.value">
     <template #cell-pricing="{ row }">{{ t(`services.pricingOptions.${row.pricing}`) }}</template>
