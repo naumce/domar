@@ -855,7 +855,7 @@ describe('maintenance requests', () => {
     expect((await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: other.id }, tech.cookie)).statusCode).toBe(403);
     expect((await patch(`/api/maintenance-requests/${row.id}`, { priority: 'urgent' }, tech.cookie)).statusCode).toBe(403);
     const triage = await post(`/api/maintenance-requests/${row.id}/status`, { status: 'triaged' }, tech.cookie);
-    expect(triage.statusCode).toBe(409); // assigned → triaged is not an edge at all
+    expect(triage.statusCode).toBe(403); // the capability gate refuses a technician `triage` before any transition is considered
     // A technician may still speak on their own request.
     expect((await post(`/api/maintenance-requests/${row.id}/events`, { note: 'Ќе дојдам утре во 9.' }, tech.cookie)).statusCode).toBe(201);
   });
