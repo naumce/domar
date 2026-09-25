@@ -1,6 +1,8 @@
 import { schema } from '@domar/db';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { drainNotifications } from '../src/notifications/deliver.js';
+import { MAX_SUBSCRIPTIONS_PER_ACCOUNT } from '../src/notifications/repo.js';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
@@ -119,5 +121,50 @@ describe('notification delivery job', () => {
     } finally {
       await noMail.close();
     }
+  });
+
+  it('keeps only the most recently seen subscriptions when the cap is reached', async () => {
+    await t.db.delete(schema.pushSubscriptions);
+    const subscribe = (endpoint: string) => t.app.inject({
+      method: 'POST', url: '/api/portal/push/subscribe', headers: { cookie: ownerCookie },
+      payload: { endpoint, p256dh: 'k', auth: 'x' },
+    });
+    const endpoint = (i: number) => `https://push.example/cap-${i}`;
+    for (let i = 0; i < MAX_SUBSCRIPTIONS_PER_ACCOUNT; i += 1) expect((await subscribe(endpoint(i))).statusCode).toBe(204);
+    expect(await t.db.select().from(schema.pushSubscriptions)).toHaveLength(MAX_SUBSCRIPTIONS_PER_ACCOUNT);
+
+    // The browser that came back: re-subscribing stamps `last_seen_at`, which is what the eviction
+    // reads — so the oldest *row* survives and the least recently *seen* one goes instead.
+    expect((await subscribe(endpoint(0))).statusCode).toBe(204);
+    expect((await subscribe(endpoint(MAX_SUBSCRIPTIONS_PER_ACCOUNT))).statusCode).toBe(204);
+
+    const left = (await t.db.select().from(schema.pushSubscriptions)).map((r) => r.endpoint);
+    expect(left).toHaveLength(MAX_SUBSCRIPTIONS_PER_ACCOUNT);
+    expect(left).toContain(endpoint(MAX_SUBSCRIPTIONS_PER_ACCOUNT));
+    expect(left).toContain(endpoint(0));
+    expect(left).not.toContain(endpoint(1));
+    await t.db.delete(schema.pushSubscriptions);
+  });
+
+  it('bounds one row’s fan-out in wall-clock, however many endpoints stall', async () => {
+    await t.db.delete(schema.notifications);
+    await t.db.delete(schema.pushSubscriptions);
+    // More endpoints than the cap allows, so the bound is what stops this and nothing else. Every
+    // one of them accepts the connection and never answers — the case a socket timeout is too slow
+    // for and the run's between-chunks deadline cannot see at all.
+    await t.db.insert(schema.pushSubscriptions).values(Array.from({ length: 40 }, (_, i) => ({
+      ownerAccountId: accountId, endpoint: `https://push.example/stall-${i}`, p256dh: 'k', auth: 'x',
+    })));
+    const row = await write();
+    const stalling = { ...t.app.pusher, send: () => new Promise<never>(() => {}) };
+    const started = Date.now();
+    const res = await drainNotifications(t.db, { pusher: stalling, mailer: t.app.mailer, log: t.app.log }, 500, 60_000, 200);
+    const elapsed = Date.now() - started;
+
+    // Sequentially — or unbounded — this would be forty stalls, not one budget.
+    expect(elapsed).toBeLessThan(5_000);
+    expect(res).toEqual({ claimed: 1, pushed: 0, emailed: 1, failed: 0 });
+    expect(t.app.mailer.outbox.at(-1)!.subject).toBe(row.title);
+    await t.db.delete(schema.pushSubscriptions);
   });
 });

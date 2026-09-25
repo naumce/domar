@@ -1,6 +1,6 @@
 import { type Db, schema } from '@domar/db';
 import type { NotificationKind } from '@domar/domain';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import { notFound } from '../errors.js';
 import type { PortalContext } from '../portal/context.js';
 import type { TenantContext } from '../tenant-context.js';
@@ -139,6 +139,15 @@ export async function markAllOwnerRead(db: Db, portal: PortalContext): Promise<v
 export interface NewSubscription { endpoint: string; p256dh: string; auth: string; userAgent?: string | undefined }
 
 /**
+ * How many browsers one owner account may keep registered at once. Delivery fans out to every one
+ * of them, so an uncapped list is a way for one account to make its own rows cost the whole queue
+ * minutes of wall-clock; ten is well past a phone, a tablet and a desktop each with two browsers.
+ * When the cap is reached the *least recently seen* row goes — that is what `last_seen_at` is for:
+ * the browser that has not re-subscribed in longest is the one most likely to be gone already.
+ */
+export const MAX_SUBSCRIPTIONS_PER_ACCOUNT = 10;
+
+/**
  * One row per endpoint (the unique index), so a browser that rotates its keys updates in place.
  * Keyed on the caller's own account alone — `push_subscriptions` has no `tenant_id` column, exactly
  * like `owner_sessions`: an owner account is deliberately cross-tenant.
@@ -157,6 +166,18 @@ export async function upsertSubscription(db: Db, portal: PortalContext, input: N
       p256dh: input.p256dh, auth: input.auth, userAgent: input.userAgent ?? null, lastSeenAt: new Date(),
     },
   });
+  await evictOldestSubscriptions(db, portal.ownerAccountId);
+}
+
+/** Keeps the `MAX_SUBSCRIPTIONS_PER_ACCOUNT` most recently seen rows and drops the rest. */
+async function evictOldestSubscriptions(db: Db, ownerAccountId: string): Promise<void> {
+  const rows = await db.select({ id: PS.id }).from(PS).where(eq(PS.ownerAccountId, ownerAccountId))
+    // `created_at` breaks the tie for two rows stamped inside one transaction, exactly like `seq` does
+    // for the bell; without it the row evicted would be whichever the planner happened to return.
+    .orderBy(desc(PS.lastSeenAt), desc(PS.createdAt)).limit(MAX_SUBSCRIPTIONS_PER_ACCOUNT + 1);
+  if (rows.length <= MAX_SUBSCRIPTIONS_PER_ACCOUNT) return;
+  const keep = rows.slice(0, MAX_SUBSCRIPTIONS_PER_ACCOUNT).map((r) => r.id);
+  await db.delete(PS).where(and(eq(PS.ownerAccountId, ownerAccountId), notInArray(PS.id, keep)));
 }
 
 /** The caller's own endpoint only; an endpoint that is not theirs simply matches nothing. */
@@ -164,9 +185,14 @@ export async function removeSubscription(db: Db, portal: PortalContext, endpoint
   await db.delete(PS).where(and(eq(PS.ownerAccountId, portal.ownerAccountId), eq(PS.endpoint, endpoint)));
 }
 
-/** Delivery's lookup: by account, deliberately across tenants. */
+/**
+ * Delivery's lookup: by account, deliberately across tenants. Most recently seen first and capped
+ * at the same number the writer enforces, so a row left over from before the cap existed — or from
+ * a race between two subscribes — still cannot widen one row's fan-out.
+ */
 export async function subscriptionsFor(db: Db, ownerAccountId: string): Promise<SubscriptionRow[]> {
-  return db.select().from(PS).where(eq(PS.ownerAccountId, ownerAccountId));
+  return db.select().from(PS).where(eq(PS.ownerAccountId, ownerAccountId))
+    .orderBy(desc(PS.lastSeenAt), desc(PS.createdAt)).limit(MAX_SUBSCRIPTIONS_PER_ACCOUNT);
 }
 
 export async function deleteSubscriptionByEndpoint(db: Db, endpoint: string): Promise<void> {
