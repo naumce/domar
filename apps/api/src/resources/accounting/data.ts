@@ -16,6 +16,18 @@ const INV = schema.invoices; const IL = schema.invoiceLines;
 const E = schema.expenses; const S = schema.suppliers; const AC = schema.accountCodes;
 const AP = schema.accountingPeriods;
 
+/**
+ * The whole zip is built in memory (controller ruling, Task 5 review): nothing capped how long a
+ * window could be, so a multi-year tenant-wide export on a large tenant could exhaust it. 366 days —
+ * a full calendar year, leap included — is the largest grain the product already reasons in
+ * (`yearWindow` in `@domar/domain` cuts the annual report the same way), so a legitimate preview,
+ * export or close never needs more than this without also needing to split by year regardless. Lives
+ * here rather than on the two request schemas (fix round 1, item 4): `resolveWindow` is the one
+ * chokepoint every window-taking caller passes through, request or internal, so this is where the
+ * memory it's guarding against is actually spent.
+ */
+const MAX_WINDOW_DAYS = 366;
+
 export interface AccountingWindow {
   /** `YYYY-MM-DD`, a civil day in the tenant's own zone — resolved to an instant only once the
    * tenant's timezone is known (see `resolveWindow`), never by reinterpreting a UTC instant. */
@@ -34,6 +46,11 @@ async function resolveWindow(db: Db, ctx: TenantContext, w: AccountingWindow): P
   // Plain string comparison: `YYYY-MM-DD` sorts exactly like the dates it spells, so this needs
   // neither the tenant's zone nor a database round trip to catch a window that ends before it starts.
   if (w.to <= w.from) throw badRequest('invalid_window', 'The window must end after it starts');
+  // Calendar-day arithmetic on the UTC reading of the two dates: close enough to bound memory (a
+  // DST day is at most an hour off either way) without needing the tenant's zone, which isn't known
+  // until the query below.
+  const spanDays = (Date.parse(`${w.to}T00:00:00Z`) - Date.parse(`${w.from}T00:00:00Z`)) / 86_400_000;
+  if (spanDays > MAX_WINDOW_DAYS) throw badRequest('window_too_long', `The window must not exceed ${MAX_WINDOW_DAYS} days`);
   const [chart, { tenant }] = await Promise.all([requireChart(db, ctx), tenantPack(db, ctx)]);
   const building = w.buildingId ? await getBuilding(db, ctx, w.buildingId) : null; // 404 across tenants
   return { chart, tenant, building };
@@ -41,10 +58,14 @@ async function resolveWindow(db: Db, ctx: TenantContext, w: AccountingWindow): P
 
 /**
  * Every ledger row the file reports, in two sets that cannot overlap (spec §5):
- *  - the window's own movements, `booked_at` inside it;
- *  - the late arrivals, `booked_at` **before** it and `created_at` inside it. Closing a period
- *    refuses nothing, so a September payment entered in October is recordable — and this is where it
- *    resurfaces, in its own section, with the day it really arrived and the period it belongs to.
+ *  - the window's own movements, `booked_at` inside it, not yet overtaken by their own period's close;
+ *  - the late arrivals: `booked_at` **before** the window with `created_at` inside it (a September
+ *    payment entered in October), or `booked_at` inside the window but `created_at` after that
+ *    period's own `closed_at` (a September payment entered *after September itself was closed*, fix
+ *    round 1 item 1 — the case Task 4's rule missed, because a posting still dated inside the month
+ *    it belongs to was never treated as "late" at all). Closing a period refuses nothing, so both are
+ *    recordable — and this is where they resurface, in their own section, with the period they
+ *    actually belong to.
  *
  * Fixed query cost: one `postings` scan plus, at most, four batched lookups keyed by the ids that
  * scan turns up (`inArray`, never per-row) — six queries whether the window holds one posting or ten
@@ -72,19 +93,10 @@ async function collectFrom(db: Db, ctx: TenantContext, w: AccountingWindow, char
     ))
     .orderBy(asc(P.bookedAt), asc(P.createdAt), asc(P.id));
 
-  const postings: JournalPostingIn[] = rows.map((r) => ({
-    id: r.p.id, account: r.p.account, fund: r.p.fund, kind: r.p.kind,
-    amountMinor: r.p.amountMinor, refType: r.p.refType, refId: r.p.refId,
-    period: r.p.period ?? day(r.p.bookedAt).slice(0, 7),
-    date: day(r.p.bookedAt),
-    buildingName: r.buildingName,
-    counterparty: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
-    prior: r.p.bookedAt.getTime() < from.getTime(),
-  }));
-
-  const invoiceIds = [...new Set(postings.filter((p) => p.refType === 'invoice' && p.refId).map((p) => p.refId!))];
-  const expenseIds = [...new Set(postings.filter((p) => (p.refType === 'expense' || p.refType === 'expense_void') && p.refId).map((p) => p.refId!))];
-  const periods = [...new Set(postings.map((p) => p.period))];
+  const periodOf = (r: (typeof rows)[number]) => r.p.period ?? day(r.p.bookedAt).slice(0, 7);
+  const invoiceIds = [...new Set(rows.filter((r) => r.p.refType === 'invoice' && r.p.refId).map((r) => r.p.refId!))];
+  const expenseIds = [...new Set(rows.filter((r) => (r.p.refType === 'expense' || r.p.refType === 'expense_void') && r.p.refId).map((r) => r.p.refId!))];
+  const periods = [...new Set(rows.map(periodOf))];
 
   const [invoiceRows, lineRows, expenseRows, closedRows] = await Promise.all([
     invoiceIds.length
@@ -100,10 +112,37 @@ async function collectFrom(db: Db, ctx: TenantContext, w: AccountingWindow, char
         .leftJoin(AC, and(eq(AC.id, S.accountCodeId), eq(AC.tenantId, E.tenantId), eq(AC.isActive, true)))
         .where(and(eq(E.tenantId, ctx.tenantId), inArray(E.id, expenseIds)))
       : [],
+    // Its own `closed_at`, not just whether it's closed: a posting is a late arrival only if it was
+    // created *after* the moment its own period was closed, not merely inside a period that happens
+    // to be closed now (fix round 1, item 1).
     periods.length
-      ? db.select({ period: AP.period }).from(AP).where(and(eq(AP.tenantId, ctx.tenantId), inArray(AP.period, periods)))
+      ? db.select({ period: AP.period, closedAt: AP.closedAt }).from(AP).where(and(eq(AP.tenantId, ctx.tenantId), inArray(AP.period, periods)))
       : [],
   ]);
+
+  const closedAtByPeriod = new Map(closedRows.map((r) => [r.period, r.closedAt]));
+  const postings: JournalPostingIn[] = rows.map((r) => {
+    const period = periodOf(r);
+    const closedAt = closedAtByPeriod.get(period);
+    const bookedBeforeWindow = r.p.bookedAt.getTime() < from.getTime();
+    // Not gated to this window's own bounds: closing refuses an unended period (fix round 1, item 1,
+    // part one), so `closedAt` is always in the month *after* the one it closes, and anything created
+    // later still is later again — meaning the window containing `createdAt` is never the closed
+    // period's own window. This posting is still fetched for the closed period's own window whenever
+    // that window is re-derived (its `bookedAt` puts it there), and belongs there as an adjustment
+    // too — a re-run of an already-closed month re-showing what arrived after it closed is exactly
+    // the point, same as this same posting also showing as an adjustment when `createdAt`'s own
+    // window is queried, via `bookedBeforeWindow` below.
+    const arrivedAfterOwnPeriodClosed = closedAt !== undefined && r.p.createdAt.getTime() > closedAt.getTime();
+    return {
+      id: r.p.id, account: r.p.account, fund: r.p.fund, kind: r.p.kind,
+      amountMinor: r.p.amountMinor, refType: r.p.refType, refId: r.p.refId,
+      period, date: day(r.p.bookedAt),
+      buildingName: r.buildingName,
+      counterparty: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
+      prior: bookedBeforeWindow || arrivedAfterOwnPeriodClosed,
+    };
+  });
 
   const draft = new Map<string, { number: string; lines: { kind: JournalLineKind; ownerNetMinor: number; ownerTaxMinor: number; ownerGrossMinor: number }[] }>();
   for (const i of invoiceRows) draft.set(i.id, { number: i.number ?? '', lines: [] });

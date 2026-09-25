@@ -29,7 +29,11 @@ export interface JournalPostingIn {
   date: string;
   buildingName: string;
   counterparty: string;
-  /** Booked before the window and reported in it: a prior-period adjustment (spec §5). */
+  /**
+   * A prior-period adjustment (spec §5): either booked before the window and reported in it, or
+   * booked inside its own period but created only after that period was closed (fix round 1, item 1
+   * — the second shape the caller, not this module, is responsible for detecting).
+   */
   prior: boolean;
 }
 

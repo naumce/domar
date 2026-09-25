@@ -97,6 +97,22 @@ describe('GET /api/accounting/preview', () => {
     expect(res.json().error.code).toBe('invalid_window');
   });
 
+  it('rejects a window wider than 366 days, and accepts one exactly that wide', async () => {
+    // 366 days: a full calendar year, leap included — the same span `resolveWindow` allows (fix
+    // round 1, item 4). One day over is refused; the boundary itself is not.
+    const tooWide = await t.app.inject({ method: 'GET', url: '/api/accounting/preview?from=2025-01-01&to=2026-01-03', headers: { cookie } });
+    expect(tooWide.statusCode).toBe(400);
+    expect(tooWide.json().error.code).toBe('window_too_long');
+    const atTheLimit = await t.app.inject({ method: 'GET', url: '/api/accounting/preview?from=2025-01-01&to=2026-01-02', headers: { cookie } });
+    expect(atTheLimit.statusCode).toBe(200);
+  });
+
+  it('rejects a date that does not exist on the calendar', async () => {
+    const res = await t.app.inject({ method: 'GET', url: '/api/accounting/preview?from=2026-02-30&to=2026-03-01', headers: { cookie } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('validation');
+  });
+
   it('reports a payment that arrived after its month as a prior-period adjustment', async () => {
     // Built in the tenant's own zone (the default, Europe/Skopje), the same way the production
     // window is resolved (civilDayStart) — a UTC calendar date can name the wrong civil day and

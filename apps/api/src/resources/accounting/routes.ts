@@ -72,11 +72,7 @@ export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post('/periods/:period/close', {
     preHandler: requireRole(...WRITE_ROLES),
     schema: { params: accountingPeriodParam, response: { 200: accountingPeriodOut } },
-  }, async (req) => {
-    const row = await closeAccountingPeriod(req.db, req.ctx!, req.params.period);
-    const { rows } = await listAccountingPeriods(req.db, req.ctx!);
-    return rows.find((r) => r.id === row.id)!;
-  });
+  }, async (req) => closeAccountingPeriod(req.db, req.ctx!, req.params.period, app.log));
 
   app.delete('/periods/:period', {
     preHandler: requireRole(...WRITE_ROLES),
