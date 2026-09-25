@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
+// Aliased for the same reason as in `service-worker.test.ts`: Vite rewrites the literal source text
+// `new URL('...', import.meta.url)` into an asset reference, and this call must run as plain Node.
+import { fileURLToPath, URL as FileURL } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { disablePush, enablePush, pushState } from '@/portal/push';
+import { disablePush, enablePush, pushState, registerPortalWorker } from '@/portal/push';
+
+const manifest = JSON.parse(readFileSync(fileURLToPath(new FileURL('../public/manifest.webmanifest', import.meta.url)), 'utf8')) as { start_url: string };
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
 const empty = () => new Response(null, { status: 204 });
@@ -64,6 +70,25 @@ describe('portal push', () => {
     vi.stubGlobal('Notification', { permission: 'default', requestPermission: vi.fn() });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ publicKey: 'BPublic' })));
     await expect(pushState()).resolves.toBe('unknown');
+  });
+
+  it('registers a worker whose scope covers the PWA’s own start URL', async () => {
+    stubServiceWorker(null);
+    await registerPortalWorker();
+    const register = vi.mocked(navigator.serviceWorker.register);
+    expect(register).toHaveBeenCalledTimes(1);
+    const [script, options] = register.mock.calls[0]!;
+    const scope = String(options?.scope);
+
+    // A client is controlled only if its URL *starts with* the scope string, so `/portal/` would
+    // leave `/portal` itself — the manifest's start_url, and the portal's home route — uncontrolled:
+    // an installed app's cold start would never see the offline shell (spec §9).
+    expect(manifest.start_url).toBe('/portal');
+    expect(manifest.start_url.startsWith(scope)).toBe(true);
+    // And a worker may only claim a scope at or below its own directory, which is why the script is
+    // served from the root rather than from `/portal/`.
+    const directory = String(script).slice(0, String(script).lastIndexOf('/') + 1);
+    expect(scope.startsWith(directory)).toBe(true);
   });
 
   it('subscribes and posts the endpoint and both keys', async () => {

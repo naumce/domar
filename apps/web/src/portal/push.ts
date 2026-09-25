@@ -7,9 +7,16 @@ import { api } from '@/api/client';
  */
 export type PushState = 'unsupported' | 'unconfigured' | 'denied' | 'off' | 'on' | 'unknown';
 
-/** `/portal/sw.js`, so the worker's own directory is its scope — no server header needed (addendum 10). */
-const WORKER_URL = '/portal/sw.js';
-const SCOPE = '/portal/';
+/**
+ * Served from the root, not from `/portal/`: a script may only claim a scope at or below its own
+ * directory, and `/portal` — the manifest's `start_url`, and the portal's home route — is not below
+ * `/portal/`. A worker under `/portal/` would therefore never control the installed app's cold
+ * start, which is the one navigation the offline shell exists for (spec §9). Still no
+ * `Service-Worker-Allowed` header anywhere (addendum 10): a root script needs none.
+ */
+const WORKER_URL = '/sw.js';
+/** Covers `/portal` itself as well as everything under it. */
+const SCOPE = '/portal';
 
 export function pushSupported(): boolean {
   return typeof navigator !== 'undefined' && 'serviceWorker' in navigator

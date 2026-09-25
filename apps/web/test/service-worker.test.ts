@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL as FileURL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 
-const SOURCE = readFileSync(fileURLToPath(new FileURL('../public/portal/sw.js', import.meta.url)), 'utf8');
+const SOURCE = readFileSync(fileURLToPath(new FileURL('../public/sw.js', import.meta.url)), 'utf8');
 
 type FakeWindow = { url: string; focus: ReturnType<typeof vi.fn>; navigate: ReturnType<typeof vi.fn> };
 

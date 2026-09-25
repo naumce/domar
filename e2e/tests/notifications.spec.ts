@@ -111,7 +111,7 @@ test('a published invoice and a portal request reach the right bell', async ({ p
   const manifest = await page.request.get('/manifest.webmanifest');
   expect(manifest.status()).toBe(200);
   expect((await manifest.json()).scope).toBe('/portal');
-  const worker = await page.request.get('/portal/sw.js');
+  const worker = await page.request.get('/sw.js');
   expect(worker.status()).toBe(200);
   expect(await worker.text()).toContain('notificationclick');
   expect(unit.id).toBeTruthy();

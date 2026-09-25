@@ -13,8 +13,7 @@ describe('SPA serving behind SERVE_WEB', () => {
     await writeFile(join(dir, 'assets.txt'), 'asset');
     await mkdir(join(dir, 'assets'));
     await writeFile(join(dir, 'assets', 'app-abc123.js'), 'console.log(1)');
-    await mkdir(join(dir, 'portal'));
-    await writeFile(join(dir, 'portal', 'sw.js'), "self.addEventListener('install', () => {});");
+    await writeFile(join(dir, 'sw.js'), "self.addEventListener('install', () => {});");
     t = await createTestApp({ SERVE_WEB: 'true', WEB_DIST: dir });
   });
   afterAll(async () => { await t.close(); });
@@ -51,12 +50,13 @@ describe('SPA serving behind SERVE_WEB', () => {
     expect(res.json().error.code).toBe('not_found');
   });
 
-  it('serves the portal service worker as JavaScript, not the SPA shell (R4)', async () => {
+  it('serves the portal service worker — at the root, as JavaScript, not the SPA shell (R4)', async () => {
     // wildcard: false answers ANY unmatched GET with index.html, so a status-only check would
     // pass even if the worker were missing or published to the wrong path — the browser would
     // silently get text/html and `navigator.serviceWorker.register` would fail to parse it as a
-    // script. Assert the content type and the body, not merely the status.
-    const res = await t.app.inject({ method: 'GET', url: '/portal/sw.js' });
+    // script. Assert the content type and the body, not merely the status. The path is the root:
+    // a script under /portal/ cannot claim the /portal scope the installed app starts at.
+    const res = await t.app.inject({ method: 'GET', url: '/sw.js' });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toMatch(/javascript/);
     expect(res.body).toBe("self.addEventListener('install', () => {});");
