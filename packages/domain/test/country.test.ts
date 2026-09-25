@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getCountryPack, mkPack } from '../src/country/index.js';
+import { MAINTENANCE_CATEGORIES } from '../src/maintenance/status.js';
 
 describe('mk country pack', () => {
   it('is returned by getCountryPack', () => {
@@ -37,6 +38,7 @@ describe('mk country pack', () => {
         handoverLegal: 'Овој извештај, заедно со целосната документација и податоците за зградата, се предава согласно член 30 од Законот за домување, во рок од 8 дена од престанокот на договорот за управување.',
         noSupplier: 'Без добавувач',
       },
+      maintenanceExpense: 'Одржување',
       compliance: {
         invoices: { title: 'Месечни пресметки', hint: 'Објавете ја пресметката за тековниот месец за сите сопственици.' },
         reminders: { title: 'Опомени за должници', hint: 'Изгответе опомени за сопствениците што го поминале прагот од член 28.' },
@@ -88,5 +90,12 @@ describe('mk country pack', () => {
     expect(() => mkPack.parseAmountToMinor('1.234.56')).toThrow();
     expect(() => mkPack.parseAmountToMinor('.5')).toThrow();
     expect(() => mkPack.parseAmountToMinor('')).toThrow();
+  });
+
+  it('the pack labels exactly the categories the database enum holds, in order', () => {
+    expect(mkPack.maintenanceCategories.map((c) => c.key)).toEqual(MAINTENANCE_CATEGORIES);
+    expect(new Set(mkPack.maintenanceCategories.map((c) => c.label)).size).toBe(MAINTENANCE_CATEGORIES.length);
+    for (const c of mkPack.maintenanceCategories) expect(c.label.trim().length, c.key).toBeGreaterThan(0);
+    expect(mkPack.labels.maintenanceExpense).toBe('Одржување');
   });
 });

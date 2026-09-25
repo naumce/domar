@@ -1,3 +1,4 @@
+import type { MaintenanceCategory } from '../maintenance/status.js';
 import type { StatementParser } from '../statements/types.js';
 
 export type CountryCode = 'mk';
@@ -65,6 +66,12 @@ export interface ReportLabels {
   noSupplier: string;
 }
 
+/** Spec §8: one entry per `MaintenanceCategory`, in the order the picker offers them. */
+export interface MaintenanceCategoryLabel {
+  key: MaintenanceCategory;
+  label: string;
+}
+
 /** Descriptions the billing engine synthesizes into invoices, in the country's language. */
 export interface CountryLabels {
   reserveFund: string;
@@ -82,6 +89,8 @@ export interface CountryLabels {
   assemblyLegal: string;
   /** Art. 31 and Art. 30: what the annual and the handover report print. */
   reports: ReportLabels;
+  /** Spec §8: the word an expense booked by a closed maintenance request is prefixed with. */
+  maintenanceExpense: string;
   /** One entry per `ComplianceDutyKey`. */
   compliance: Record<ComplianceDutyKey, ComplianceLabel>;
 }
@@ -95,6 +104,8 @@ export interface CountryPack {
   invoiceLayout: InvoiceLayoutRules;
   reminderRules: ReminderRules;
   complianceRules: ComplianceRules;
+  /** Spec §8: the fixed category list, labelled, so the expense a closed request books is readable. */
+  maintenanceCategories: MaintenanceCategoryLabel[];
   statementParsers: StatementParser[];
   /** Format minor units for display, e.g. 123456 → "1.234,56 ден." */
   formatMoney(minor: number): string;

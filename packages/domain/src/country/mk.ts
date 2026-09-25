@@ -34,6 +34,7 @@ export const mkPack: CountryPack = {
       handoverLegal: 'Овој извештај, заедно со целосната документација и податоците за зградата, се предава согласно член 30 од Законот за домување, во рок од 8 дена од престанокот на договорот за управување.',
       noSupplier: 'Без добавувач',
     },
+    maintenanceExpense: 'Одржување',
     compliance: {
       invoices: { title: 'Месечни пресметки', hint: 'Објавете ја пресметката за тековниот месец за сите сопственици.' },
       reminders: { title: 'Опомени за должници', hint: 'Изгответе опомени за сопствениците што го поминале прагот од член 28.' },
@@ -68,6 +69,15 @@ export const mkPack: CountryPack = {
     graceDays: 30,
     graceMonths: 3,
   },
+  maintenanceCategories: [
+    { key: 'plumbing', label: 'Водовод и канализација' },
+    { key: 'electrical', label: 'Електрика' },
+    { key: 'lift', label: 'Лифт' },
+    { key: 'heating', label: 'Греење' },
+    { key: 'cleaning', label: 'Чистење' },
+    { key: 'common_area', label: 'Заеднички простории' },
+    { key: 'other', label: 'Друго' },
+  ],
   statementParsers: [mt940Parser, csvParser],
   formatMoney(minor: number): string {
     const sign = minor < 0 ? '-' : '';
