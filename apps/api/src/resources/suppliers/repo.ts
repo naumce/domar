@@ -3,6 +3,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { badRequest, conflict, isForeignKeyViolation, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { assertAccountCodeInTenant } from '../accounting/chart.js';
 import { stripUndefined } from '../common.js';
 import type { SupplierCreate, SupplierPatch } from './schema.js';
 
@@ -29,6 +30,7 @@ export async function listSuppliers(db: Db, ctx: TenantContext, includeInactive:
 
 export async function createSupplier(db: Db, ctx: TenantContext, input: SupplierCreate) {
   return db.transaction(async (tx) => {
+    await assertAccountCodeInTenant(tx, ctx, input.accountCodeId);
     const [row] = await tx.insert(S).values({ ...stripUndefined(input), tenantId: ctx.tenantId, name: input.name }).returning();
     await writeAudit(tx, ctx, { action: 'supplier.create', entityType: 'supplier', entityId: row!.id, after: row });
     return row!;
@@ -37,6 +39,7 @@ export async function createSupplier(db: Db, ctx: TenantContext, input: Supplier
 
 export async function updateSupplier(db: Db, ctx: TenantContext, id: string, patch: SupplierPatch) {
   return db.transaction(async (tx) => {
+    await assertAccountCodeInTenant(tx, ctx, patch.accountCodeId);
     const before = await getSupplier(tx, ctx, id);
     const [row] = await tx.update(S).set({ ...stripUndefined(patch), updatedAt: new Date() })
       .where(and(eq(S.tenantId, ctx.tenantId), eq(S.id, id))).returning();
