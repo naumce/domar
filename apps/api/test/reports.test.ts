@@ -340,6 +340,26 @@ describe('annual report (Art. 31)', () => {
     expect(cur.owners.find((o) => o.contactId === R.owners.O2)!.collectedMinor).toBe(0);
   });
 
+  it('leaves out a contact whose only posting predates the window, and keeps a silent current owner', async () => {
+    // Somebody the ledger touched only last year: their money is in last year's report, not this one.
+    const gone = (await post('/api/contacts', { firstName: 'Стар', lastName: 'Сопственик' })).json().id;
+    expect((await post(`/api/buildings/${R.buildingId}/payments`, {
+      contactId: gone, amountMinor: 10_000, method: 'cash', paidAt: `${R.year - 1}-03-10T10:00:00.000Z`,
+    })).statusCode).toBe(201);
+    // Somebody who owns a unit today and whom the ledger has never named at all.
+    const silent = (await post('/api/contacts', { firstName: 'Тивок', lastName: 'Сопственик' })).json().id;
+    expect((await post(`/api/buildings/${R.buildingId}/units`, { label: 'S-2', kind: 'storage', areaM2: 8, ownerContactId: silent })).statusCode).toBe(201);
+
+    const cur = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year}`)).json() as AnnualData;
+    expect(cur.owners.map((o) => o.contactId)).not.toContain(gone);
+    expect(cur.owners.find((o) => o.contactId === silent)).toMatchObject({ current: true, billedMinor: 0, collectedMinor: 0, balanceMinor: 0 });
+    expect(cur.fields.ownerCount).toBe(cur.owners.length);
+
+    // Last year's report is where that contact belongs, and there they are.
+    const prev = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year - 1}`)).json() as AnnualData;
+    expect(prev.owners.map((o) => o.contactId)).toContain(gone);
+  });
+
   it('refuses a year that has not begun in the tenant zone', async () => {
     const next = R.year + 1;
     const preview = await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${next}`);

@@ -84,16 +84,21 @@ async function windowExpenses(db: Db, ctx: TenantContext, buildingId: string, fr
 
 /**
  * Every owner of the building: what they were billed, what they paid, where they stand (addendum 7).
- * The set is today's owners *and* everybody the owner ledger of this building names up to the end of
- * the window — somebody who sold in June was still billed in May, and their debt, if they left one,
- * is still the building's. They are listed with no unit labels and `current: false`.
+ * The set is today's owners *and* everybody the owner ledger of this building names **inside** the
+ * window — somebody who sold in June was still billed in May, and their debt, if they left one, is
+ * still the building's. They are listed with no unit labels and `current: false`. Somebody whose
+ * last posting predates the window belongs to an earlier year's report, not to this one: a building
+ * running since 2020 would otherwise print a dozen zero-balance ex-owners on every page.
  */
 async function reportOwners(db: Db, ctx: TenantContext, buildingId: string, from: Date, to: Date): Promise<ReportOwner[]> {
   const [units, booked] = await Promise.all([
     db.select({ ownerContactId: U.ownerContactId, label: U.label }).from(U)
       .where(and(eq(U.tenantId, ctx.tenantId), eq(U.buildingId, buildingId))),
     db.selectDistinct({ contactId: P.contactId }).from(P)
-      .where(and(eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'owner'), isNotNull(P.contactId), lt(P.bookedAt, to))),
+      .where(and(
+        eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'owner'), isNotNull(P.contactId),
+        gte(P.bookedAt, from), lt(P.bookedAt, to),
+      )),
   ]);
   const labels = new Map<string, string[]>();
   for (const u of units) {
