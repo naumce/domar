@@ -12,7 +12,7 @@ const localInput = (d: Date) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-test('a manager calls an assembly, an owner votes in the portal, and the minutes are filed and flagged by Art. 37', async ({ page, browser }) => {
+test('a manager calls an assembly, an owner votes in the portal, the minutes are filed and the Art. 37 card flags the same-day hold', async ({ page, browser }) => {
   // --- manager ---
   await page.goto('/register');
   await page.getByTestId('orgName').fill('Е2Е Собир');

@@ -50,6 +50,10 @@ test('bill a building end to end', async ({ page, request }) => {
   await page.getByTestId('rf-active').check();
   await page.getByTestId('rf-kind-apartment').check();
   await page.getByTestId('rf-save').click();
+  // `saveSetting()` reloads the tab from the server and the amount comes back formatted, so this is
+  // the point at which the PUT and its reload are both done. Without it the opening balance can be
+  // posted mid-reload and the older `load()` finishes last, leaving `rf-balance` at 0,00.
+  await expect(page.getByTestId('rf-amount')).toHaveValue('10,00');
   await page.getByTestId('rf-opening').fill('35000');
   await page.getByTestId('rf-opening-submit').click();
   await expect(page.getByTestId('rf-balance')).toHaveText('35.000,00 ден.');
