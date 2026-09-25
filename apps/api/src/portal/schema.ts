@@ -109,7 +109,7 @@ export const portalMaintenanceOut = portalMaintenanceRowOut.extend({
     createdAt: z.date().or(z.string()),
   })),
 });
-export const portalMaintenanceListOut = z.object({ rows: z.array(portalMaintenanceRowOut) });
+export const portalMaintenanceListOut = z.object({ rows: z.array(portalMaintenanceRowOut), total: z.number() });
 export const portalMaintenanceCreateBody = z.object({
   contactId: z.string().uuid(),
   buildingId: z.string().uuid(),

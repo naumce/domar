@@ -39,14 +39,15 @@ export const maintenancePhotoParam = z.object({ id: z.string().uuid(), documentI
 
 /**
  * A close either books money or explicitly books none: its *absence* is what
- * `cost_decision_required` refuses — `{}` and `{ cost: null }` differ.
+ * `cost_decision_required` refuses — `{}` and `{ cost: null }` differ. A cost on any other target
+ * is refused here rather than dropped, so a client never gets a 200 for money that was not booked.
  */
 export const maintenanceStatusBody = z.object({
   status: maintenanceStatusTargetEnum,
   note: z.string().max(2000).optional(),
   visibility: maintenanceVisibilityEnum.optional(),
   cost: maintenanceCost.nullable().optional(),
-});
+}).refine((v) => v.status === 'done' || v.cost == null, { path: ['cost'], message: 'a cost is only accepted when closing a request' });
 
 export const maintenanceAssignBody = z.object({
   assigneeUserId: z.string().uuid(),

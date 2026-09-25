@@ -4,6 +4,7 @@ import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+const PDF = Buffer.from('%PDF-1.4\n%%EOF\n', 'latin1');
 
 function multipart(fields: Record<string, string>, file: { filename: string; mime: string; content: Buffer }) {
   const boundary = `----domar${Math.random().toString(36).slice(2)}`;
@@ -91,8 +92,10 @@ describe('portal maintenance', () => {
   it('lists the owner’s own requests and nobody else’s', async () => {
     const mine = (await portalGet(`/api/portal/maintenance?contactId=${A.owners.O1}`)).json();
     expect(mine.rows.map((r: { id: string }) => r.id)).toEqual([requestId]);
+    expect(mine.total).toBe(1);
     const neighbour = (await portalGet(`/api/portal/maintenance?contactId=${A.owners.O2}`, neighbourCookie)).json();
     expect(neighbour.rows).toEqual([]);
+    expect(neighbour.total).toBe(0);
     expect((await portalGet(`/api/portal/maintenance/${requestId}?contactId=${A.owners.O2}`, neighbourCookie)).statusCode).toBe(404);
     expect((await portalGet(`/api/portal/maintenance/${requestId}?contactId=${B.owners.O1}`, strangerCookie)).statusCode).toBe(404);
   });
@@ -135,6 +138,19 @@ describe('portal maintenance', () => {
     // The manager sees it on the board, attributed to the owner.
     const staff = (await staffGet(`/api/maintenance-requests/${requestId}`)).json();
     expect(staff.photos[0]).toMatchObject({ documentId, uploadedByName: 'Тест Анѓеловски' });
+  });
+
+  it('refuses a photo on a request the owner did not report, and a file that is not a photo', async () => {
+    const m = multipart({ contactId: A.owners.O2 }, { filename: 'tugo.png', mime: 'image/png', content: PNG });
+    const theirs = await t.app.inject({ method: 'POST', url: `/api/portal/maintenance/${requestId}/photos`, headers: { cookie: neighbourCookie, ...m.headers }, payload: m.payload });
+    expect(theirs.statusCode).toBe(404);
+
+    const p = multipart({ contactId: A.owners.O1 }, { filename: 'racun.pdf', mime: 'application/pdf', content: PDF });
+    const wrong = await t.app.inject({ method: 'POST', url: `/api/portal/maintenance/${requestId}/photos`, headers: { cookie: ownerCookie, ...p.headers }, payload: p.payload });
+    expect(wrong.statusCode).toBe(400);
+    expect(wrong.json().error.code).toBe('unsupported_media_type');
+    // Neither attempt left anything behind.
+    expect((await portalGet(`/api/portal/maintenance/${requestId}?contactId=${A.owners.O1}`)).json().photos).toHaveLength(1);
   });
 
   it('gives the owner no way to change a status', async () => {

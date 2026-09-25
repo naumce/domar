@@ -33,16 +33,24 @@ export const portalMaintenanceRoutes: FastifyPluginAsyncZod = async (app) => {
   }, async (req, reply) => {
     const part = await req.file({ limits: { fileSize: MAX_PHOTO_BYTES } });
     if (!part) throw badRequest('file_required', 'A file part is required');
-    const filename = part.filename ?? '';
-    if (!filename) throw badRequest('file_required', 'The file part must carry a filename');
-    const fields = part.fields as Record<string, { value?: unknown } | undefined> | undefined;
-    const raw = fields?.['contactId'];
-    const contactId = typeof raw?.value === 'string' ? raw.value : '';
-    if (!/^[0-9a-f-]{36}$/i.test(contactId)) throw badRequest('validation', 'contactId is required and must precede the file part');
-    const out = await portalMaintenancePhoto(req.db, req.portal!, app.documents, contactId, req.params.id, {
-      title: filename.slice(0, 200), fileName: filename.slice(0, 255), mime: part.mimetype,
-      stream: part.file, isTruncated: () => part.file.truncated,
-    });
+    let out;
+    try {
+      const filename = part.filename ?? '';
+      if (!filename) throw badRequest('file_required', 'The file part must carry a filename');
+      const fields = part.fields as Record<string, { value?: unknown } | undefined> | undefined;
+      const raw = fields?.['contactId'];
+      const contactId = typeof raw?.value === 'string' ? raw.value : '';
+      if (!/^[0-9a-f-]{36}$/i.test(contactId)) throw badRequest('validation', 'contactId is required and must precede the file part');
+      out = await portalMaintenancePhoto(req.db, req.portal!, app.documents, contactId, req.params.id, {
+        title: filename.slice(0, 200), fileName: filename.slice(0, 255), mime: part.mimetype,
+        stream: part.file, isTruncated: () => part.file.truncated,
+      });
+    } catch (err) {
+      // Somebody else's request, or a file that is not a photo: the part was never read, so the
+      // rest of the body has to be drained before the error goes out.
+      part.file.resume();
+      throw err;
+    }
     return reply.status(201).send(out);
   });
 

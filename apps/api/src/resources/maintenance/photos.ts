@@ -7,7 +7,7 @@ import { writeAudit } from '../../audit.js';
 import type { DocumentStore } from '../../documents/store.js';
 import { conflict, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
-import { createDocument } from '../documents/repo.js';
+import { createDocument, deleteDocument } from '../documents/repo.js';
 import { getRequestRow, recordEvent } from './repo.js';
 
 const MP = schema.maintenancePhotos;
@@ -83,24 +83,23 @@ export async function addPhoto(db: Db, ctx: TenantContext, store: DocumentStore,
 /** The photo row, its document and its bytes. `WRITE_ROLES` only: a technician adds evidence, never removes it. */
 export async function deletePhoto(db: Db, ctx: TenantContext, store: DocumentStore, requestId: string, documentId: string, log?: FastifyBaseLogger): Promise<void> {
   await getRequestRow(db, ctx, requestId);
-  const storageKey = await db.transaction(async (tx) => {
-    const [row] = await tx.select({ storageKey: D.storageKey, fileName: D.fileName }).from(MP)
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ fileName: D.fileName }).from(MP)
       .innerJoin(D, and(eq(D.id, MP.documentId), eq(D.tenantId, MP.tenantId)))
       .where(and(eq(MP.tenantId, ctx.tenantId), eq(MP.maintenanceRequestId, requestId), eq(MP.documentId, documentId))).limit(1);
     if (!row) throw notFound('Photo');
-    // The join row goes with it: `maintenance_photos.document_id` is `on delete cascade`.
-    await tx.delete(D).where(and(eq(D.tenantId, ctx.tenantId), eq(D.id, documentId)));
+    // The gallery is a second door onto `documents`, not a way around it: a photo an expense, a
+    // contract or an assembly points at is that record's evidence, and `deleteDocument` is the one
+    // place that knows so (spec §4, addendum 13). It answers 409 `document_referenced`, takes the
+    // bytes away and writes its own audit row; the join row needs no delete of its own, because
+    // `maintenance_photos.document_id` is `on delete cascade`. The maintenance audit row is written
+    // first, so nothing of this transaction can fail after the file has left the store.
     await writeAudit(tx, ctx, {
       action: 'maintenance.photo.delete', entityType: 'maintenance_request', entityId: requestId,
       before: { documentId, fileName: row.fileName },
     });
-    return row.storageKey;
+    await deleteDocument(tx, ctx, store, documentId, log);
   });
-  try {
-    await store.remove(storageKey);
-  } catch (err) {
-    log?.warn({ err, documentId }, 'maintenance photo row deleted but its file could not be removed');
-  }
 }
 
 /** The document row behind one photo of one request, for streaming it back. */

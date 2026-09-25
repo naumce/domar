@@ -61,13 +61,14 @@ export async function portalMaintenanceList(db: Db, portal: PortalContext, conta
   const { ctx, contactId } = resolveLink(portal, contactIdParam);
   const owned = await db.selectDistinct({ buildingId: U.buildingId }).from(U)
     .where(and(eq(U.tenantId, ctx.tenantId), eq(U.ownerContactId, contactId)));
-  if (owned.length === 0) return { rows: [] };
+  if (owned.length === 0) return { rows: [], total: 0 };
   const rows = await db.select({ r: MR, buildingName: B.name, unitLabel: U.label, photoCount: PHOTO_COUNT }).from(MR)
     .innerJoin(B, and(eq(B.id, MR.buildingId), eq(B.tenantId, MR.tenantId)))
     .leftJoin(U, and(eq(U.id, MR.unitId), eq(U.tenantId, MR.tenantId)))
     .where(and(eq(MR.tenantId, ctx.tenantId), eq(MR.reportedByContactId, contactId), inArray(MR.buildingId, owned.map((o) => o.buildingId))))
     .orderBy(desc(MR.createdAt), desc(MR.id));
-  return { rows: rows.map((r) => toPortalRow(r.r, r.buildingName, r.unitLabel, r.photoCount)) };
+  // An owner's own requests are few: the list is unpaged, so `total` is simply what it holds.
+  return { rows: rows.map((r) => toPortalRow(r.r, r.buildingName, r.unitLabel, r.photoCount)), total: rows.length };
 }
 
 export async function portalMaintenanceDetail(db: Db, portal: PortalContext, contactIdParam: string, id: string) {

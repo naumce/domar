@@ -49,14 +49,22 @@ export const maintenanceRoutes: FastifyPluginAsyncZod = async (app) => {
     // over the global one, so busboy truncates at eight and `createDocument` answers 413.
     const part = await req.file({ limits: { fileSize: MAX_PHOTO_BYTES } });
     if (!part) throw badRequest('file_required', 'A file part is required');
-    const filename = part.filename ?? '';
-    if (!filename) throw badRequest('file_required', 'The file part must carry a filename');
-    const fields = part.fields as Record<string, { value?: unknown } | undefined> | undefined;
-    const rawTitle = fields?.['title'];
-    const title = (typeof rawTitle?.value === 'string' ? rawTitle.value : filename).slice(0, 200).trim() || filename;
-    await addPhoto(req.db, req.ctx!, app.documents, req.params.id, {
-      title, fileName: filename.slice(0, 255), mime: part.mimetype, stream: part.file, isTruncated: () => part.file.truncated,
-    });
+    try {
+      const filename = part.filename ?? '';
+      if (!filename) throw badRequest('file_required', 'The file part must carry a filename');
+      const fields = part.fields as Record<string, { value?: unknown } | undefined> | undefined;
+      const rawTitle = fields?.['title'];
+      const title = (typeof rawTitle?.value === 'string' ? rawTitle.value : filename).slice(0, 200).trim() || filename;
+      await addPhoto(req.db, req.ctx!, app.documents, req.params.id, {
+        title, fileName: filename.slice(0, 255), mime: part.mimetype, stream: part.file, isTruncated: () => part.file.truncated,
+      });
+    } catch (err) {
+      // A refused upload — wrong request, wrong mime, closed request — leaves the part unread, and
+      // an unread part leaves the rest of the body sitting in the socket. Draining it is a no-op
+      // once `createDocument` has consumed the stream.
+      part.file.resume();
+      throw err;
+    }
     return reply.status(201).send(await getRequest(req.db, req.ctx!, req.params.id));
   });
 

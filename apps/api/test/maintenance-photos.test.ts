@@ -179,4 +179,66 @@ describe('maintenance photos and the cost of a closed request', () => {
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe('status_locked');
   });
+
+  it('will not delete a photo an expense is attached to', async () => {
+    const row = await create();
+    const documentId = (await upload(row.id, { filename: 'dokaz.png', mime: 'image/png', content: PNG })).json().photos[0].documentId;
+    await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: tech.id });
+    const done = await post(`/api/maintenance-requests/${row.id}/status`, {
+      status: 'done', cost: { fund: 'reserve', costMinor: 640_000, documentId },
+    });
+    expect(done.statusCode, done.body).toBe(200);
+
+    const res = await t.app.inject({ method: 'DELETE', url: `/api/maintenance-requests/${row.id}/photos/${documentId}`, headers: { cookie: a.cookie } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('document_referenced');
+    // The gallery entry, the document and the expense's attachment all survive the refusal.
+    expect((await get(`/api/maintenance-requests/${row.id}`)).json().photos.map((p: { documentId: string }) => p.documentId)).toEqual([documentId]);
+    expect((await get(`/api/documents/${documentId}`)).statusCode).toBe(200);
+    const expense = (await get(`/api/buildings/${A.buildingId}/reserve-fund/expenses`)).json().rows.find((e: { id: string }) => e.id === done.json().expenseId);
+    expect(expense.documentId).toBe(documentId);
+  });
+
+  it('refuses a cost on anything but a close, before it writes', async () => {
+    const row = await create();
+    await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: tech.id });
+    const before = (await get(`/api/buildings/${A.buildingId}/reserve-fund`)).json().balanceMinor;
+    const res = await post(`/api/maintenance-requests/${row.id}/status`, { status: 'in_progress', cost: { fund: 'reserve', costMinor: 500_000 } }, tech.cookie);
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().error.code).toBe('validation');
+    expect((await get(`/api/maintenance-requests/${row.id}`, tech.cookie)).json().status).toBe('assigned');
+    expect((await get(`/api/buildings/${A.buildingId}/reserve-fund`)).json().balanceMinor).toBe(before);
+  });
+
+  it('caps the gallery at twelve photos', async () => {
+    const row = await create();
+    for (let i = 0; i < 12; i += 1) {
+      const res = await upload(row.id, { filename: `foto-${i}.png`, mime: 'image/png', content: PNG });
+      expect(res.statusCode, res.body).toBe(201);
+    }
+    const res = await upload(row.id, { filename: 'trinaesetta.png', mime: 'image/png', content: PNG });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('too_many_photos');
+    expect((await get(`/api/maintenance-requests/${row.id}`)).json().photoCount).toBe(12);
+  });
+
+  it('books one expense when the same close arrives twice at once', async () => {
+    const row = await create();
+    await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: tech.id });
+    const body = { status: 'done', note: 'Готово.', cost: { fund: 'reserve', costMinor: 777_777 } };
+    const before = (await get(`/api/buildings/${A.buildingId}/reserve-fund`)).json().balanceMinor;
+    const [one, two] = await Promise.all([
+      post(`/api/maintenance-requests/${row.id}/status`, body),
+      post(`/api/maintenance-requests/${row.id}/status`, body),
+    ]);
+    expect([one.statusCode, two.statusCode].sort()).toEqual([200, 409]);
+    const loser = one.statusCode === 409 ? one : two;
+    expect(loser.json().error.code).toBe('status_locked');
+    // One close, one expense, one posting: the claim is the fence (plan addendum 4).
+    const expenses = (await get(`/api/buildings/${A.buildingId}/reserve-fund/expenses`)).json().rows
+      .filter((e: { amountMinor: number }) => e.amountMinor === 777_777);
+    expect(expenses).toHaveLength(1);
+    expect((await get(`/api/maintenance-requests/${row.id}`)).json().expenseId).toBe(expenses[0].id);
+    expect((await get(`/api/buildings/${A.buildingId}/reserve-fund`)).json().balanceMinor).toBe(before - 777_777);
+  });
 });
