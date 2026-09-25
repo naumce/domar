@@ -116,11 +116,15 @@ export interface BuildingContract {
   document: { id: string; title: string; fileName: string } | null;
 }
 export interface ReportFundSummary {
-  fund: Fund; openingMinor: number; inflowMinor: number; outflowMinor: number; closingMinor: number;
+  fund: Fund; openingMinor: number; inflowMinor: number; outflowMinor: number;
+  /** Gross less what the reversals took back: what the fund really took in and really spent. */
+  netInflowMinor: number; netOutflowMinor: number;
+  closingMinor: number;
   movements: { kind: string; refType: string; inflowMinor: number; outflowMinor: number; netMinor: number }[];
 }
 export interface ReportExpenseRow { id: string; fund: Fund; description: string; supplier: string; amountMinor: number; paidAt: string }
-export interface ReportOwnerRow { contactId: string; name: string; unitLabels: string[]; billedMinor: number; collectedMinor: number; balanceMinor: number }
+/** `current` is false for somebody who owned during the window but owns nothing at its end. */
+export interface ReportOwnerRow { contactId: string; name: string; unitLabels: string[]; current: boolean; billedMinor: number; collectedMinor: number; balanceMinor: number }
 export interface ReportDebtorRow { contactId: string; name: string; unitLabels: string[]; balanceMinor: number }
 /** `fields` is the flat map the PDF template prints; every money key in it ends in `Minor`. */
 export interface AnnualReportData {

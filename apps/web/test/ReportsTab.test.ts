@@ -20,8 +20,8 @@ const preview: AnnualReportData = {
     remindersSent: 4, assembliesHeld: 1, decisionsTaken: 2, worksCount: 2, worksMinor: 600_000,
   },
   funds: [
-    { fund: 'regular', openingMinor: 100_000, inflowMinor: 300_000, outflowMinor: 150_000, closingMinor: 250_000, movements: [] },
-    { fund: 'reserve', openingMinor: 800_000, inflowMinor: 60_000, outflowMinor: 600_000, closingMinor: 260_000, movements: [] },
+    { fund: 'regular', openingMinor: 100_000, inflowMinor: 300_000, outflowMinor: 150_000, netInflowMinor: 300_000, netOutflowMinor: 150_000, closingMinor: 250_000, movements: [] },
+    { fund: 'reserve', openingMinor: 800_000, inflowMinor: 60_000, outflowMinor: 600_000, netInflowMinor: 60_000, netOutflowMinor: 600_000, closingMinor: 260_000, movements: [] },
   ],
   expenses: [],
   expensesBySupplier: [{ supplier: 'Кровови ДООЕЛ', count: 2, amountMinor: 600_000 }],

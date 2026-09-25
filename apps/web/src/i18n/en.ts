@@ -185,7 +185,7 @@ export default {
     kinds: { annual: 'Annual report', handover: 'Handover' },
     download: 'Download PDF', export: 'Download data (zip)',
     errors: {
-      year_in_the_future: 'A report cannot be issued for a year that has not ended yet.',
+      year_in_the_future: 'A report cannot be issued for a year that has not begun yet.',
       as_of_in_the_future: 'A handover cannot be dated after today.',
       pdf_unavailable: 'The report could not be rendered on the server (PDF).',
       not_found: 'Building not found.',
