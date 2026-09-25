@@ -1,9 +1,11 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { MAINTENANCE_ROLES, requireRole, WRITE_ROLES } from '../../auth/roles.js';
+import { badRequest } from '../../errors.js';
 import { idParam } from '../common.js';
 import { buildingParam } from '../units/schema.js';
+import { addPhoto, deletePhoto, MAX_PHOTO_BYTES } from './photos.js';
 import { addEvent, assignRequest, createRequest, getRequest, listRequests, setStatus, updateRequest } from './repo.js';
-import { maintenanceAssignBody, maintenanceCreate, maintenanceEventBody, maintenanceListOut, maintenanceListQuery, maintenanceOut, maintenancePatch, maintenanceStatusBody } from './schema.js';
+import { maintenanceAssignBody, maintenanceCreate, maintenanceEventBody, maintenanceListOut, maintenanceListQuery, maintenanceOut, maintenancePatch, maintenancePhotoParam, maintenanceStatusBody } from './schema.js';
 
 /** Spec §8 board of one building. Reads are open to every role; a technician's list is their own. */
 export const buildingMaintenanceRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -36,4 +38,30 @@ export const maintenanceRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/:id/events', { ...worker, schema: { params: idParam, body: maintenanceEventBody, response: { 201: maintenanceOut } } }, async (req, reply) =>
     reply.status(201).send(await addEvent(req.db, req.ctx!, req.params.id, req.body)));
+
+  // Multipart, so no zod `body`: the one field is read off the part before the file (see below).
+  app.post('/:id/photos', {
+    ...worker,
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+    schema: { params: idParam, response: { 201: maintenanceOut } },
+  }, async (req, reply) => {
+    // Eight megabytes for a photo, not the twenty a contract may weigh: the per-request limit wins
+    // over the global one, so busboy truncates at eight and `createDocument` answers 413.
+    const part = await req.file({ limits: { fileSize: MAX_PHOTO_BYTES } });
+    if (!part) throw badRequest('file_required', 'A file part is required');
+    const filename = part.filename ?? '';
+    if (!filename) throw badRequest('file_required', 'The file part must carry a filename');
+    const fields = part.fields as Record<string, { value?: unknown } | undefined> | undefined;
+    const rawTitle = fields?.['title'];
+    const title = (typeof rawTitle?.value === 'string' ? rawTitle.value : filename).slice(0, 200).trim() || filename;
+    await addPhoto(req.db, req.ctx!, app.documents, req.params.id, {
+      title, fileName: filename.slice(0, 255), mime: part.mimetype, stream: part.file, isTruncated: () => part.file.truncated,
+    });
+    return reply.status(201).send(await getRequest(req.db, req.ctx!, req.params.id));
+  });
+
+  app.delete('/:id/photos/:documentId', { ...write, schema: { params: maintenancePhotoParam } }, async (req, reply) => {
+    await deletePhoto(req.db, req.ctx!, app.documents, req.params.id, req.params.documentId, app.log);
+    return reply.status(204).send();
+  });
 };

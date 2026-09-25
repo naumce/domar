@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { pageQuery } from '../resources/common.js';
 import { invoiceDetailOut } from '../resources/invoices/schema.js';
+import { maintenanceCategoryEnum, maintenanceEventKindEnum, maintenancePriorityEnum, maintenanceStatusEnum } from '../resources/maintenance/schema.js';
 import { paymentOut } from '../resources/payments/schema.js';
 import { fundEnum } from '../resources/reserve-fund/schema.js';
 
@@ -91,3 +92,32 @@ export const portalAssemblyOut = portalAssemblyRowOut.omit({ agendaCount: true }
 /** `contactId` travels in the body here, not the query: this is the portal's one POST. */
 export const portalVoteBody = z.object({ contactId: z.string().uuid(), choice: voteChoice });
 export const portalAssemblyDecisionParam = z.object({ id: z.string().uuid(), decisionId: z.string().uuid() });
+
+/** The owner's view of a request: no cost, no fund, no assignee, no visibility flag (addendum 10). */
+export const portalMaintenanceRowOut = z.object({
+  id: z.string(), buildingId: z.string(), buildingName: z.string(), unitLabel: z.string().nullable(),
+  title: z.string(), category: maintenanceCategoryEnum, priority: maintenancePriorityEnum, status: maintenanceStatusEnum,
+  photoCount: z.number().int(),
+  closedAt: z.date().or(z.string()).nullable(), createdAt: z.date().or(z.string()), updatedAt: z.date().or(z.string()),
+});
+export const portalMaintenanceOut = portalMaintenanceRowOut.extend({
+  description: z.string(),
+  photos: z.array(z.object({ documentId: z.string(), fileName: z.string(), mime: z.string(), sizeBytes: z.number().int(), createdAt: z.date().or(z.string()) })),
+  events: z.array(z.object({
+    id: z.string(), kind: maintenanceEventKindEnum, toStatus: maintenanceStatusEnum.nullable(),
+    note: z.string(), authorName: z.string(), authorKind: z.enum(['manager', 'owner', 'system']),
+    createdAt: z.date().or(z.string()),
+  })),
+});
+export const portalMaintenanceListOut = z.object({ rows: z.array(portalMaintenanceRowOut) });
+export const portalMaintenanceCreateBody = z.object({
+  contactId: z.string().uuid(),
+  buildingId: z.string().uuid(),
+  unitId: z.string().uuid().nullable().optional(),
+  title: z.string().min(1).max(200),
+  description: z.string().max(4000).default(''),
+  category: maintenanceCategoryEnum,
+  priority: maintenancePriorityEnum.default('normal'),
+});
+export const portalMaintenanceEventBody = z.object({ contactId: z.string().uuid(), note: z.string().min(1).max(2000) });
+export const portalMaintenancePhotoParam = z.object({ id: z.string().uuid(), documentId: z.string().uuid() });

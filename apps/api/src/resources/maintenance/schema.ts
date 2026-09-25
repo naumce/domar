@@ -28,16 +28,24 @@ export const maintenancePatch = z.object({
   priority: maintenancePriorityEnum.optional(),
 }).strict().refine((v) => Object.keys(v).length > 0, 'empty patch');
 
+/** What a close books. `costMinor` is minor units and positive; `createExpense` signs the posting. */
+export const maintenanceCost = z.object({
+  fund: fundEnum,
+  costMinor: z.number().int().min(1).max(1_000_000_000_000),
+  supplierId: z.string().uuid().nullable().optional(),
+  documentId: z.string().uuid().nullable().optional(),
+});
+export const maintenancePhotoParam = z.object({ id: z.string().uuid(), documentId: z.string().uuid() });
+
 /**
- * `cost` is `z.null()` here and nothing else: this task can only close a request with no money.
- * Task 4 replaces this one field with `maintenanceCost.nullable()`; everything around it stays.
- * Its *absence* is what `cost_decision_required` refuses — `{}` and `{ cost: null }` differ.
+ * A close either books money or explicitly books none: its *absence* is what
+ * `cost_decision_required` refuses — `{}` and `{ cost: null }` differ.
  */
 export const maintenanceStatusBody = z.object({
   status: maintenanceStatusTargetEnum,
   note: z.string().max(2000).optional(),
   visibility: maintenanceVisibilityEnum.optional(),
-  cost: z.null().optional(),
+  cost: maintenanceCost.nullable().optional(),
 });
 
 export const maintenanceAssignBody = z.object({

@@ -21,6 +21,7 @@ import { portalAssemblyRoutes } from './portal/assembly-routes.js';
 import { portalAuthRoutes } from './portal/auth-routes.js';
 import { portalDataRoutes } from './portal/data-routes.js';
 import { contactPortalRoutes } from './portal/invite-routes.js';
+import { portalMaintenanceRoutes } from './portal/maintenance-routes.js';
 import { portalAuthPlugin } from './portal/plugin.js';
 import { dbPlugin } from './plugins/db.js';
 import { buildingServiceRoutes } from './resources/building-services/routes.js';
@@ -128,6 +129,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(portalAuthRoutes, { prefix: '/portal' });
     await api.register(portalDataRoutes, { prefix: '/portal' });
     await api.register(portalAssemblyRoutes, { prefix: '/portal' });
+    await api.register(portalMaintenanceRoutes, { prefix: '/portal' });
     await api.register(tenantRoutes, { prefix: '/tenant' });
     await api.register(userRoutes, { prefix: '/users' });
     await api.register(dashboardRoutes, { prefix: '/dashboard' });

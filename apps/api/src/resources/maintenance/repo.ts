@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { MAINTENANCE_STATUSES, can, canTransition, type MaintenanceCapability, type MaintenanceRole, type MaintenanceStatus } from '@domar/domain';
+import { MAINTENANCE_STATUSES, can, canTransition, getCountryPack, type CountryCode, type MaintenanceCapability, type MaintenanceRole, type MaintenanceStatus } from '@domar/domain';
 import { and, asc, count, desc, eq, exists, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { writeAudit } from '../../audit.js';
@@ -7,6 +7,7 @@ import { AppError, badRequest, conflict, notFound } from '../../errors.js';
 import type { TenantContext, UserRole } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { stripUndefined } from '../common.js';
+import { createExpense } from '../reserve-fund/repo.js';
 import { assertSupplierInTenant } from '../suppliers/repo.js';
 import type { MaintenanceAssignInput, MaintenanceCreateInput, MaintenanceEventInput, MaintenanceListQuery, MaintenancePatchInput, MaintenanceStatusInput } from './schema.js';
 
@@ -288,10 +289,35 @@ export async function setStatus(db: Db, ctx: TenantContext, id: string, input: M
   const froms = MAINTENANCE_STATUSES.filter((s) => canTransition(s, to));
   return db.transaction(async (tx) => {
     const before = await claimRequest(tx, ctx, id, [...froms]);
-    const [row] = await tx.update(MR).set({ status: to, updatedAt: new Date(), ...(to === 'done' ? { closedAt: new Date() } : {}) })
-      .where(and(eq(MR.tenantId, ctx.tenantId), eq(MR.id, id))).returning();
+    const cost = to === 'done' ? input.cost ?? null : null;
+    let expenseId: string | null = null;
+    let costNote = '';
+    if (cost) {
+      // Spec §11: the money reaches the ledger through the existing expense flow and no other way.
+      // Inside this transaction, so a refused supplier rolls the close back with it (addendum 5).
+      const building = await getBuilding(tx, ctx, before.buildingId);
+      const pack = getCountryPack(building.countryCode as CountryCode);
+      const label = pack.maintenanceCategories.find((c) => c.key === before.category)?.label ?? before.category;
+      costNote = `${pack.labels.maintenanceExpense}: ${label} — ${before.title}`.slice(0, 500);
+      const expense = await createExpense(tx, ctx, before.buildingId, {
+        fund: cost.fund,
+        description: costNote,
+        supplierText: null,
+        supplierId: cost.supplierId ?? before.supplierId,
+        documentId: cost.documentId ?? null,
+        amountMinor: cost.costMinor,
+        paidAt: new Date().toISOString(),
+      });
+      expenseId = expense.id;
+    }
+    const [row] = await tx.update(MR).set({
+      status: to, updatedAt: new Date(),
+      ...(to === 'done' ? { closedAt: new Date() } : {}),
+      ...(cost ? { fund: cost.fund, costMinor: cost.costMinor, expenseId, ...(cost.supplierId ? { supplierId: cost.supplierId } : {}) } : {}),
+    }).where(and(eq(MR.tenantId, ctx.tenantId), eq(MR.id, id))).returning();
     await recordEvent(tx, ctx, {
-      requestId: id, kind: 'status_changed', fromStatus: before.status, toStatus: to, note: input.note ?? '',
+      requestId: id, kind: 'status_changed', fromStatus: before.status, toStatus: to,
+      note: input.note ?? costNote,
       visibility: input.visibility ?? (OWNER_VISIBLE_STATUSES.includes(to) ? 'owner' : 'internal'),
     });
     await writeAudit(tx, ctx, { action: 'maintenance.status', entityType: 'maintenance_request', entityId: id, before, after: row });
