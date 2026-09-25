@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { check, index, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { bigserial, check, index, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { users } from './auth.js';
 import { ownerAccounts } from './portal.js';
 import { tenants } from './tenant.js';
@@ -51,6 +51,12 @@ export const notifications = pgTable('notifications', {
   /** Stamped by the drain job before it sends anything, so a crash cannot double-send. */
   deliveredAt: timestamp('delivered_at', { withTimezone: true }),
   deliveryError: text('delivery_error'),
+  /**
+   * Insertion order, like `legal_events.seq`: rows written by one `notify()` call — or by two
+   * `notify()` calls inside one transaction — share `created_at` (`now()` is fixed for the whole
+   * transaction), so the tie-break the bell orders by has to be insertion order, not a random uuid.
+   */
+  seq: bigserial('seq', { mode: 'number' }).notNull(),
 }, (t) => [
   index('notifications_tenant_user_idx').on(t.tenantId, t.userId, t.createdAt),
   index('notifications_tenant_account_idx').on(t.tenantId, t.ownerAccountId, t.createdAt),

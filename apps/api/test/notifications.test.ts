@@ -86,6 +86,25 @@ describe('notification bells', () => {
     expect((await staffGet('/api/notifications')).json().unread).toBe(0);
   });
 
+  it('breaks a created_at tie by insertion order, not by chance', async () => {
+    const { notify } = await import('../src/notifications/repo.js');
+    const ctx = { tenantId: a.tenantId, userId: null, role: 'owner' as const };
+    // Two rows from one notify() call, then a third from a second notify() call in the same
+    // transaction: all three share `created_at` (`now()` is fixed for the whole transaction), so
+    // only `seq` can tell them apart.
+    await t.db.transaction(async (tx) => {
+      await notify(tx, ctx, [
+        { userId: a.userId, kind: 'delivery_failed', title: 'Прва', body: '', link: '/app' },
+        { userId: a.userId, kind: 'delivery_failed', title: 'Втора', body: '', link: '/app' },
+      ]);
+      await notify(tx, ctx, [
+        { userId: a.userId, kind: 'delivery_failed', title: 'Трета', body: '', link: '/app' },
+      ]);
+    });
+    const titles = (await staffGet('/api/notifications')).json().rows.map((r: { title: string }) => r.title);
+    expect(titles.slice(0, 3)).toEqual(['Трета', 'Втора', 'Прва']);
+  });
+
   it('gives an owner their own rows across every link, and never a staff row', async () => {
     const { notify } = await import('../src/notifications/repo.js');
     const account = (await portalGet('/api/portal/me')).json().account.id;

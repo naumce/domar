@@ -30,16 +30,11 @@ const PUBLIC_COLUMNS = { id: N.id, kind: N.kind, title: N.title, body: N.body, l
  */
 export async function notify(tx: Db, ctx: TenantContext, rows: NewNotification[]): Promise<void> {
   if (rows.length === 0) return;
-  // A batched multi-row INSERT shares one `now()` for every row (transaction-start time, not
-  // wall-clock), so a same-call sibling would otherwise tie on `createdAt`; the explicit,
-  // strictly-increasing timestamp keeps "newest first" meaningful even for two rows written together.
-  const base = Date.now();
-  await tx.insert(N).values(rows.map((r, i) => ({
+  await tx.insert(N).values(rows.map((r) => ({
     tenantId: ctx.tenantId,
     ownerAccountId: r.ownerAccountId ?? null,
     userId: r.userId ?? null,
     kind: r.kind, title: r.title, body: r.body, link: r.link,
-    createdAt: new Date(base + i),
   })));
 }
 
@@ -84,7 +79,9 @@ export async function listForUser(db: Db, ctx: TenantContext): Promise<{ rows: N
   const [rows, [unread]] = await Promise.all([
     db.select(PUBLIC_COLUMNS).from(N)
       .where(and(eq(N.tenantId, ctx.tenantId), eq(N.userId, ctx.userId!)))
-      .orderBy(desc(N.createdAt), desc(N.id)).limit(NOTIFICATION_LIMIT),
+      // `created_at` ties for rows written by one `notify()` call (`now()` is transaction-wide);
+      // `seq` — like `legal_events.seq` — is the insertion-order tie-break.
+      .orderBy(desc(N.createdAt), desc(N.seq)).limit(NOTIFICATION_LIMIT),
     db.select({ n: sql<number>`count(*)::int` }).from(N)
       .where(and(eq(N.tenantId, ctx.tenantId), eq(N.userId, ctx.userId!), isNull(N.readAt))),
   ]);
@@ -109,7 +106,7 @@ export async function listForOwner(db: Db, portal: PortalContext): Promise<{ row
   if (tenantIds.length === 0) return { rows: [], unread: 0 };
   const scope = and(eq(N.ownerAccountId, portal.ownerAccountId), inArray(N.tenantId, tenantIds));
   const [rows, [unread]] = await Promise.all([
-    db.select(PUBLIC_COLUMNS).from(N).where(scope).orderBy(desc(N.createdAt), desc(N.id)).limit(NOTIFICATION_LIMIT),
+    db.select(PUBLIC_COLUMNS).from(N).where(scope).orderBy(desc(N.createdAt), desc(N.seq)).limit(NOTIFICATION_LIMIT),
     db.select({ n: sql<number>`count(*)::int` }).from(N).where(and(scope, isNull(N.readAt))),
   ]);
   return { rows, unread: unread?.n ?? 0 };
@@ -127,6 +124,8 @@ export interface NewSubscription { endpoint: string; p256dh: string; auth: strin
  * One row per endpoint (the unique index), so a browser that rotates its keys updates in place.
  * Keyed on the caller's own account alone — `push_subscriptions` has no `tenant_id` column, exactly
  * like `owner_sessions`: an owner account is deliberately cross-tenant.
+ * No `writeAudit` here: `audit_logs.tenant_id` is `NOT NULL` and this row has no tenant to write one
+ * under — same as `owner_sessions`, which is likewise never audited. Not an omission.
  */
 export async function upsertSubscription(db: Db, portal: PortalContext, input: NewSubscription): Promise<void> {
   await db.insert(PS).values({

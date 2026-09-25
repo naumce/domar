@@ -435,7 +435,7 @@ describe('migrations', () => {
       select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'notifications' order by 1`;
     expect(cols.map((c) => c.column_name)).toEqual([
       'body', 'created_at', 'delivered_at', 'delivery_error', 'id', 'kind', 'link',
-      'owner_account_id', 'read_at', 'tenant_id', 'title', 'user_id']);
+      'owner_account_id', 'read_at', 'seq', 'tenant_id', 'title', 'user_id']);
     // Spec §11: nothing in this table is money, so nothing here can leak into a payload.
     expect(cols.some((c) => c.column_name.endsWith('_minor'))).toBe(false);
     const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
