@@ -205,9 +205,17 @@ export async function createDecision(db: Db, ctx: TenantContext, id: string, inp
 
 export async function updateDecision(db: Db, ctx: TenantContext, id: string, decisionId: string, input: DecisionPatch) {
   return db.transaction(async (tx) => {
-    await claimAssembly(tx, ctx, id, ['draft', 'invited']);
+    const claimed = await claimAssembly(tx, ctx, id, ['draft', 'invited']);
     const before = await tx.query.assemblyDecisions.findFirst({ where: and(eq(AD.tenantId, ctx.tenantId), eq(AD.assemblyId, id), eq(AD.id, decisionId)) });
     if (!before) throw notFound('Decision');
+    if (claimed.status !== 'draft') {
+      // The owners were called to vote on this wording; a ballot already cast `for` is consent to
+      // it and to nothing else. Once the invitations are out only the order on the sheet may move.
+      const frozen = (['title', 'text'] as const).filter((k) => input[k] !== undefined);
+      if (frozen.length > 0) {
+        throw conflict('assembly_locked', 'A decision put to the owners cannot be reworded once the invitations have gone out', { fields: frozen });
+      }
+    }
     const set: Partial<typeof AD.$inferInsert> = { updatedAt: new Date() };
     if (input.title !== undefined) set.title = input.title;
     if (input.text !== undefined) set.text = input.text;

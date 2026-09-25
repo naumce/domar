@@ -236,7 +236,31 @@ describe('assemblies', () => {
     const removed = await del(`/api/assemblies/${assembly.id}/decisions/${withDecision.decisions[0]!.id}`);
     expect(removed.statusCode).toBe(409);
     expect(removed.json().error.code).toBe('assembly_locked');
-    expect((await patch(`/api/assemblies/${assembly.id}/decisions/${withDecision.decisions[0]!.id}`, { text: 'Образложение' })).statusCode).toBe(200);
+    // Its wording, though, is what the owners will vote on, so that is frozen too; only the order
+    // of the decisions on the sheet still moves.
+    const reworded = await patch(`/api/assemblies/${assembly.id}/decisions/${withDecision.decisions[0]!.id}`, { text: 'Образложение' });
+    expect(reworded.statusCode).toBe(409);
+    expect(reworded.json().error.code).toBe('assembly_locked');
+    expect(reworded.json().error.details).toEqual({ fields: ['text'] });
+    expect((await patch(`/api/assemblies/${assembly.id}/decisions/${withDecision.decisions[0]!.id}`, { sortOrder: 3 })).statusCode).toBe(200);
+  });
+
+  it('refuses to reword a decision the owners have already been asked to vote on', async () => {
+    const assembly = await create({ scheduledAt: inDays(20), decisions: [{ title: 'Санација на кров, 100.000' }] });
+    const decisionId = assembly.decisions[0]!.id;
+    // While it is a draft the wording is still the manager's to get right.
+    expect((await patch(`/api/assemblies/${assembly.id}/decisions/${decisionId}`, { title: 'Санација на кров, 120.000', text: 'Понуда А' })).statusCode).toBe(200);
+    await post(`/api/assemblies/${assembly.id}/invite`);
+    const retitled = await patch(`/api/assemblies/${assembly.id}/decisions/${decisionId}`, { title: 'Санација на кров, 1.000.000' });
+    expect(retitled.statusCode).toBe(409);
+    expect(retitled.json().error.code).toBe('assembly_locked');
+    expect(retitled.json().error.details).toEqual({ fields: ['title'] });
+    // Both at once are both named, and neither lands.
+    const both = await patch(`/api/assemblies/${assembly.id}/decisions/${decisionId}`, { title: 'Друго', text: 'Друго' });
+    expect(both.json().error.details).toEqual({ fields: ['title', 'text'] });
+    const after: Assembly = (await get(`/api/assemblies/${assembly.id}`)).json();
+    expect(after.decisions[0]!.title).toBe('Санација на кров, 120.000');
+    expect(after.decisions[0]!.text).toBe('Понуда А');
   });
 
   it('keeps the invitation document readable once the assembly has been held', async () => {
