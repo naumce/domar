@@ -1,11 +1,13 @@
 import { type Db, schema } from '@domar/db';
-import { mulMinor } from '@domar/domain';
+import { type CountryCode, getCountryPack, mulMinor } from '@domar/domain';
 import { and, asc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { conflict, isUniqueViolation } from '../../errors.js';
 import { addPostings, type NewPosting } from '../../ledger.js';
 import { recordLegalEvent } from '../../legal-events.js';
+import { notifyOwners } from '../../notifications/repo.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { getBuilding } from '../buildings/repo.js';
 import { getPeriod, getPeriodRow } from '../periods/repo.js';
 import { nextInvoiceNumber } from './numbering.js';
 
@@ -88,6 +90,17 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
         },
       });
     }
+    // Spec §9: one notification per linked owner account, inside the publishing transaction, so an
+    // invoice that is rolled back never announced itself. The amount stays out of `title`.
+    const building = await getBuilding(tx, ctx, buildingId);
+    const pack = getCountryPack(building.countryCode as CountryCode);
+    await notifyOwners(tx, ctx, drafts.map(({ inv }) => ({
+      contactId: inv.contactId,
+      input: {
+        kind: 'invoice_published' as const, buildingName: building.name, period: claimed.period,
+        amount: pack.formatMoney(inv.totalMinor), invoiceId: inv.id,
+      },
+    })));
     await writeAudit(tx, ctx, { action: 'period.publish', entityType: 'billing_period', entityId: periodId, after: { invoices: drafts.length, issuedAt, dueAt } });
     const detail = await getPeriod(tx, ctx, buildingId, periodId);
     return { period: detail, invoiceCount: detail.invoiceCount, totalMinor: detail.totalMinor };

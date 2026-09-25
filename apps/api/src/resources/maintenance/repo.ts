@@ -4,6 +4,7 @@ import { and, asc, count, desc, eq, exists, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { writeAudit } from '../../audit.js';
 import { AppError, badRequest, conflict, notFound } from '../../errors.js';
+import { notifyOwners } from '../../notifications/repo.js';
 import type { TenantContext, UserRole } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { stripUndefined } from '../common.js';
@@ -321,6 +322,13 @@ export async function setStatus(db: Db, ctx: TenantContext, id: string, input: M
       note: input.note ?? costNote,
       visibility: input.visibility ?? (OWNER_VISIBLE_STATUSES.includes(to) ? 'owner' : 'internal'),
     });
+    // Only a request an owner actually filed has an owner to tell; a staff-created one has none.
+    if (before.reportedByContactId) {
+      await notifyOwners(tx, ctx, [{
+        contactId: before.reportedByContactId,
+        input: { kind: 'maintenance_status' as const, requestTitle: before.title, status: to, requestId: id },
+      }]);
+    }
     await writeAudit(tx, ctx, { action: 'maintenance.status', entityType: 'maintenance_request', entityId: id, before, after: row });
     return getRequest(tx, ctx, id);
   });

@@ -4,6 +4,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../audit.js';
 import type { DocumentStore } from '../documents/store.js';
 import { badRequest, conflict, notFound } from '../errors.js';
+import { notifyStaff } from '../notifications/repo.js';
 import { addPhoto, photoFile, type NewPhoto } from '../resources/maintenance/photos.js';
 import { MR, PHOTO_COUNT, recordEvent, requestEvents, requestPhotos } from '../resources/maintenance/repo.js';
 import type { TenantContext } from '../tenant-context.js';
@@ -95,6 +96,13 @@ export async function portalMaintenanceCreate(db: Db, portal: PortalContext, inp
       reportedByUserId: null, reportedByContactId: contactId,
     }).returning();
     await recordEvent(tx, ctx, { requestId: row!.id, kind: 'created', toStatus: 'new', note: input.title, visibility: 'owner', authorContactId: contactId });
+    // Spec §9's manager side: the in-app bell for a new request from the portal.
+    const [building] = await tx.select({ name: B.name }).from(B)
+      .where(and(eq(B.tenantId, ctx.tenantId), eq(B.id, input.buildingId))).limit(1);
+    await notifyStaff(tx, ctx, {
+      kind: 'maintenance_request_created', requestTitle: input.title,
+      buildingName: building?.name ?? '', buildingId: input.buildingId,
+    });
     await writeAudit(tx, ctx, { action: 'maintenance.portal_create', entityType: 'maintenance_request', entityId: row!.id, after: row });
     return detail(tx, ctx, contactId, row!);
   });

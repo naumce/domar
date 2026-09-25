@@ -6,6 +6,7 @@ import { logEmail } from '../../email/log.js';
 import type { Mailer } from '../../email/mailer.js';
 import { conflict } from '../../errors.js';
 import { recordLegalEvent } from '../../legal-events.js';
+import { notifyOwners } from '../../notifications/repo.js';
 import { htmlToPdf } from '../../pdf/html-to-pdf.js';
 import { formatDocumentDate, renderReminderHtml, type ReminderHtmlInvoice } from '../../pdf/reminder-html.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -86,6 +87,10 @@ export async function runBuildingReminders(db: Db, ctx: TenantContext, buildingI
     });
 
     const rows = await tx.insert(R).values(values).returning();
+    await notifyOwners(tx, ctx, rows.map((r) => ({
+      contactId: r.contactId,
+      input: { kind: 'reminder_created' as const, buildingName: building.name, amount: pack.formatMoney(r.totalOutstandingMinor) },
+    })));
     await writeAudit(tx, ctx, {
       action: 'reminder.create', entityType: 'building', entityId: buildingId,
       after: { created: rows.map((r) => ({ id: r.id, contactId: r.contactId, reason: r.reason, channel: r.channel, totalOutstandingMinor: r.totalOutstandingMinor, invoiceIds: r.invoiceIds })) },

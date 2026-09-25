@@ -7,6 +7,7 @@ import { logEmail } from '../../email/log.js';
 import type { Mailer, SendResult } from '../../email/mailer.js';
 import { badRequest, conflict, notFound } from '../../errors.js';
 import { recordLegalEvent } from '../../legal-events.js';
+import { notifyOwners } from '../../notifications/repo.js';
 import { formatAssemblyDateTime, renderAssemblyInvitationHtml } from '../../pdf/assembly-invitation-html.js';
 import { htmlToPdf } from '../../pdf/html-to-pdf.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -118,6 +119,14 @@ export async function inviteAssembly(db: Db, ctx: TenantContext, id: string, inp
         ...(late ? { lateReason: input.override!.reason } : {}),
       },
     });
+    // The same set the invitations froze: whoever was invited is whoever is told.
+    await notifyOwners(tx, ctx, invitations.map((i) => ({
+      contactId: i.contactId,
+      input: {
+        kind: 'assembly_invited' as const, buildingName: building.name,
+        scheduledOn: claimed.scheduledAt.toISOString().slice(0, 10), assemblyId: id,
+      },
+    })));
     await writeAudit(tx, ctx, {
       action: 'assembly.invite', entityType: 'assembly', entityId: id,
       before: publicAssembly(claimed),

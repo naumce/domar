@@ -4,6 +4,7 @@ import { type AssemblyOwner, type CountryCode, getCountryPack, shareWeightBp } f
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { badRequest, conflict, notFound } from '../../errors.js';
+import { notifyOwners } from '../../notifications/repo.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import type { AgendaItemIn, AssemblyCreate, AssemblyPatch, DecisionCreate, DecisionPatch } from './schema.js';
@@ -192,12 +193,23 @@ export async function deleteAssembly(db: Db, ctx: TenantContext, id: string) {
 
 export async function createDecision(db: Db, ctx: TenantContext, id: string, input: DecisionCreate) {
   return db.transaction(async (tx) => {
-    await claimAssembly(tx, ctx, id, ['draft', 'invited']);
+    const claimed = await claimAssembly(tx, ctx, id, ['draft', 'invited']);
     const [existing] = await tx.select({ n: count() }).from(AD).where(and(eq(AD.tenantId, ctx.tenantId), eq(AD.assemblyId, id)));
     const [row] = await tx.insert(AD).values({
       tenantId: ctx.tenantId, assemblyId: id, title: input.title, text: input.text ?? null,
       sortOrder: input.sortOrder ?? Number(existing?.n ?? 0),
     }).returning();
+    // A ballot item added *after* the owners were called is the one they would otherwise miss; the
+    // invitation itself already told them voting was open (plan addendum 9).
+    if (claimed.status === 'invited') {
+      const building = await getBuilding(tx, ctx, claimed.buildingId);
+      const invited = await tx.select({ contactId: AI.contactId }).from(AI)
+        .where(and(eq(AI.tenantId, ctx.tenantId), eq(AI.assemblyId, id)));
+      await notifyOwners(tx, ctx, invited.map((i) => ({
+        contactId: i.contactId,
+        input: { kind: 'assembly_voting_opened' as const, buildingName: building.name, decisionTitle: row!.title, assemblyId: id },
+      })));
+    }
     await writeAudit(tx, ctx, { action: 'assembly_decision.create', entityType: 'assembly_decision', entityId: row!.id, after: row });
     return getAssembly(tx, ctx, id);
   });
