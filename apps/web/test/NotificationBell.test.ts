@@ -6,6 +6,7 @@ import type { NotificationRow } from '@/api/types';
 import NotificationBell from '@/components/layout/NotificationBell.vue';
 import { i18n, messages } from '@/i18n';
 import type { PushState } from '@/portal/push';
+import { usePortalStore } from '@/stores/portal';
 
 const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { 'content-type': 'application/json' } });
 const empty = () => new Response(null, { status: 204 });
@@ -80,7 +81,7 @@ describe('NotificationBell', () => {
     const fetchMock = vi.fn().mockResolvedValue(json({ rows: [], unread: 0 }));
     vi.stubGlobal('fetch', fetchMock);
     // No PushManager in jsdom, so the toggle reports "unsupported" rather than throwing.
-    // The bell itself never reads usePortalStore, so nothing here needs to populate it.
+    // Nothing is selected in the store here, so the bell asks for every link's rows.
     const w = mountBell('portal');
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     await flushPromises();
@@ -88,6 +89,34 @@ describe('NotificationBell', () => {
     await w.get('[data-test=notification-bell]').trigger('click');
     expect(w.get('[data-test=notification-empty]').text()).toBe('Нема известувања');
     expect(w.get('[data-test=notification-push-state]').text()).toBe('Не е поддржано на овој уред');
+  });
+
+  it('asks only for the selected link’s rows, and follows the selection', async () => {
+    setActivePinia(createPinia());
+    const portal = usePortalStore();
+    // An owner account is cross-tenant, so without this scope the bell would list a row belonging to
+    // the other manager — and every portal page would then fetch it with the wrong contact.
+    portal.links = [
+      { tenantId: 't-a', tenantName: 'Фирма А', contactId: 'c-a', contactName: 'Марко', buildings: [] },
+      { tenantId: 't-b', tenantName: 'Фирма Б', contactId: 'c-b', contactName: 'Марко', buildings: [] },
+    ];
+    portal.select('c-a');
+    // A fresh Response per call: a single one can only be read once, and this bell makes four.
+    const fetchMock = vi.fn(() => Promise.resolve(json({ rows: [], unread: 0 })));
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mountBell('portal');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0]![0])).toBe('http://localhost:3001/api/portal/notifications?contactId=c-a');
+
+    portal.select('c-b');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(String(fetchMock.mock.calls[1]![0])).toBe('http://localhost:3001/api/portal/notifications?contactId=c-b');
+
+    // And "mark all read" clears what is shown, not the other manager's rows.
+    await w.get('[data-test=notification-bell]').trigger('click');
+    await w.get('[data-test=notification-mark-all]').trigger('click');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(String(fetchMock.mock.calls[2]![0])).toBe('http://localhost:3001/api/portal/notifications/read-all?contactId=c-b');
   });
 });
 

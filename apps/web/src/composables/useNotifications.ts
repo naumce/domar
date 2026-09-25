@@ -1,6 +1,7 @@
-import { onScopeDispose, ref, type Ref } from 'vue';
+import { onScopeDispose, ref, watch, type Ref } from 'vue';
 import { api } from '@/api/client';
 import type { NotificationList, NotificationRow } from '@/api/types';
+import { usePortalStore } from '@/stores/portal';
 
 export type BellScope = 'app' | 'portal';
 
@@ -19,13 +20,23 @@ export interface Bell {
 
 export function useNotifications(scope: BellScope): Bell {
   const base = scope === 'portal' ? '/api/portal/notifications' : '/api/notifications';
+  // An owner account is cross-tenant, but every portal page is scoped to the selected link and a row
+  // carries nothing to switch that selection by — so the portal bell asks for the selected link's
+  // rows only, and never offers one the app would open with the wrong contact.
+  const portal = scope === 'portal' ? usePortalStore() : null;
   const rows = ref<NotificationRow[]>([]);
   const unread = ref(0);
   let timer: ReturnType<typeof setInterval> | null = null;
 
+  /** No selection yet (a first load, or an account with no link at all) means no scope to send. */
+  const scoped = (path: string) => {
+    const contactId = portal?.selectedContactId;
+    return contactId ? `${path}?contactId=${encodeURIComponent(contactId)}` : path;
+  };
+
   async function refresh() {
     try {
-      const res = await api.get<NotificationList>(base);
+      const res = await api.get<NotificationList>(scoped(base));
       rows.value = res.rows;
       unread.value = res.unread;
     } catch {
@@ -39,7 +50,8 @@ export function useNotifications(scope: BellScope): Bell {
   }
 
   async function markAllRead() {
-    await api.post(`${base}/read-all`);
+    // Scoped like the listing: it clears what the bell is showing, not the other manager's rows.
+    await api.post(scoped(`${base}/read-all`));
     await refresh();
   }
 
@@ -57,6 +69,9 @@ export function useNotifications(scope: BellScope): Bell {
     if (timer !== null) { clearInterval(timer); timer = null; }
     document.removeEventListener('visibilitychange', onVisible);
   }
+
+  // Switching property switches the bell with it, the same way every portal page reloads.
+  if (portal) watch(() => portal.selectedContactId, () => { void refresh(); });
 
   onScopeDispose(stop);
   return { rows, unread, refresh, markRead, markAllRead, start, stop };

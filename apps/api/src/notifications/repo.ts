@@ -102,9 +102,13 @@ export async function markAllUserRead(db: Db, ctx: TenantContext): Promise<void>
     .where(and(eq(N.tenantId, ctx.tenantId), eq(N.userId, ctx.userId!), isNull(N.readAt)));
 }
 
-/** Across every link the account holds: an owner has one bell, not one per management company. */
-export async function listForOwner(db: Db, portal: PortalContext): Promise<{ rows: NotificationRow[]; unread: number }> {
-  const tenantIds = ownerTenantIds(portal);
+/**
+ * Scoped to one link when the portal names the contact it is showing, across every link the account
+ * holds when it does not. Every portal page reads one `?contactId=`, and a row carries nothing to
+ * switch that selection by, so a cross-tenant listing would offer rows the app cannot open.
+ */
+export async function listForOwner(db: Db, portal: PortalContext, contactId?: string): Promise<{ rows: NotificationRow[]; unread: number }> {
+  const tenantIds = ownerTenantIds(portal, contactId);
   if (tenantIds.length === 0) return { rows: [], unread: 0 };
   const scope = and(eq(N.ownerAccountId, portal.ownerAccountId), inArray(N.tenantId, tenantIds));
   const [rows, [unread]] = await Promise.all([
@@ -114,11 +118,16 @@ export async function listForOwner(db: Db, portal: PortalContext): Promise<{ row
   return { rows, unread: unread?.n ?? 0 };
 }
 
-/** The tenants a link revocation has not yet dropped — the same scope `listForOwner` reads by. */
-function ownerTenantIds(portal: PortalContext): string[] {
-  return [...new Set(portal.links.map((l) => l.tenantId))];
+/**
+ * The tenants a link revocation has not yet dropped — the same scope `listForOwner` reads by. A
+ * `contactId` the account holds no link to narrows it to nothing, exactly like a revoked link does.
+ */
+function ownerTenantIds(portal: PortalContext, contactId?: string): string[] {
+  const links = contactId === undefined ? portal.links : portal.links.filter((l) => l.contactId === contactId);
+  return [...new Set(links.map((l) => l.tenantId))];
 }
 
+/** By id, across every link: the id came off the account's own listing, whichever link showed it. */
 export async function markOwnerRead(db: Db, portal: PortalContext, id: string): Promise<void> {
   const tenantIds = ownerTenantIds(portal);
   // A row from a tenant the account is no longer linked to is a 404, exactly like one that never
@@ -129,8 +138,9 @@ export async function markOwnerRead(db: Db, portal: PortalContext, id: string): 
   if (!row) throw notFound('Notification');
 }
 
-export async function markAllOwnerRead(db: Db, portal: PortalContext): Promise<void> {
-  const tenantIds = ownerTenantIds(portal);
+/** Scoped the same way the listing is: "mark all read" clears what the bell is showing, no more. */
+export async function markAllOwnerRead(db: Db, portal: PortalContext, contactId?: string): Promise<void> {
+  const tenantIds = ownerTenantIds(portal, contactId);
   if (tenantIds.length === 0) return;
   await db.update(N).set({ readAt: new Date() })
     .where(and(eq(N.ownerAccountId, portal.ownerAccountId), inArray(N.tenantId, tenantIds), isNull(N.readAt)));

@@ -137,6 +137,38 @@ describe('notification bells', () => {
     expect((await portalGet('/api/portal/notifications')).json().unread).toBe(0);
   });
 
+  it('scopes the bell to the selected link when the portal names one', async () => {
+    // The portal shows one link at a time and every page fetches with its `?contactId=`; a row from
+    // the other manager would open a page that fetches with the wrong contact and only errors.
+    const contactB = (await t.app.inject({ method: 'POST', url: '/api/contacts', headers: { cookie: b.cookie }, payload: { firstName: 'Тест', lastName: 'Скоуп' } })).json().id;
+    const codeB = (await t.app.inject({ method: 'POST', url: `/api/contacts/${contactB}/portal-invite`, headers: { cookie: b.cookie } })).json().code;
+    expect((await portalPost('/api/portal/link', { code: codeB })).statusCode).toBe(201);
+
+    const { notify } = await import('../src/notifications/repo.js');
+    const account = (await portalGet('/api/portal/me')).json().account.id;
+    await notify(t.db, { tenantId: a.tenantId, userId: null, role: 'readonly' }, [
+      { ownerAccountId: account, kind: 'invoice_published', title: 'Од фирма А', body: '', link: '/portal/invoices/sa' },
+    ]);
+    await notify(t.db, { tenantId: b.tenantId, userId: null, role: 'readonly' }, [
+      { ownerAccountId: account, kind: 'invoice_published', title: 'Од фирма Б', body: '', link: '/portal/invoices/sb' },
+    ]);
+
+    const titles = (res: { json(): { rows: { title: string }[] } }) => res.json().rows.map((r) => r.title);
+    expect(titles(await portalGet('/api/portal/notifications'))).toEqual(expect.arrayContaining(['Од фирма А', 'Од фирма Б']));
+    expect(titles(await portalGet(`/api/portal/notifications?contactId=${contactB}`))).toEqual(['Од фирма Б']);
+    expect(titles(await portalGet(`/api/portal/notifications?contactId=${A.owners.O1}`))).not.toContain('Од фирма Б');
+
+    // And "mark all read" clears the same scope, not the other manager's rows.
+    expect((await portalPost(`/api/portal/notifications/read-all?contactId=${contactB}`)).statusCode).toBe(204);
+    expect((await portalGet(`/api/portal/notifications?contactId=${contactB}`)).json().unread).toBe(0);
+    const stillUnread = (await portalGet(`/api/portal/notifications?contactId=${A.owners.O1}`)).json().rows as { title: string; readAt: string | null }[];
+    expect(stillUnread.find((r) => r.title === 'Од фирма А')!.readAt).toBeNull();
+
+    // A contact the account holds no link to is scoped to nothing, exactly like a revoked link.
+    expect((await portalGet('/api/portal/notifications?contactId=00000000-0000-4000-8000-000000000000')).json().rows).toEqual([]);
+    await t.app.inject({ method: 'DELETE', url: `/api/contacts/${contactB}/portal-link`, headers: { cookie: b.cookie } });
+  });
+
   it('a revoked link makes a row unreachable for reading and unmarkable, not merely invisible', async () => {
     // A second link, in another tenant, so the account keeps its session once tenant a's link is gone
     // (`deletePortalLink` drops the owner's sessions only once it holds no link at all).

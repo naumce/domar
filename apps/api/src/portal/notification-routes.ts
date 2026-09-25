@@ -2,22 +2,23 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { listForOwner, markAllOwnerRead, markOwnerRead, removeSubscription, upsertSubscription } from '../notifications/repo.js';
 import { notificationListOut } from '../notifications/schema.js';
 import { idParam } from '../resources/common.js';
-import { portalPushKeyOut, portalPushSubscribeBody, portalPushUnsubscribeBody } from './schema.js';
+import { portalOptionalContactQuery, portalPushKeyOut, portalPushSubscribeBody, portalPushUnsubscribeBody } from './schema.js';
 
 /** The owner's bell and the browser's push registration. Everything is keyed on the caller's account. */
 export const portalNotificationRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requirePortal);
 
-  app.get('/notifications', { schema: { response: { 200: notificationListOut } } }, async (req) =>
-    listForOwner(req.db, req.portal!));
+  app.get('/notifications', { schema: { querystring: portalOptionalContactQuery, response: { 200: notificationListOut } } }, async (req) =>
+    listForOwner(req.db, req.portal!, req.query.contactId));
 
   app.post('/notifications/:id/read', { schema: { params: idParam } }, async (req, reply) => {
     await markOwnerRead(req.db, req.portal!, req.params.id);
     return reply.status(204).send();
   });
 
-  app.post('/notifications/read-all', {}, async (req, reply) => {
-    await markAllOwnerRead(req.db, req.portal!);
+  // The scope travels in the query here, not the body: `read-all` is called with no body at all.
+  app.post('/notifications/read-all', { schema: { querystring: portalOptionalContactQuery } }, async (req, reply) => {
+    await markAllOwnerRead(req.db, req.portal!, req.query.contactId);
     return reply.status(204).send();
   });
 
