@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatMoney, percentFromBp, toMinor } from '@/utils/money';
+import { formatDateTime, formatMoney, percentFromBp, toMinor } from '@/utils/money';
 
 describe('money utils', () => {
   it('formats MKD minor units the Macedonian way', () => {
@@ -21,5 +21,9 @@ describe('money utils', () => {
   it('converts basis points to percent text', () => {
     expect(percentFromBp(1800)).toBe('18,00 %');
     expect(percentFromBp(0)).toBe('0,00 %');
+  });
+  it('formats an ISO instant the Macedonian way, in local time', () => {
+    const iso = new Date(2026, 8, 25, 9, 4).toISOString();
+    expect(formatDateTime(iso)).toBe('25.09.2026 09:04');
   });
 });

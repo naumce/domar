@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
+import NotificationBell from '@/components/layout/NotificationBell.vue';
 import { i18n, setLocale, type Locale } from '@/i18n';
 import { useAuthStore } from '@/stores/auth';
 
@@ -24,8 +25,13 @@ function toggleLocale() { setLocale((i18n.global.locale.value === 'mk' ? 'en' : 
         <RouterLink v-for="n in nav" :key="n.to" :to="n.to" class="block rounded-md px-3 py-2 text-sm hover:bg-slate-100" active-class="bg-emerald-50 text-emerald-800 font-medium" :data-test="`nav-${n.key.split('.')[1]}`">{{ t(n.key) }}</RouterLink>
       </nav>
       <div class="mt-8 border-t border-slate-200 pt-4 text-sm">
-        <div class="font-medium">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</div>
-        <div class="text-slate-500">{{ auth.tenant?.name }}</div>
+        <div class="flex items-start justify-between">
+          <div>
+            <div class="font-medium">{{ auth.user?.firstName }} {{ auth.user?.lastName }}</div>
+            <div class="text-slate-500">{{ auth.tenant?.name }}</div>
+          </div>
+          <NotificationBell scope="app" />
+        </div>
         <button class="mt-2 text-slate-600 underline" @click="toggleLocale">{{ i18n.global.locale.value.toUpperCase() }}</button>
         <button class="ml-3 mt-2 text-slate-600 underline" data-test="logout" @click="logout">{{ t('nav.logout') }}</button>
       </div>

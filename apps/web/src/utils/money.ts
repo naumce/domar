@@ -29,3 +29,13 @@ export function formatNumber(value: number | null | undefined, maxFractionDigits
   const trimmed = frac.replace(/0+$/, '');
   return `${value < 0 ? '-' : ''}${grouped}${trimmed ? `,${trimmed}` : ''}`;
 }
+
+/**
+ * "25.09.2026 11:04" — hand-rolled like `formatMoney`: Chrome ships no `mk-MK` ICU data, so
+ * `toLocaleDateString('mk-MK')` silently falls back to en-US formatting.
+ */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}

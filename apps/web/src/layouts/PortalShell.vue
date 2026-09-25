@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import { onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
+import NotificationBell from '@/components/layout/NotificationBell.vue';
 import { i18n, setLocale, type Locale } from '@/i18n';
+import { registerPortalWorker } from '@/portal/push';
 import { usePortalStore } from '@/stores/portal';
 
 const { t } = useI18n();
 const router = useRouter();
 const portal = usePortalStore();
+
+onMounted(() => { void registerPortalWorker(); });
 // No manager nav: an owner never sees buildings, services, users or tax rates (spec §19.5).
 const nav = [
   { to: '/portal', key: 'portal.home', test: 'portal-nav-home' },
@@ -31,6 +36,7 @@ function toggleLocale() { setLocale((i18n.global.locale.value === 'mk' ? 'en' : 
           <option v-for="l in portal.links" :key="l.contactId" :value="l.contactId">{{ l.tenantName }} — {{ l.contactName }}</option>
         </select>
         <span class="ml-auto text-sm text-slate-600">{{ portal.account?.email }}</span>
+        <NotificationBell scope="portal" />
         <button class="text-sm text-slate-600 underline" @click="toggleLocale">{{ i18n.global.locale.value.toUpperCase() }}</button>
         <button class="text-sm text-slate-600 underline" data-test="portal-logout" @click="logout">{{ t('portal.signOut') }}</button>
       </div>

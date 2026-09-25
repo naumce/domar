@@ -228,3 +228,9 @@ export interface PortalMaintenanceRow {
 export interface PortalMaintenanceRequest extends PortalMaintenanceRow {
   description: string; photos: PortalMaintenancePhoto[]; events: PortalMaintenanceEvent[];
 }
+
+export type NotificationKind =
+  | 'invoice_published' | 'reminder_created' | 'assembly_invited' | 'assembly_voting_opened'
+  | 'maintenance_status' | 'maintenance_request_created' | 'delivery_failed';
+export interface NotificationRow { id: string; kind: NotificationKind; title: string; body: string; link: string; createdAt: string; readAt: string | null }
+export interface NotificationList { rows: NotificationRow[]; unread: number }

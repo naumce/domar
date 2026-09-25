@@ -78,6 +78,20 @@ export default {
       generic: 'Something went wrong. Please try again.',
     },
   },
+  notifications: {
+    title: 'Notifications',
+    empty: 'No notifications',
+    markAllRead: 'Mark all as read',
+    push: {
+      unsupported: 'Not supported on this device',
+      unconfigured: 'Device notifications are not enabled',
+      denied: 'Permission was denied in the browser',
+      off: 'Device notifications are off',
+      on: 'Device notifications are on',
+      enable: 'Turn on',
+      disable: 'Turn off',
+    },
+  },
   services: {
     title: 'Services', add: 'Add service', name: 'Name', category: 'Category', pricing: 'Pricing model',
     pricingOptions: { fixed_per_unit: 'Fixed per unit', per_m2: 'Per m²', shared_total: 'Shared total (split)' },
