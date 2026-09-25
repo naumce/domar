@@ -2,8 +2,11 @@
 const CACHE = 'domar-portal-v1';
 const OFFLINE = '/portal/offline.html';
 
+// Only the offline shell itself: `/icon.svg` is fetched as a sub-resource (favicon, manifest
+// icon), never as a navigation, so the fetch handler below never serves it from this cache — and
+// a 404 on it would abort `addAll` and take the offline shell down with it.
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll([OFFLINE, '/icon.svg'])).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll([OFFLINE])).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -27,14 +30,19 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(req).catch(() => caches.open(CACHE).then((c) => c.match(OFFLINE))));
 });
 
-/** Spec §11: the payload carries a title and a link, so that is all the notification can show. */
+/**
+ * Spec §11: the payload carries a title and a link, so that is all the notification can show.
+ * The read is total: a null/non-object/unparseable payload must still show a generic notification
+ * rather than throw, which would leave the browser to substitute its own "site updated" notice.
+ */
 self.addEventListener('push', (event) => {
-  let payload = {};
+  let payload;
   try {
-    payload = event.data ? event.data.json() : {};
+    payload = event.data ? event.data.json() : null;
   } catch {
-    payload = {};
+    payload = null;
   }
+  if (!payload || typeof payload !== 'object') payload = {};
   const title = payload.title || 'domar';
   const link = payload.link || '/portal';
   event.waitUntil(self.registration.showNotification(title, {
@@ -49,16 +57,17 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   const link = (event.notification.data && event.notification.data.link) || '/portal';
   event.notification.close();
-  // Focus an open portal tab if there is one, so a tap does not pile up windows.
+  // Focus an open portal tab if there is one, so a tap does not pile up windows. `navigate()`
+  // rejects for a client this worker does not control — which `includeUncontrolled: true`
+  // deliberately includes — so a refusal opens a fresh window instead of leaving the rejection
+  // unhandled and the tab focused-but-not-navigated.
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
-      for (const w of windows) {
-        if (new URL(w.url).pathname.startsWith('/portal')) {
-          w.navigate(link);
-          return w.focus();
-        }
-      }
-      return self.clients.openWindow(link);
+      const portalWindow = windows.find((w) => new URL(w.url).pathname.startsWith('/portal'));
+      if (!portalWindow) return self.clients.openWindow(link);
+      return portalWindow.navigate(link)
+        .then((navigated) => (navigated || portalWindow).focus())
+        .catch(() => self.clients.openWindow(link));
     }),
   );
 });
