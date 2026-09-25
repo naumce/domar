@@ -26,8 +26,9 @@ export interface FundMovementIn {
 }
 
 /**
- * One paid expense. Callers pass the rows whose `voided_at` is null; `voided` carries the same fact on
- * the row, and a voided row is left out of every table and every total by the builder itself.
+ * One paid expense, already known to be unreversed as of the end of the window: a voided row is
+ * neither spending nor a work and never reaches the page, and the caller's query — the one place
+ * that knows when the void was booked — is what leaves it out.
  */
 export interface ReportExpense {
   id: string;
@@ -37,8 +38,6 @@ export interface ReportExpense {
   supplier: string;
   amountMinor: number;
   paidAt: string;
-  /** True for a reversed expense: it is neither spending nor a work, and never reaches the page. */
-  voided: boolean;
 }
 
 export interface ReportOwner {
@@ -169,7 +168,6 @@ export function buildAnnualReport(input: AnnualReportInput): AnnualReportData {
   const reserve = funds[1]!;
 
   const expenses = input.expenses
-    .filter((e) => !e.voided)
     .map((e) => ({ ...e }))
     .sort((a, b) => byCode(a.paidAt, b.paidAt) || byCode(a.id, b.id));
   const bySupplier = new Map<string, SupplierTotal>();

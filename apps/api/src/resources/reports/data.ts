@@ -61,7 +61,8 @@ async function fundMovements(db: Db, ctx: TenantContext, buildingId: string, fro
  * Expenses paid inside the window, with the supplier's name resolved. A void is read as of the end
  * of the window, not as of today: money spent in 2026 and reversed in 2027 was spent in 2026 and
  * stays in that year's report, which is the one already filed with the owners. The reversal lands in
- * the year that booked it, where its `expense_void` posting sits.
+ * the year that booked it, where its `expense_void` posting sits. `voided_at >= to` in the filter
+ * below is the one mechanism that excludes a reversed expense; nothing downstream filters again.
  */
 async function windowExpenses(db: Db, ctx: TenantContext, buildingId: string, from: Date, to: Date, noSupplier: string): Promise<ReportExpense[]> {
   const rows = await db.select({ e: E, supplierName: S.name }).from(E)
@@ -76,9 +77,6 @@ async function windowExpenses(db: Db, ctx: TenantContext, buildingId: string, fr
     id: r.e.id, fund: r.e.fund as ReportFund, description: r.e.description,
     supplier: r.supplierName ?? r.e.supplierText ?? noSupplier,
     amountMinor: r.e.amountMinor, paidAt: r.e.paidAt.toISOString(),
-    // The query keeps the rows voided after the window closed, and the flag says so as of `to`; the
-    // builder — the one place that decides what a void means — does the excluding.
-    voided: r.e.voidedAt !== null && r.e.voidedAt.getTime() < to.getTime(),
   }));
 }
 

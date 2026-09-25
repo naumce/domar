@@ -22,7 +22,7 @@ export const fundSummaryOut = z.object({
 });
 export const reportExpenseOut = z.object({
   id: z.string(), fund: reportFundEnum, description: z.string(), supplier: z.string(),
-  amountMinor: z.number().int(), paidAt: z.string(), voided: z.boolean(),
+  amountMinor: z.number().int(), paidAt: z.string(),
 });
 export const reportOwnerOut = z.object({
   contactId: z.string(), name: z.string(), unitLabels: z.array(z.string()),

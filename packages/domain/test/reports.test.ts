@@ -24,9 +24,9 @@ const annualInput = (): AnnualReportInput => ({
     { fund: 'reserve', kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 600_000 },
   ],
   expenses: [
-    { id: 'e1', fund: 'regular', description: 'Струја за заедничките простории', supplier: 'ЕВН Македонија', amountMinor: 150_000, paidAt: '2026-03-05T09:00:00.000Z', voided: false },
-    { id: 'e2', fund: 'reserve', description: 'Санација на кровот', supplier: 'Кровови ДООЕЛ', amountMinor: 400_000, paidAt: '2026-06-11T09:00:00.000Z', voided: false },
-    { id: 'e3', fund: 'reserve', description: 'Фасада, влез Б', supplier: 'Кровови ДООЕЛ', amountMinor: 200_000, paidAt: '2026-08-02T09:00:00.000Z', voided: false },
+    { id: 'e1', fund: 'regular', description: 'Струја за заедничките простории', supplier: 'ЕВН Македонија', amountMinor: 150_000, paidAt: '2026-03-05T09:00:00.000Z' },
+    { id: 'e2', fund: 'reserve', description: 'Санација на кровот', supplier: 'Кровови ДООЕЛ', amountMinor: 400_000, paidAt: '2026-06-11T09:00:00.000Z' },
+    { id: 'e3', fund: 'reserve', description: 'Фасада, влез Б', supplier: 'Кровови ДООЕЛ', amountMinor: 200_000, paidAt: '2026-08-02T09:00:00.000Z' },
   ],
   // Deliberately out of order: the builder sorts, the caller does not have to.
   owners: [
@@ -220,21 +220,6 @@ describe('buildAnnualReport — voids', () => {
       expect(f.netInflowMinor, f.fund).toBeGreaterThanOrEqual(0);
       expect(f.netOutflowMinor, f.fund).toBeGreaterThanOrEqual(0);
     }
-  });
-
-  it('leaves a voided expense out of every table and every total', () => {
-    const input = annualInput();
-    input.expenses = [
-      ...input.expenses,
-      { id: 'e4', fund: 'reserve', description: 'Сторнирана поправка', supplier: 'Кровови ДООЕЛ', amountMinor: 900_000, paidAt: '2026-09-09T09:00:00.000Z', voided: true },
-    ];
-    const r = buildAnnualReport(input);
-    expect(r.expenses.map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
-    expect(r.works.map((e) => e.id)).toEqual(['e2', 'e3']);
-    expect(r.expensesBySupplier.find((t) => t.supplier === 'Кровови ДООЕЛ')).toEqual({ supplier: 'Кровови ДООЕЛ', count: 2, amountMinor: 600_000 });
-    expect(r.fields.expensesMinor).toBe(750_000);
-    expect(r.fields.worksMinor).toBe(600_000);
-    expect(r.fields.worksCount).toBe(2);
   });
 });
 
