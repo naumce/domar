@@ -10,3 +10,4 @@ export * from './reminders.js';
 export * from './portal.js';
 export * from './compliance.js';
 export * from './assembly.js';
+export * from './maintenance.js';

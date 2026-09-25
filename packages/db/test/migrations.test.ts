@@ -313,4 +313,108 @@ describe('migrations', () => {
     expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(decision_id, contact_id)'))).toBe(true);
     expect(idx.some((i) => i.indexdef.includes('(tenant_id, assembly_id, contact_id)'))).toBe(true);
   });
+
+  it('creates the maintenance tables', async () => {
+    const rows = await t!.sql<{ table_name: string }[]>`
+      select table_name from information_schema.tables where table_schema = 'public' order by 1`;
+    const names = rows.map((r) => r.table_name);
+    for (const n of ['maintenance_requests', 'maintenance_events', 'maintenance_photos']) expect(names).toContain(n);
+  });
+
+  it('a maintenance request carries its reporter, its assignee and its cost', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }[]>`
+      select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'maintenance_requests' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual([
+      'assignee_user_id', 'building_id', 'category', 'closed_at', 'cost_minor', 'created_at', 'description',
+      'expense_id', 'fund', 'id', 'priority', 'reported_by_contact_id', 'reported_by_user_id', 'status',
+      'supplier_id', 'tenant_id', 'title', 'unit_id', 'updated_at']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['cost_minor']!.data_type).toBe('bigint');
+    expect(by['cost_minor']!.is_nullable).toBe('YES');
+    expect(by['fund']!.is_nullable).toBe('YES');
+    expect(by['expense_id']!.is_nullable).toBe('YES');
+    expect(by['unit_id']!.is_nullable).toBe('YES');
+    expect(by['assignee_user_id']!.is_nullable).toBe('YES');
+    expect(by['reported_by_user_id']!.is_nullable).toBe('YES');
+    expect(by['reported_by_contact_id']!.is_nullable).toBe('YES');
+    expect(by['status']!.column_default).toContain('new');
+    expect(by['priority']!.column_default).toContain('normal');
+    const status = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'maintenance_status' order by e.enumsortorder`;
+    expect(status.map((s) => s.enumlabel)).toEqual(['new', 'triaged', 'assigned', 'in_progress', 'done', 'rejected']);
+    const priority = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'maintenance_priority' order by e.enumsortorder`;
+    expect(priority.map((s) => s.enumlabel)).toEqual(['low', 'normal', 'high', 'urgent']);
+    const category = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'maintenance_category' order by e.enumsortorder`;
+    expect(category.map((s) => s.enumlabel)).toEqual(['plumbing', 'electrical', 'lift', 'heating', 'cleaning', 'common_area', 'other']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'maintenance_requests'`;
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, building_id, created_at)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, status, created_at)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, assignee_user_id, created_at)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, reported_by_contact_id, created_at)'))).toBe(true);
+  });
+
+  it('exactly one reporter is a database check, not a convention', async () => {
+    const [chk] = await t!.sql<{ def: string }[]>`
+      select pg_get_constraintdef(oid) as def from pg_constraint
+      where conrelid = 'maintenance_requests'::regclass and contype = 'c' and conname = 'maintenance_requests_reporter_chk'`;
+    expect(chk).toBeDefined();
+    expect(chk!.def.replace(/\s+/g, ' ')).toContain('num_nonnulls');
+
+    // The check really fires: two reporters and no reporter are both refused.
+    const [tenant] = await t!.sql<{ id: string }[]>`
+      insert into tenants (slug, name, country_code, currency, locale)
+      values ('mig-maint', 'Mig Maint', 'mk', 'MKD', 'mk-MK') returning id`;
+    const [building] = await t!.sql<{ id: string }[]>`
+      insert into buildings (tenant_id, name, country_code) values (${tenant!.id}, 'Зграда', 'mk') returning id`;
+    const [user] = await t!.sql<{ id: string }[]>`
+      insert into users (tenant_id, email, password_hash, first_name, last_name, role)
+      values (${tenant!.id}, 'm@mig.mk', 'x', 'M', 'M', 'owner') returning id`;
+    const [contact] = await t!.sql<{ id: string }[]>`
+      insert into contacts (tenant_id, last_name) values (${tenant!.id}, 'Сопственик') returning id`;
+    const insert = (reportedByUser: string | null, reportedByContact: string | null) => t!.sql`
+      insert into maintenance_requests (tenant_id, building_id, title, description, category, reported_by_user_id, reported_by_contact_id)
+      values (${tenant!.id}, ${building!.id}, 'Т', 'О', 'other', ${reportedByUser}, ${reportedByContact})`;
+    await expect(insert(null, null)).rejects.toThrow(/maintenance_requests_reporter_chk/);
+    await expect(insert(user!.id, contact!.id)).rejects.toThrow(/maintenance_requests_reporter_chk/);
+    await expect(insert(user!.id, null)).resolves.toBeDefined();
+    await t!.sql`delete from tenants where id = ${tenant!.id}`;
+  });
+
+  it('maintenance events record who said what, and how visible it is', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string; column_default: string | null }[]>`
+      select column_name, is_nullable, column_default from information_schema.columns where table_name = 'maintenance_events' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual([
+      'author_contact_id', 'author_user_id', 'created_at', 'from_status', 'id', 'kind',
+      'maintenance_request_id', 'note', 'tenant_id', 'to_status', 'visibility']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['note']!.is_nullable).toBe('NO');
+    expect(by['from_status']!.is_nullable).toBe('YES');
+    expect(by['to_status']!.is_nullable).toBe('YES');
+    expect(by['visibility']!.column_default).toContain('internal');
+    const kinds = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'maintenance_event_kind' order by e.enumsortorder`;
+    expect(kinds.map((k) => k.enumlabel)).toEqual(['created', 'status_changed', 'assigned', 'comment', 'photo_added']);
+    const vis = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'maintenance_visibility' order by e.enumsortorder`;
+    expect(vis.map((v) => v.enumlabel)).toEqual(['internal', 'owner']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'maintenance_events'`;
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, maintenance_request_id, created_at)'))).toBe(true);
+  });
+
+  it('a photo belongs to exactly one request and dies with its document', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'maintenance_photos' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual([
+      'created_at', 'document_id', 'id', 'maintenance_request_id', 'tenant_id', 'uploaded_by_contact_id', 'uploaded_by_user_id']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'maintenance_photos'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(document_id)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(tenant_id, maintenance_request_id, created_at)'))).toBe(true);
+    const [fk] = await t!.sql<{ delete_rule: string }[]>`
+      select rc.delete_rule from information_schema.referential_constraints rc
+      join information_schema.key_column_usage k on k.constraint_name = rc.constraint_name
+      where k.table_name = 'maintenance_photos' and k.column_name = 'document_id'`;
+    expect(fk!.delete_rule).toBe('CASCADE');
+  });
 });
