@@ -1,9 +1,10 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAINTENANCE_CATEGORIES } from '@domar/domain';
 import type { MaintenanceRequest, MaintenanceRow, User } from '@/api/types';
 import MaintenanceTab from '@/components/building/MaintenanceTab.vue';
-import { i18n } from '@/i18n';
+import { i18n, messages } from '@/i18n';
 import { useAuthStore } from '@/stores/auth';
 
 const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
@@ -191,6 +192,23 @@ describe('MaintenanceTab', () => {
     expect(w.find('[data-test=maintenance-assign]').exists()).toBe(false);
     expect(w.find('[data-test=maintenance-triage]').exists()).toBe(false);
     expect(w.find('[data-test=maintenance-create]').exists()).toBe(false);
+  });
+
+  it('shows readonly no control it would only get a 403 from', async () => {
+    const assigned = detail({ status: 'assigned', assigneeUserId: 'usr-1', assigneeName: 'Стефан Стефановски' });
+    const { w } = await mountTab([...boot([row({ status: 'assigned' })]), json(assigned)], 'readonly');
+    await w.get('[data-test=maintenance-card]').trigger('click');
+    await vi.waitFor(() => expect(w.find('[data-test=maintenance-panel]').exists()).toBe(true));
+    // The card itself is readable; every way of changing it is gone.
+    expect(w.get('[data-test=maintenance-panel-status]').text()).toBe('Доделено');
+    for (const control of ['maintenance-start', 'maintenance-close-free', 'maintenance-close-open', 'maintenance-note-add', 'maintenance-photo-upload', 'maintenance-assign', 'maintenance-triage', 'maintenance-create']) {
+      expect(w.find(`[data-test=${control}]`).exists(), control).toBe(false);
+    }
+  });
+
+  it('labels every category the domain declares, and no other', async () => {
+    // The pickers render `MAINTENANCE_CATEGORIES`; an eighth one without a label would show its key.
+    expect(Object.keys(messages.mk.maintenance.categories)).toEqual([...MAINTENANCE_CATEGORIES]);
   });
 
   it('adds an owner-visible note', async () => {

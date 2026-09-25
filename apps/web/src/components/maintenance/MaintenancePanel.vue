@@ -9,7 +9,7 @@ import AppInput from '@/components/ui/AppInput.vue';
 import AppSelect from '@/components/ui/AppSelect.vue';
 import { formatMoney, toMinor } from '@/utils/money';
 
-const props = defineProps<{ request: MaintenanceRequest; users: User[]; suppliers: Supplier[]; canWrite: boolean }>();
+const props = defineProps<{ request: MaintenanceRequest; users: User[]; suppliers: Supplier[]; canWrite: boolean; canWork: boolean }>();
 const emit = defineEmits<{ (e: 'updated', request: MaintenanceRequest): void; (e: 'error', message: string): void }>();
 const { t, te } = useI18n();
 
@@ -25,8 +25,11 @@ const open = computed(() => status.value !== 'done' && status.value !== 'rejecte
 const mayTriage = computed(() => props.canWrite && status.value === 'new');
 const mayReject = computed(() => props.canWrite && (status.value === 'new' || status.value === 'triaged'));
 const mayAssign = computed(() => props.canWrite && open.value);
-const mayStart = computed(() => status.value === 'assigned');
-const mayClose = computed(() => status.value === 'assigned' || status.value === 'in_progress');
+// `canWork`, not `open`: a technician presses these, `readonly` may not — and a button that can
+// only answer 403 does not belong on the screen.
+const mayStart = computed(() => props.canWork && status.value === 'assigned');
+const mayClose = computed(() => props.canWork && (status.value === 'assigned' || status.value === 'in_progress'));
+const mayWrite = computed(() => props.canWork && open.value);
 // Through the request, not the generic document route: that one is closed to a technician (spec §10).
 const downloadUrl = (id: string) => `${API_BASE}/api/maintenance-requests/${props.request.id}/photos/${id}`;
 const dateTime = (iso: string) => new Date(iso).toLocaleString('mk-MK', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -136,7 +139,7 @@ async function removePhoto(documentId: string) {
         </div>
         <p v-if="request.photos.length === 0" class="text-sm text-slate-500">{{ t('app.empty') }}</p>
       </div>
-      <div v-if="open" class="flex items-end gap-3">
+      <div v-if="mayWrite" class="flex items-end gap-3">
         <label class="block text-sm"><span class="mb-1 block font-medium text-slate-700">{{ t('maintenance.file') }}</span>
           <input type="file" class="text-sm" accept="image/png,image/jpeg" data-test="maintenance-photo-file" @change="onFile" /></label>
         <AppButton type="button" :loading="busy === 'photo'" data-test="maintenance-photo-upload" @click="uploadPhoto">{{ t('maintenance.upload') }}</AppButton>
@@ -153,7 +156,7 @@ async function removePhoto(documentId: string) {
           <p v-if="e.note" class="whitespace-pre-line">{{ e.note }}</p>
         </li>
       </ol>
-      <form v-if="open" class="grid grid-cols-3 items-end gap-3" @submit.prevent="submitNote">
+      <form v-if="mayWrite" class="grid grid-cols-3 items-end gap-3" @submit.prevent="submitNote">
         <AppInput v-model="note.text" :label="t('maintenance.note')" data-test="maintenance-note" />
         <AppSelect v-model="note.visibility" :label="t('maintenance.visibility')" data-test="maintenance-note-visibility"
           :options="[{ value: 'internal', label: t('maintenance.visibilities.internal') }, { value: 'owner', label: t('maintenance.visibilities.owner') }]" />

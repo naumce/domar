@@ -1,3 +1,5 @@
+import type { MaintenanceCategory, MaintenancePriority, MaintenanceStatus } from '@domar/domain';
+
 export interface User { id: string; email: string; firstName: string; lastName: string; role: 'owner' | 'accountant' | 'technician' | 'readonly'; isActive: boolean }
 export interface CreatedUser { user: User; temporaryPassword: string }
 export interface Tenant {
@@ -191,9 +193,8 @@ export interface PortalAssembly extends Omit<PortalAssemblyRow, 'agendaCount'> {
   agenda: AgendaItem[]; votingOpen: boolean; decisions: PortalAssemblyDecision[];
 }
 
-export type MaintenanceStatus = 'new' | 'triaged' | 'assigned' | 'in_progress' | 'done' | 'rejected';
-export type MaintenanceCategory = 'plumbing' | 'electrical' | 'lift' | 'heating' | 'cleaning' | 'common_area' | 'other';
-export type MaintenancePriority = 'low' | 'normal' | 'high' | 'urgent';
+// The three the domain owns, re-exported rather than restated: one list, one place to add to.
+export type { MaintenanceCategory, MaintenancePriority, MaintenanceStatus };
 export type MaintenanceEventKind = 'created' | 'status_changed' | 'assigned' | 'comment' | 'photo_added';
 export type MaintenanceVisibility = 'internal' | 'owner';
 export interface MaintenancePhoto {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { MAINTENANCE_CATEGORIES, MAINTENANCE_PRIORITIES } from '@domar/domain';
 import { api } from '@/api/client';
 import type { MaintenanceCategory, MaintenancePriority, PortalMaintenanceRequest, PortalMaintenanceRow } from '@/api/types';
 import DataTable from '@/components/DataTable.vue';
@@ -11,9 +12,6 @@ import { usePortalStore } from '@/stores/portal';
 
 const { t, te } = useI18n();
 const portal = usePortalStore();
-
-const CATEGORIES: MaintenanceCategory[] = ['plumbing', 'electrical', 'lift', 'heating', 'cleaning', 'common_area', 'other'];
-const PRIORITIES: MaintenancePriority[] = ['low', 'normal', 'high', 'urgent'];
 
 const rows = ref<PortalMaintenanceRow[]>([]);
 const buildings = computed(() => portal.current?.buildings ?? []);
@@ -84,9 +82,9 @@ async function submit() {
         class="w-full rounded-md border border-slate-300 px-3 py-2 focus:border-emerald-500 focus:outline-none"></textarea></label>
     <div class="grid grid-cols-2 gap-3">
       <AppSelect v-model="form.category" :label="t('maintenance.category')" data-test="portal-maintenance-category"
-        :options="CATEGORIES.map((c) => ({ value: c, label: t(`maintenance.categories.${c}`) }))" />
+        :options="MAINTENANCE_CATEGORIES.map((c) => ({ value: c, label: t(`maintenance.categories.${c}`) }))" />
       <AppSelect v-model="form.priority" :label="t('maintenance.priority')" data-test="portal-maintenance-priority"
-        :options="PRIORITIES.map((p) => ({ value: p, label: t(`maintenance.priorities.${p}`) }))" />
+        :options="MAINTENANCE_PRIORITIES.map((p) => ({ value: p, label: t(`maintenance.priorities.${p}`) }))" />
     </div>
     <label class="block text-sm"><span class="mb-1 block font-medium text-slate-700">{{ t('portal.maintenancePhoto') }}</span>
       <input type="file" class="text-sm" accept="image/png,image/jpeg" data-test="portal-maintenance-file" @change="onFile" /></label>
