@@ -3,10 +3,12 @@ import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
 import { loadChart, putAccountCode } from './chart.js';
 import { buildJournalFor, type AccountingWindow } from './data.js';
 import { DOCUMENT_READ_ROLES } from '../documents/routes.js';
+import { closeAccountingPeriod, listAccountingPeriods, reopenAccountingPeriod } from './periods.js';
 import { exportAccounting, listAccountingExports } from './service.js';
 import {
   accountCodeListOut, accountCodeOut, accountCodePut, accountSlotParam,
   accountingExportBody, accountingExportListOut, accountingExportOut,
+  accountingPeriodListOut, accountingPeriodOut, accountingPeriodParam,
   accountingPreviewOut, accountingWindowQuery,
 } from './schema.js';
 
@@ -62,4 +64,25 @@ export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
   }, async (req, reply) => reply.status(201).send(await exportAccounting(req.db, req.ctx!, req.body, {
     documents: app.documents, log: app.log,
   })));
+
+  // Reading the list is open to every role, same as the other reads under /accounting.
+  app.get('/periods', { schema: { response: { 200: accountingPeriodListOut } } }, async (req) =>
+    listAccountingPeriods(req.db, req.ctx!));
+
+  app.post('/periods/:period/close', {
+    preHandler: requireRole(...WRITE_ROLES),
+    schema: { params: accountingPeriodParam, response: { 200: accountingPeriodOut } },
+  }, async (req) => {
+    const row = await closeAccountingPeriod(req.db, req.ctx!, req.params.period);
+    const { rows } = await listAccountingPeriods(req.db, req.ctx!);
+    return rows.find((r) => r.id === row.id)!;
+  });
+
+  app.delete('/periods/:period', {
+    preHandler: requireRole(...WRITE_ROLES),
+    schema: { params: accountingPeriodParam },
+  }, async (req, reply) => {
+    await reopenAccountingPeriod(req.db, req.ctx!, req.params.period);
+    return reply.status(204).send();
+  });
 };
