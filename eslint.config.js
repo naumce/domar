@@ -18,4 +18,9 @@ export default tseslint.config(
     files: ['apps/web/**/*.ts'],
     languageOptions: { globals: { ...globals.browser } },
   },
+  {
+    // Plain classic JS, never bundled: runs in the service worker global scope, not the DOM's.
+    files: ['apps/web/public/portal/sw.js'],
+    languageOptions: { globals: { ...globals.serviceworker } },
+  },
 );

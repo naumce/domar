@@ -13,6 +13,8 @@ describe('SPA serving behind SERVE_WEB', () => {
     await writeFile(join(dir, 'assets.txt'), 'asset');
     await mkdir(join(dir, 'assets'));
     await writeFile(join(dir, 'assets', 'app-abc123.js'), 'console.log(1)');
+    await mkdir(join(dir, 'portal'));
+    await writeFile(join(dir, 'portal', 'sw.js'), "self.addEventListener('install', () => {});");
     t = await createTestApp({ SERVE_WEB: 'true', WEB_DIST: dir });
   });
   afterAll(async () => { await t.close(); });
@@ -47,6 +49,20 @@ describe('SPA serving behind SERVE_WEB', () => {
     const res = await t.app.inject({ method: 'GET', url: '/assets/missing.js' });
     expect(res.statusCode).toBe(404);
     expect(res.json().error.code).toBe('not_found');
+  });
+
+  it('serves the portal service worker as JavaScript, not the SPA shell (R4)', async () => {
+    // wildcard: false answers ANY unmatched GET with index.html, so a status-only check would
+    // pass even if the worker were missing or published to the wrong path — the browser would
+    // silently get text/html and `navigator.serviceWorker.register` would fail to parse it as a
+    // script. Assert the content type and the body, not merely the status.
+    const res = await t.app.inject({ method: 'GET', url: '/portal/sw.js' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toMatch(/javascript/);
+    expect(res.body).toBe("self.addEventListener('install', () => {});");
+    expect(res.body).not.toContain('<div id="app">');
+    // Outside assets/, setHeaders sends no-cache — the worker must never be cached aggressively.
+    expect(res.headers['cache-control']).toBe('no-cache');
   });
 
   it('keeps the JSON envelope for unknown API routes', async () => {
