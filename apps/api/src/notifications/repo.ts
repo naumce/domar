@@ -12,14 +12,16 @@ const OCL = schema.ownerContactLinks; const U = schema.users;
 export type NotificationRow = { id: string; kind: NotificationKind; title: string; body: string; link: string; createdAt: Date; readAt: Date | null };
 export type SubscriptionRow = typeof PS.$inferSelect;
 
-export interface NewNotification {
-  ownerAccountId?: string | null | undefined;
-  userId?: string | null | undefined;
-  kind: NotificationKind;
-  title: string;
-  body: string;
-  link: string;
-}
+interface NotificationBody { kind: NotificationKind; title: string; body: string; link: string }
+
+/**
+ * Exactly one recipient, enforced by the compiler as well as by `notifications_recipient_chk`. A
+ * shape carrying both — or neither — is a trigger's bug, and a `500` from a check constraint is a
+ * poor way to learn about it.
+ */
+export type NewNotification =
+  | (NotificationBody & { ownerAccountId: string; userId?: never })
+  | (NotificationBody & { userId: string; ownerAccountId?: never });
 
 const PUBLIC_COLUMNS = { id: N.id, kind: N.kind, title: N.title, body: N.body, link: N.link, createdAt: N.createdAt, readAt: N.readAt };
 

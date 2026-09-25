@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { createStaffUser, registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
+import type { NewNotification } from '../src/notifications/repo.js';
 
 describe('notification bells', () => {
   let t: Awaited<ReturnType<typeof createTestApp>>;
@@ -125,5 +126,23 @@ describe('notification bells', () => {
   it('does not accept a staff cookie on the portal bell, nor an owner cookie on the manager bell', async () => {
     expect((await portalGet('/api/portal/notifications', a.cookie)).statusCode).toBe(401);
     expect((await staffGet('/api/notifications', ownerCookie)).statusCode).toBe(401);
+  });
+});
+
+/**
+ * Compile-time only: `notify` takes exactly one recipient. These lines fail the build if the union
+ * ever loosens back into two optional fields, which would leave `notifications_recipient_chk` to
+ * report a trigger's bug as a 500 at run time.
+ */
+describe('the recipient union', () => {
+  it('refuses both recipients and refuses neither', () => {
+    const body = { kind: 'invoice_published', title: 'т', body: 'т', link: '/portal' } as const;
+    const owner: NewNotification = { ...body, ownerAccountId: 'a' };
+    const staff: NewNotification = { ...body, userId: 'u' };
+    // @ts-expect-error both recipients
+    const both: NewNotification = { ...body, ownerAccountId: 'a', userId: 'u' };
+    // @ts-expect-error no recipient
+    const neither: NewNotification = { ...body };
+    expect([owner, staff, both, neither]).toHaveLength(4);
   });
 });
