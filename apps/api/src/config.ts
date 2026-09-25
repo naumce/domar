@@ -16,6 +16,11 @@ const schema = z.object({
   SMTP_URL: z.string().default(''),
   EMAIL_FROM: z.string().default('domar <no-reply@localhost>'),
   JOB_TOKEN: z.string().default(''),
+  // Web Push. All three optional: unset means "no push", exactly like an unset SMTP_URL means
+  // "no email" — the app never crashes for lack of a key (spec §9, plan addendum 5).
+  VAPID_PUBLIC_KEY: z.string().default(''),
+  VAPID_PRIVATE_KEY: z.string().default(''),
+  VAPID_SUBJECT: z.string().default(''),
   /** Per-IP ceiling on the auth routes each minute. Ten is right for a real deployment; a test
    * harness registering a tenant per spec from one address needs headroom. */
   AUTH_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
@@ -49,6 +54,12 @@ export interface Config {
   smtpUrl: string;
   emailFrom: string;
   jobToken: string;
+  /** VAPID application server key, handed to the browser so it can subscribe. '' = push disabled. */
+  vapidPublicKey: string;
+  /** The private half, `memory` for the in-memory test transport, or '' for "push disabled". */
+  vapidPrivateKey: string;
+  /** `mailto:` or `https:` contact the push service may use to reach the operator. */
+  vapidSubject: string;
   authRateMax: number;
   /** Public origin of the web app, e.g. `https://domar.mk`; unset when nobody told the API its URL. */
   publicWebUrl: string | undefined;
@@ -81,6 +92,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     smtpUrl: parsed.SMTP_URL,
     emailFrom: parsed.EMAIL_FROM,
     jobToken: parsed.JOB_TOKEN,
+    vapidPublicKey: parsed.VAPID_PUBLIC_KEY,
+    vapidPrivateKey: parsed.VAPID_PRIVATE_KEY,
+    vapidSubject: parsed.VAPID_SUBJECT || 'mailto:no-reply@localhost',
     authRateMax: parsed.AUTH_RATE_MAX,
     publicWebUrl: parsed.PUBLIC_WEB_URL?.replace(/\/$/, ''),
   };

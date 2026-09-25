@@ -6,6 +6,7 @@ export * from './reminders/evaluate.js';
 export * from './compliance/evaluate.js';
 export * from './assembly/tally.js';
 export * from './maintenance/status.js';
+export * from './notifications/payload.js';
 export * from './reports/annual.js';
 export * from './reports/handover.js';
 export * from './statements/index.js';

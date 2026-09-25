@@ -16,6 +16,7 @@ import { authRoutes } from './auth/routes.js';
 import { LocalDiskStore, MAX_DOCUMENT_BYTES, type DocumentStore } from './documents/store.js';
 import { AppError } from './errors.js';
 import { createMailer, type Mailer } from './email/mailer.js';
+import { createPusher, type Pusher } from './notifications/push.js';
 import { pdfRoutes } from './pdf/routes.js';
 import { portalAssemblyRoutes } from './portal/assembly-routes.js';
 import { portalAuthRoutes } from './portal/auth-routes.js';
@@ -80,6 +81,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   const mailer = createMailer(opts.config);
   app.decorate('mailer', mailer);
   app.addHook('onClose', async () => { await mailer.close(); });
+  app.decorate('pusher', createPusher(opts.config));
 
   // `wildcard: false`: no catch-all GET route, so unknown paths reach the not-found handler below
   // and only that handler decides between the SPA shell and the JSON envelope.
@@ -178,5 +180,5 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
 }
 
 declare module 'fastify' {
-  interface FastifyInstance { config: Config; mailer: Mailer; documents: DocumentStore }
+  interface FastifyInstance { config: Config; mailer: Mailer; documents: DocumentStore; pusher: Pusher }
 }
