@@ -17,7 +17,7 @@ const slug = z.string().min(2).max(64).regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/
 const password = z.string().min(10).max(200);
 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
-  const limited = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+  const limited = { config: { rateLimit: { max: app.config.authRateMax, timeWindow: '1 minute' } } };
 
   app.post('/register', {
     ...limited,

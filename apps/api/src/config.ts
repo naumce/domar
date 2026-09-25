@@ -16,6 +16,9 @@ const schema = z.object({
   SMTP_URL: z.string().default(''),
   EMAIL_FROM: z.string().default('domar <no-reply@localhost>'),
   JOB_TOKEN: z.string().default(''),
+  /** Per-IP ceiling on the auth routes each minute. Ten is right for a real deployment; a test
+   * harness registering a tenant per spec from one address needs headroom. */
+  AUTH_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
   // Empty means "unset", like SMTP_URL: .env.example ships the key blank and a blank must not crash.
   PUBLIC_WEB_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
 }).superRefine((v, ctx) => {
@@ -46,6 +49,7 @@ export interface Config {
   smtpUrl: string;
   emailFrom: string;
   jobToken: string;
+  authRateMax: number;
   /** Public origin of the web app, e.g. `https://domar.mk`; unset when nobody told the API its URL. */
   publicWebUrl: string | undefined;
 }
@@ -77,6 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     smtpUrl: parsed.SMTP_URL,
     emailFrom: parsed.EMAIL_FROM,
     jobToken: parsed.JOB_TOKEN,
+    authRateMax: parsed.AUTH_RATE_MAX,
     publicWebUrl: parsed.PUBLIC_WEB_URL?.replace(/\/$/, ''),
   };
 }
