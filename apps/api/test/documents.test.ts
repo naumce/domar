@@ -116,6 +116,14 @@ describe('documents', () => {
     expect(await storedFiles()).toHaveLength(before);
   });
 
+  it('refuses an uploaded zip even though a generated one is allowed', async () => {
+    // `application/zip` is in GENERATED_MIME, which only `createDocumentFromBuffer` passes; there is
+    // deliberately no path from an HTTP upload to a stored archive (plan addendum 12).
+    const res = await upload(A.buildingId, { kind: 'other', title: 'архива' }, { filename: 'podatoci.zip', mime: 'application/zip', content: Buffer.from('PK\u0003\u0004') });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('unsupported_media_type');
+  });
+
   it('refuses a file part with no filename before writing anything', async () => {
     const before = (await storedFiles()).length;
     const m = multipartNoFilename({ kind: 'other', title: 'x' }, Buffer.from('bytes'));

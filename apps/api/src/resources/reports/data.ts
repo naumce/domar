@@ -1,10 +1,10 @@
 import { type Db, schema } from '@domar/db';
 import {
-  buildAnnualReport, getCountryPack, yearWindow,
-  type AnnualReportInput, type CountryCode, type CountryPack, type FundMovementIn,
-  type ReportAssembly, type ReportExpense, type ReportFund, type ReportOwner, type ReportPostingKind,
+  asOfWindow, buildAnnualReport, buildHandoverReport, civilDayStart, getCountryPack, localDayStart, yearWindow,
+  type AnnualReportInput, type CountryCode, type CountryPack, type FundMovementIn, type HandoverReportData,
+  type OpenItem, type ReportAssembly, type ReportExpense, type ReportFund, type ReportOwner, type ReportPostingKind,
 } from '@domar/domain';
-import { and, asc, count, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { badRequest } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
@@ -12,6 +12,7 @@ import { getBuilding } from '../buildings/repo.js';
 const P = schema.postings; const E = schema.expenses; const S = schema.suppliers; const U = schema.units;
 const C = schema.contacts; const R = schema.reminders; const AS = schema.assemblies; const AD = schema.assemblyDecisions;
 const T = schema.tenants;
+const INV = schema.invoices; const BP = schema.billingPeriods; const BC = schema.buildingContracts;
 
 export type BuildingRow = Awaited<ReturnType<typeof getBuilding>>;
 export type TenantRow = typeof T.$inferSelect;
@@ -201,4 +202,77 @@ export async function annualReport(db: Db, ctx: TenantContext, buildingId: strin
   const { from, to } = yearWindow(year, tenant.timezone);
   const input = await collectReportInput(db, ctx, building, tenant, pack, year, from, to);
   return { building, tenant, pack, from, to, data: buildAnnualReport(input) };
+}
+
+/**
+ * The end date of the newest management contract, read in exactly the order
+ * `resources/compliance/snapshot.ts` reads it, so the report and the Art. 30 card can never name
+ * two different contracts. Null when the building has none (plan addendum 17).
+ */
+async function managementContractEndsOn(db: Db, ctx: TenantContext, buildingId: string): Promise<string | null> {
+  const [row] = await db.select({ endsOn: BC.endsOn }).from(BC)
+    .where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.buildingId, buildingId), eq(BC.kind, 'management')))
+    .orderBy(desc(BC.startsOn), desc(BC.createdAt)).limit(1);
+  return row?.endsOn ?? null;
+}
+
+/** Published invoices still owed at the end of the window, oldest period first. */
+async function openInvoices(db: Db, ctx: TenantContext, buildingId: string, to: Date): Promise<OpenItem[]> {
+  // "invoices"."id" is hard-coded for the same reason as in resources/invoices/repo.ts: an
+  // unqualified `id` inside the correlated subquery would bind to the subquery's own row.
+  const paidMinor = sql<string>`(select coalesce(sum(p.amount_minor), 0) from ${schema.payments} p where p.tenant_id = "invoices"."tenant_id" and p.invoice_id = "invoices"."id" and p.status = 'completed' and p.paid_at < ${to.toISOString()}::timestamptz)`;
+  const rows = await db.select({
+    id: INV.id, number: INV.number, contactId: INV.contactId, firstName: C.firstName, lastName: C.lastName,
+    period: BP.period, dueAt: INV.dueAt, totalMinor: INV.totalMinor, paidMinor,
+  }).from(INV)
+    .innerJoin(BP, eq(BP.id, INV.periodId))
+    .innerJoin(C, eq(C.id, INV.contactId))
+    .where(and(
+      eq(INV.tenantId, ctx.tenantId), eq(INV.buildingId, buildingId),
+      inArray(INV.status, ['published', 'partially_paid']), lt(INV.issuedAt, to),
+    ))
+    .orderBy(asc(BP.period), asc(INV.id));
+  return rows
+    .map((r) => ({
+      invoiceId: r.id, number: r.number, contactId: r.contactId,
+      ownerName: `${r.firstName} ${r.lastName}`.trim(), period: r.period,
+      dueAt: r.dueAt ? r.dueAt.toISOString() : null,
+      totalMinor: r.totalMinor, paidMinor: Number(r.paidMinor), outstandingMinor: r.totalMinor - Number(r.paidMinor),
+    }))
+    .filter((i) => i.outstandingMinor > 0);
+}
+
+export interface HandoverInput {
+  asOf: string;
+  /** Absent on a preview, in which case the report reads as reconciled (plan addendum 10). */
+  bankBalances?: { regularMinor: number; reserveMinor: number } | undefined;
+  note?: string | null | undefined;
+}
+
+/** Art. 30 for one building, as of one civil day of the tenant's zone (addendum 9). */
+export async function handoverReport(db: Db, ctx: TenantContext, buildingId: string, input: HandoverInput): Promise<{
+  building: BuildingRow; tenant: TenantRow; pack: CountryPack; from: Date; to: Date; data: HandoverReportData;
+}> {
+  const building = await getBuilding(db, ctx, buildingId); // 404 across tenants
+  const { tenant, pack } = await tenantPack(db, ctx);
+  const today = localDayStart(new Date(), tenant.timezone);
+  if (civilDayStart(input.asOf, tenant.timezone).getTime() > today.getTime()) {
+    throw badRequest('as_of_in_the_future', 'A handover cannot be dated after today');
+  }
+  const { from, to } = asOfWindow(input.asOf, tenant.timezone);
+  const year = Number(input.asOf.slice(0, 4));
+  const base = await collectReportInput(db, ctx, building, tenant, pack, year, from, to);
+  const [contractEndsOn, openItems] = await Promise.all([
+    managementContractEndsOn(db, ctx, buildingId),
+    openInvoices(db, ctx, buildingId, to),
+  ]);
+  // Built once here only to read the two closing balances the bank defaults to; the builder is pure
+  // and runs over a handful of arrays, so the second pass inside `buildHandoverReport` is free.
+  const ledger = buildAnnualReport(base).funds;
+  const bankBalances = input.bankBalances ?? { regularMinor: ledger[0]!.closingMinor, reserveMinor: ledger[1]!.closingMinor };
+  const data = buildHandoverReport({
+    ...base, asOf: input.asOf, contractEndsOn, openItems,
+    bankBalances: { ...bankBalances, asOf: input.asOf }, note: input.note ?? null,
+  });
+  return { building, tenant, pack, from, to, data };
 }

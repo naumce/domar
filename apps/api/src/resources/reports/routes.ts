@@ -3,9 +3,9 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
 import { renderAnnualReportHtml } from '../../pdf/annual-report-html.js';
 import { buildingParam } from '../units/schema.js';
-import { annualReport } from './data.js';
-import { annualDataOut, annualIssueBody, annualQuery, reportIssueOut, reportListOut } from './schema.js';
-import { issueAnnualReport, listReports, type ReportRuntime } from './service.js';
+import { annualReport, handoverReport } from './data.js';
+import { annualDataOut, annualIssueBody, annualQuery, handoverDataOut, handoverIssueBody, handoverQuery, reportIssueOut, reportListOut } from './schema.js';
+import { issueAnnualReport, issueHandoverReport, listReports, type ReportRuntime } from './service.js';
 
 export const reportRuntime = (app: FastifyInstance): ReportRuntime => ({
   pdfBrowserChannel: app.config.pdfBrowserChannel, documents: app.documents, log: app.log,
@@ -34,4 +34,15 @@ export const reportRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/annual', { ...issue, schema: { params: buildingParam, body: annualIssueBody, response: { 201: reportIssueOut } } }, async (req, reply) =>
     reply.status(201).send(await issueAnnualReport(req.db, req.ctx!, req.params.buildingId, req.body.year, reportRuntime(app))));
+
+  app.get('/handover/preview', { schema: { params: buildingParam, querystring: handoverQuery, response: { 200: handoverDataOut } } }, async (req) =>
+    (await handoverReport(req.db, req.ctx!, req.params.buildingId, {
+      asOf: req.query.asOf,
+      ...(req.query.regularMinor !== undefined && req.query.reserveMinor !== undefined
+        ? { bankBalances: { regularMinor: req.query.regularMinor, reserveMinor: req.query.reserveMinor } }
+        : {}),
+    })).data);
+
+  app.post('/handover', { ...issue, schema: { params: buildingParam, body: handoverIssueBody, response: { 201: reportIssueOut } } }, async (req, reply) =>
+    reply.status(201).send(await issueHandoverReport(req.db, req.ctx!, req.params.buildingId, req.body, reportRuntime(app))));
 };

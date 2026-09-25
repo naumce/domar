@@ -4,7 +4,7 @@ import { type Db, schema } from '@domar/db';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import { writeAudit } from '../../audit.js';
-import { ALLOWED_MIME, documentStorageKey, MAX_DOCUMENT_BYTES, type DocumentStore } from '../../documents/store.js';
+import { ALLOWED_MIME, documentStorageKey, GENERATED_MIME, MAX_DOCUMENT_BYTES, type DocumentStore } from '../../documents/store.js';
 import { AppError, badRequest, conflict, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
@@ -46,6 +46,8 @@ export interface NewDocument {
   stream: Readable;
   /** Read *after* the stream is consumed: busboy only knows it hit the cap once it has. */
   isTruncated: () => boolean;
+  /** The mime allowlist to check against; the multipart route never sets it (plan addendum 12). */
+  allow?: Readonly<Record<string, string>> | undefined;
 }
 
 /**
@@ -56,10 +58,11 @@ export interface NewDocument {
  * the wire — every response schema is a zod object, which drops what it does not declare.
  */
 export async function createDocument(db: Db, ctx: TenantContext, store: DocumentStore, input: NewDocument) {
-  if (!ALLOWED_MIME[input.mime]) throw badRequest('unsupported_media_type', `Files of type ${input.mime} are not accepted`);
+  const allow = input.allow ?? ALLOWED_MIME;
+  if (!allow[input.mime]) throw badRequest('unsupported_media_type', `Files of type ${input.mime} are not accepted`);
   const id = randomUUID();
   const now = new Date();
-  const storageKey = documentStorageKey(ctx.tenantId, id, input.mime, now);
+  const storageKey = documentStorageKey(ctx.tenantId, id, input.mime, now, allow);
   const { sizeBytes, sha256 } = await store.put(storageKey, input.stream);
   if (input.isTruncated()) {
     await store.remove(storageKey);
@@ -118,7 +121,7 @@ export async function deleteDocument(db: Db, ctx: TenantContext, store: Document
  * the sha256 and the audit row — is `createDocument`'s existing path, so a generated document is
  * indistinguishable from an uploaded one and the portal's kind filter already covers it.
  */
-export async function createDocumentFromBuffer(db: Db, ctx: TenantContext, store: DocumentStore, input: Omit<NewDocument, 'stream' | 'isTruncated'> & { content: Buffer }) {
+export async function createDocumentFromBuffer(db: Db, ctx: TenantContext, store: DocumentStore, input: Omit<NewDocument, 'stream' | 'isTruncated' | 'allow'> & { content: Buffer }) {
   const { content, ...rest } = input;
-  return createDocument(db, ctx, store, { ...rest, stream: Readable.from(content), isTruncated: () => false });
+  return createDocument(db, ctx, store, { ...rest, stream: Readable.from(content), isTruncated: () => false, allow: GENERATED_MIME });
 }

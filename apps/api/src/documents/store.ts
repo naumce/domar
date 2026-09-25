@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises';
 
 export const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
 
-/** Spec §4: the allowed mime list. A map, not a set, so an accepted file always gets an extension. */
+/** Spec §4: the allowed mime list for **uploads**. A map, not a set, so an accepted file always gets an extension. */
 export const ALLOWED_MIME: Readonly<Record<string, string>> = {
   'application/pdf': 'pdf',
   'image/png': 'png',
@@ -21,8 +21,16 @@ export const ALLOWED_MIME: Readonly<Record<string, string>> = {
 /** `documents/<tenant uuid>/<year>/<document uuid>.<ext>` and nothing else may reach the disk. */
 const KEY_RE = /^documents\/[0-9a-f-]{36}\/\d{4}\/[0-9a-f-]{36}\.[a-z0-9]{1,8}$/;
 
-export function documentStorageKey(tenantId: string, documentId: string, mime: string, at: Date): string {
-  const ext = ALLOWED_MIME[mime];
+/**
+ * What a document this process *generated* may carry: the upload list plus the zip of an Art. 30
+ * data export. Deliberately a second map rather than an extra entry in the first — an uploaded
+ * archive is a blob nobody asked for, and only `createDocumentFromBuffer` ever passes this one, so
+ * there is no path from an HTTP upload to a stored zip (plan addendum 12).
+ */
+export const GENERATED_MIME: Readonly<Record<string, string>> = { ...ALLOWED_MIME, 'application/zip': 'zip' };
+
+export function documentStorageKey(tenantId: string, documentId: string, mime: string, at: Date, allow: Readonly<Record<string, string>> = ALLOWED_MIME): string {
+  const ext = allow[mime];
   if (!ext) throw new Error(`unsupported mime: ${mime}`);
   return `documents/${tenantId}/${at.getUTCFullYear()}/${documentId}.${ext}`;
 }

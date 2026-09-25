@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateOnly } from '../contracts/schema.js';
 import { documentOut } from '../documents/schema.js';
 
 export const reportFundEnum = z.enum(['regular', 'reserve']);
@@ -62,3 +63,37 @@ export const reportIssueOut = z.object({
   year: z.number().int(),
   fields: fieldsOut,
 });
+
+export const bankBalancesIn = z.object({
+  regularMinor: z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000),
+  reserveMinor: z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000),
+});
+export const openItemOut = z.object({
+  invoiceId: z.string(), number: z.string().nullable(), contactId: z.string(), ownerName: z.string(),
+  period: z.string(), dueAt: z.string().nullable(),
+  totalMinor: z.number().int(), paidMinor: z.number().int(), outstandingMinor: z.number().int(),
+});
+export const reconciliationOut = z.object({
+  fund: reportFundEnum, ledgerMinor: z.number().int(), bankMinor: z.number().int(), differenceMinor: z.number().int(),
+});
+export const handoverDataOut = z.object({
+  fields: fieldsOut,
+  annual: annualDataOut,
+  owners: z.array(reportOwnerOut),
+  openItems: z.array(openItemOut),
+  reconciliation: z.array(reconciliationOut),
+});
+/** Both bank numbers or neither: one of them alone would print a difference that means nothing. */
+export const handoverQuery = z.object({
+  asOf: dateOnly,
+  regularMinor: z.coerce.number().int().optional(),
+  reserveMinor: z.coerce.number().int().optional(),
+}).refine((v) => (v.regularMinor === undefined) === (v.reserveMinor === undefined), {
+  message: 'give both bank balances or neither', path: ['reserveMinor'],
+});
+export const handoverIssueBody = z.object({
+  asOf: dateOnly,
+  bankBalances: bankBalancesIn,
+  note: z.string().max(2000).nullable().optional(),
+});
+export type HandoverIssueBody = z.infer<typeof handoverIssueBody>;
