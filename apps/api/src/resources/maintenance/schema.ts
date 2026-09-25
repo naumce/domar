@@ -1,5 +1,6 @@
 import { schema } from '@domar/db';
 import { z } from 'zod';
+import { pageQuery } from '../common.js';
 import { fundEnum } from '../reserve-fund/schema.js';
 
 export const maintenanceStatusEnum = z.enum(schema.maintenanceStatus.enumValues);
@@ -79,12 +80,16 @@ export const maintenanceOut = maintenanceRowOut.extend({
   photos: z.array(maintenancePhotoOut),
   events: z.array(maintenanceEventOut),
 });
-export const maintenanceListOut = z.object({ rows: z.array(maintenanceRowOut) });
-export const maintenanceListQuery = z.object({
+export const maintenanceListOut = z.object({ rows: z.array(maintenanceRowOut), total: z.number() });
+/** The board pages and filters like every other list endpoint; `assigneeUserId` is the "whose queue" filter. */
+export const maintenanceListQuery = pageQuery.extend({
   status: maintenanceStatusEnum.optional(),
   category: maintenanceCategoryEnum.optional(),
+  priority: maintenancePriorityEnum.optional(),
+  assigneeUserId: z.string().uuid().optional(),
 });
 
+export type MaintenanceListQuery = z.infer<typeof maintenanceListQuery>;
 export type MaintenanceCreateInput = z.infer<typeof maintenanceCreate>;
 export type MaintenancePatchInput = z.infer<typeof maintenancePatch>;
 export type MaintenanceStatusInput = z.infer<typeof maintenanceStatusBody>;

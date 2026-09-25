@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { requestEvents, requestPhotos } from '../src/resources/maintenance/repo.js';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { createStaffUser, registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
@@ -220,6 +221,56 @@ describe('maintenance requests', () => {
     const res = await post(`/api/buildings/${otherBuilding}/maintenance`, { title: 'т', description: '', category: 'other', unitId });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe('invalid_reference');
+  });
+
+  it('guards a feed in the helper itself, whoever calls it', async () => {
+    const row = await create();
+    await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: tech.id });
+    const mine = { tenantId: a.tenantId, userId: tech.id, role: 'technician' as const };
+    const theirs = { tenantId: a.tenantId, userId: other.id, role: 'technician' as const };
+    expect((await requestEvents(t.db, mine, row.id)).length).toBeGreaterThan(0);
+    // The helper is exported, so it answers for itself: no caller check stands between it and the row.
+    expect(await requestEvents(t.db, theirs, row.id)).toEqual([]);
+    expect(await requestPhotos(t.db, theirs, row.id)).toEqual([]);
+    expect(await requestEvents(t.db, { tenantId: b.tenantId, userId: b.userId, role: 'owner' }, row.id)).toEqual([]);
+    // A contact reads a feed only on the request they themselves reported (the portal, Task 6).
+    expect(await requestEvents(t.db, { tenantId: a.tenantId, userId: a.userId, role: 'owner' }, row.id, { reporterContactId: A.owners.O1 })).toEqual([]);
+  });
+
+  it('filters the board by priority and by assignee, and pages it', async () => {
+    const urgent = await create({ title: 'Пукна вертикала', priority: 'urgent' });
+    await post(`/api/maintenance-requests/${urgent.id}/assign`, { assigneeUserId: other.id });
+
+    const byPriority = await get(`/api/buildings/${A.buildingId}/maintenance?priority=urgent`);
+    expect(byPriority.statusCode).toBe(200);
+    expect(byPriority.json().rows.map((r: { id: string }) => r.id)).toContain(urgent.id);
+    for (const r of byPriority.json().rows) expect(r.priority).toBe('urgent');
+
+    const byAssignee = await get(`/api/buildings/${A.buildingId}/maintenance?assigneeUserId=${other.id}`);
+    expect(byAssignee.json().rows.map((r: { id: string }) => r.id)).toContain(urgent.id);
+    for (const r of byAssignee.json().rows) expect(r.assigneeUserId).toBe(other.id);
+
+    const page = await get(`/api/buildings/${A.buildingId}/maintenance?pageSize=1`);
+    expect(page.json().rows).toHaveLength(1);
+    // `total` counts the whole board, not the page it just handed out.
+    expect(page.json().total).toBeGreaterThan(1);
+    const second = await get(`/api/buildings/${A.buildingId}/maintenance?pageSize=1&page=2`);
+    expect(second.json().rows[0].id).not.toBe(page.json().rows[0].id);
+    expect(second.json().total).toBe(page.json().total);
+  });
+
+  it('lets exactly one of two concurrent triages through', async () => {
+    const row = await create();
+    const [one, two] = await Promise.all([
+      post(`/api/maintenance-requests/${row.id}/status`, { status: 'triaged' }),
+      post(`/api/maintenance-requests/${row.id}/status`, { status: 'triaged' }),
+    ]);
+    expect([one.statusCode, two.statusCode].sort((x, y) => x - y)).toEqual([200, 409]);
+    expect([one, two].find((r) => r.statusCode === 409)!.json().error.code).toBe('status_locked');
+
+    const detail = (await get(`/api/maintenance-requests/${row.id}`)).json();
+    expect(detail.status).toBe('triaged');
+    expect(detail.events.filter((e: { kind: string }) => e.kind === 'status_changed')).toHaveLength(1);
   });
 
   it('audits every mutation', async () => {

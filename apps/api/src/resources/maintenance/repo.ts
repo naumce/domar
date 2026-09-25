@@ -1,6 +1,6 @@
 import { type Db, schema } from '@domar/db';
 import { MAINTENANCE_STATUSES, can, canTransition, type MaintenanceCapability, type MaintenanceRole, type MaintenanceStatus } from '@domar/domain';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, exists, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { writeAudit } from '../../audit.js';
 import { AppError, badRequest, conflict, notFound } from '../../errors.js';
@@ -8,7 +8,7 @@ import type { TenantContext, UserRole } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { stripUndefined } from '../common.js';
 import { assertSupplierInTenant } from '../suppliers/repo.js';
-import type { MaintenanceAssignInput, MaintenanceCreateInput, MaintenanceEventInput, MaintenancePatchInput, MaintenanceStatusInput } from './schema.js';
+import type { MaintenanceAssignInput, MaintenanceCreateInput, MaintenanceEventInput, MaintenanceListQuery, MaintenancePatchInput, MaintenanceStatusInput } from './schema.js';
 
 export const MR = schema.maintenanceRequests;
 const ME = schema.maintenanceEvents;
@@ -72,6 +72,25 @@ export async function getRequestRow(db: Db, ctx: TenantContext, id: string): Pro
   const [row] = await db.select().from(MR).where(and(eq(MR.tenantId, ctx.tenantId), eq(MR.id, id), ...scope(ctx))).limit(1);
   if (!row) throw notFound('Maintenance request');
   return row;
+}
+
+/**
+ * The feed's own guard. `requestPhotos` and `requestEvents` are exported, and the owner portal will
+ * call them for a contact, so neither may lean on its caller having checked anything first: the
+ * request itself has to be reachable — same tenant, same technician scope, and, when a contact is
+ * asking, reported by that very contact. A request outside the caller's reach yields no rows.
+ */
+function visibleRequest(db: Db, ctx: TenantContext, requestId: string, reporterContactId?: string | null | undefined) {
+  return exists(db.select({ one: sql`1` }).from(MR).where(and(
+    eq(MR.tenantId, ctx.tenantId), eq(MR.id, requestId), ...scope(ctx),
+    ...(reporterContactId ? [eq(MR.reportedByContactId, reporterContactId)] : []),
+  )));
+}
+
+/** Who is reading a feed, when it is not a signed-in member of staff. */
+export interface FeedScope {
+  /** The portal's caller: the feed is readable only if this contact reported the request. */
+  reporterContactId?: string | null | undefined;
 }
 
 /**
@@ -154,22 +173,29 @@ function toRow(r: Joined) {
 function baseQuery(db: Db) {
   return db.select(selection).from(MR)
     .leftJoin(U, and(eq(U.id, MR.unitId), eq(U.tenantId, MR.tenantId)))
-    .leftJoin(reporterUser, eq(reporterUser.id, MR.reportedByUserId))
+    .leftJoin(reporterUser, and(eq(reporterUser.id, MR.reportedByUserId), eq(reporterUser.tenantId, MR.tenantId)))
     .leftJoin(C, and(eq(C.id, MR.reportedByContactId), eq(C.tenantId, MR.tenantId)))
-    .leftJoin(assigneeUser, eq(assigneeUser.id, MR.assigneeUserId))
+    .leftJoin(assigneeUser, and(eq(assigneeUser.id, MR.assigneeUserId), eq(assigneeUser.tenantId, MR.tenantId)))
     .leftJoin(S, and(eq(S.id, MR.supplierId), eq(S.tenantId, MR.tenantId)));
 }
 
-export async function listRequests(db: Db, ctx: TenantContext, buildingId: string, q: { status?: MaintenanceStatus | undefined; category?: MaintenanceRow['category'] | undefined }) {
+export async function listRequests(db: Db, ctx: TenantContext, buildingId: string, q: MaintenanceListQuery) {
   await getBuilding(db, ctx, buildingId); // 404 across tenants, before anything is read
-  const rows = await baseQuery(db)
-    .where(and(eq(MR.tenantId, ctx.tenantId), eq(MR.buildingId, buildingId), ...scope(ctx),
-      ...(q.status ? [eq(MR.status, q.status)] : []), ...(q.category ? [eq(MR.category, q.category)] : [])))
-    .orderBy(desc(MR.createdAt), desc(MR.id));
-  return { rows: rows.map((r) => toRow(r)) };
+  const where = and(eq(MR.tenantId, ctx.tenantId), eq(MR.buildingId, buildingId), ...scope(ctx),
+    ...(q.status ? [eq(MR.status, q.status)] : []),
+    ...(q.category ? [eq(MR.category, q.category)] : []),
+    ...(q.priority ? [eq(MR.priority, q.priority)] : []),
+    ...(q.assigneeUserId ? [eq(MR.assigneeUserId, q.assigneeUserId)] : []));
+  // The count reads `maintenance_requests` alone: every join in `baseQuery` is a left join on a
+  // unique id, so none of them can change how many rows the page is cut from.
+  const [rows, totalRows] = await Promise.all([
+    baseQuery(db).where(where).orderBy(desc(MR.createdAt), desc(MR.id)).limit(q.pageSize).offset((q.page - 1) * q.pageSize),
+    db.select({ total: count() }).from(MR).where(where),
+  ]);
+  return { rows: rows.map((r) => toRow(r)), total: Number(totalRows[0]?.total ?? 0) };
 }
 
-export async function requestPhotos(db: Db, ctx: TenantContext, requestId: string) {
+export async function requestPhotos(db: Db, ctx: TenantContext, requestId: string, opts: FeedScope = {}) {
   const rows = await db.select({
     documentId: MP.documentId, title: D.title, fileName: D.fileName, mime: D.mime, sizeBytes: D.sizeBytes,
     createdAt: MP.createdAt,
@@ -177,9 +203,10 @@ export async function requestPhotos(db: Db, ctx: TenantContext, requestId: strin
     contactFirst: uploaderContact.firstName, contactLast: uploaderContact.lastName,
   }).from(MP)
     .innerJoin(D, and(eq(D.id, MP.documentId), eq(D.tenantId, MP.tenantId)))
-    .leftJoin(uploaderUser, eq(uploaderUser.id, MP.uploadedByUserId))
+    .leftJoin(uploaderUser, and(eq(uploaderUser.id, MP.uploadedByUserId), eq(uploaderUser.tenantId, MP.tenantId)))
     .leftJoin(uploaderContact, and(eq(uploaderContact.id, MP.uploadedByContactId), eq(uploaderContact.tenantId, MP.tenantId)))
-    .where(and(eq(MP.tenantId, ctx.tenantId), eq(MP.maintenanceRequestId, requestId)))
+    .where(and(eq(MP.tenantId, ctx.tenantId), eq(MP.maintenanceRequestId, requestId),
+      visibleRequest(db, ctx, requestId, opts.reporterContactId)))
     .orderBy(asc(MP.createdAt), asc(MP.id));
   return rows.map((r) => ({
     documentId: r.documentId, title: r.title, fileName: r.fileName, mime: r.mime, sizeBytes: r.sizeBytes,
@@ -190,16 +217,17 @@ export async function requestPhotos(db: Db, ctx: TenantContext, requestId: strin
   }));
 }
 
-export async function requestEvents(db: Db, ctx: TenantContext, requestId: string, onlyOwnerVisible = false) {
+export async function requestEvents(db: Db, ctx: TenantContext, requestId: string, opts: FeedScope & { onlyOwnerVisible?: boolean } = {}) {
   const rows = await db.select({
     e: ME,
     userFirst: authorUser.firstName, userLast: authorUser.lastName,
     contactFirst: authorContact.firstName, contactLast: authorContact.lastName,
   }).from(ME)
-    .leftJoin(authorUser, eq(authorUser.id, ME.authorUserId))
+    .leftJoin(authorUser, and(eq(authorUser.id, ME.authorUserId), eq(authorUser.tenantId, ME.tenantId)))
     .leftJoin(authorContact, and(eq(authorContact.id, ME.authorContactId), eq(authorContact.tenantId, ME.tenantId)))
     .where(and(eq(ME.tenantId, ctx.tenantId), eq(ME.maintenanceRequestId, requestId),
-      ...(onlyOwnerVisible ? [eq(ME.visibility, 'owner')] : [])))
+      visibleRequest(db, ctx, requestId, opts.reporterContactId),
+      ...(opts.onlyOwnerVisible ? [eq(ME.visibility, 'owner')] : [])))
     .orderBy(asc(ME.createdAt), asc(ME.id));
   return rows.map((r) => ({
     id: r.e.id, kind: r.e.kind, fromStatus: r.e.fromStatus, toStatus: r.e.toStatus,
@@ -211,7 +239,8 @@ export async function requestEvents(db: Db, ctx: TenantContext, requestId: strin
 }
 
 export async function getRequest(db: Db, ctx: TenantContext, id: string) {
-  await getRequestRow(db, ctx, id); // 404 across tenants and outside a technician's queue
+  // One read: `baseQuery` carries the same tenant clause and the same technician scope as
+  // `getRequestRow`, so the 404 across tenants and outside a technician's queue is this `if`.
   const [row] = await baseQuery(db).where(and(eq(MR.tenantId, ctx.tenantId), eq(MR.id, id), ...scope(ctx))).limit(1);
   if (!row) throw notFound('Maintenance request');
   const [photos, events] = await Promise.all([requestPhotos(db, ctx, id), requestEvents(db, ctx, id)]);
