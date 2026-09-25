@@ -6,6 +6,7 @@ import { createTestApp } from './helpers.js';
 let t: Awaited<ReturnType<typeof createTestApp>>;
 let cookie: string;
 let readonlyCookie: string;
+let technicianCookie: string;
 let buildingId: string;
 
 beforeAll(async () => {
@@ -13,6 +14,7 @@ beforeAll(async () => {
   const reg = await registerTenant(t.app, 'acct-export');
   cookie = reg.cookie;
   readonlyCookie = (await createStaffUser(t.app, cookie, 'acct-export', { email: 'r@acct-export.mk', firstName: 'R', lastName: 'O', role: 'readonly' })).cookie;
+  technicianCookie = (await createStaffUser(t.app, cookie, 'acct-export', { email: 'tech@acct-export.mk', firstName: 'T', lastName: 'O', role: 'technician' })).cookie;
   const post = async (url: string, payload: unknown = {}) => {
     const res = await t.app.inject({ method: 'POST', url, headers: { cookie }, payload: payload as never });
     if (res.statusCode >= 300) throw new Error(`${url} → ${res.body}`);
@@ -58,7 +60,10 @@ describe('POST /api/accounting/export', () => {
     const body = res.json();
     expect(body.debitMinor).toBe(body.creditMinor);
     expect(body.entryCount).toBe(2);
-    expect(body.fileName).toBe('smetkovodstvo-2026-01-01-2027-01-01.zip');
+    // The building id is appended (fix round 1, item 2): otherwise this export and the tenant-wide
+    // one filed by 'GET /api/accounting/exports' below, of the same window, would file as two
+    // identically named zips with different contents.
+    expect(body.fileName).toBe(`smetkovodstvo-2026-01-01-2027-01-01-${buildingId}.zip`);
 
     const download = await t.app.inject({ method: 'GET', url: `/api/documents/${body.documentId}/download`, headers: { cookie } });
     expect(download.statusCode).toBe(200);
@@ -94,6 +99,45 @@ describe('POST /api/accounting/export', () => {
     expect(readme).toContain('Должи: 1.580,00');
     expect(readme).toContain('Побарува: 1.580,00');
     expect(readme).toContain('Корекции од претходни периоди: 0');
+    // The chart it used, slot by slot (controller ruling) — every mapped code and name appears.
+    expect(readme).toContain('owner_receivable: 1200 — Побарувања');
+    expect(readme).toContain('expense_default: 4000 — Трошоци');
+  });
+
+  it('GET /api/accounting/exports refuses a technician, who may not read a document either', async () => {
+    const res = await t.app.inject({ method: 'GET', url: '/api/accounting/exports', headers: { cookie: technicianCookie } });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('puts a late-booked prior-period posting in korekcii.csv, with its own README counts', async () => {
+    const res0 = await t.app.inject({
+      method: 'POST', url: `/api/buildings/${buildingId}/reserve-fund/expenses`, headers: { cookie },
+      payload: { fund: 'regular', description: 'Стар трошок', amountMinor: 1000, paidAt: '2024-01-01T00:00:00.000Z' },
+    });
+    expect(res0.statusCode, res0.body).toBe(201);
+
+    const res = await t.app.inject({ method: 'POST', url: '/api/accounting/export', headers: { cookie }, payload: { ...WINDOW, buildingId } });
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.adjustmentCount).toBe(1);
+
+    const download = await t.app.inject({ method: 'GET', url: `/api/documents/${body.documentId}/download`, headers: { cookie } });
+    const files = unzipSync(new Uint8Array(download.rawPayload));
+    expect(Object.keys(files).sort()).toEqual(['README.txt', 'bruto-bilans.csv', 'dnevnik.csv', 'korekcii.csv']);
+
+    const korekciiBytes = files['korekcii.csv']!;
+    expect([...korekciiBytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    const [header, ...lines] = strFromU8(korekciiBytes.subarray(3)).trim().split('\n');
+    expect(header).toBe('ставка;датум;период;конто;назив;должи;побарува;опис;зграда;партнер;извор;извор-ид;затворен-период');
+    // No period-close feature exists yet, so nothing this window covers is closed.
+    expect(lines.every((l) => l.endsWith(';не'))).toBe(true);
+    expect(lines.some((l) => l.split(';')[3] === '4000')).toBe(true);
+
+    const readme = strFromU8(files['README.txt']!);
+    // Still the two entries booked inside the window — the adjustment is not one of them (item 1).
+    expect(readme).toContain('Ставки: 2');
+    expect(readme).toContain('Корекции од претходни периоди: 1');
+    expect(readme).toContain('Редови на корекции: 2');
   });
 
   it('refuses while the chart is incomplete, naming every missing slot', async () => {

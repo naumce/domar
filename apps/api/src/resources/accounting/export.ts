@@ -1,8 +1,17 @@
 import { ACCOUNT_SLOTS, csvCell, type Chart, type Journal, type JournalEntry } from '@domar/domain';
 import { strToU8, zipSync } from 'fflate';
+import { dayIn } from '../common.js';
 
 /** Excel on a Macedonian Windows reads a `;` file as columns only when a BOM says it is UTF-8. */
 const BOM = '﻿';
+
+/**
+ * Fixed so the same journal produces byte-identical zips (spec's reproducibility requirement, fix
+ * round 1 item 3): `zipSync` stamps `Date.now()` into every entry's mod-time when none is given, which
+ * made two exports of the same window differ at the header bytes even though every byte of content
+ * was identical. The exact value is arbitrary; it only has to be constant and DOS-zip-valid (>= 1980).
+ */
+const FIXED_MTIME = new Date('2020-01-01T00:00:00Z');
 
 function csv(header: string[], rows: (string | number)[][]): string {
   const line = (xs: (string | number)[]) => xs.map((x) => csvCell(String(x))).join(';');
@@ -33,6 +42,9 @@ export interface AccountingExportMeta {
    * mysteriously different (controller ruling).
    */
   chart: Chart;
+  /** So `createdAt` prints as the civil day it was for the tenant, like every other date in the file
+   * (fix round 1, item 8) rather than a bare UTC instant. */
+  timeZone: string;
 }
 
 const JOURNAL_HEADER = ['ставка', 'датум', 'период', 'конто', 'назив', 'должи', 'побарува', 'опис', 'зграда', 'партнер', 'извор', 'извор-ид'];
@@ -50,6 +62,13 @@ function journalRows(entries: JournalEntry[]): (string | number)[][] {
  */
 export function buildAccountingExport(journal: Journal, meta: AccountingExportMeta): Buffer {
   const t = journal.totals;
+  // `t.entryCount`/`t.lineCount` are `buildJournal`'s combined count over entries *and* adjustments
+  // (journal.ts sums `[...entries, ...adjustments]`) — right for the trial balance's ВКУПНО row below,
+  // wrong for a headline count next to `dnevnik.csv`, which holds only `entries`. Counted separately
+  // so each printed number matches the rows of the file next to it (fix round 1, item 1).
+  const journalLineCount = journal.entries.reduce((s, e) => s + e.lines.length, 0);
+  const adjustmentLineCount = journal.adjustments.reduce((s, e) => s + e.lines.length, 0);
+  const day = dayIn(meta.timeZone);
   const files: Record<string, Uint8Array> = {
     'dnevnik.csv': strToU8(csv(JOURNAL_HEADER, journalRows(journal.entries))),
     'bruto-bilans.csv': strToU8(csv(
@@ -63,13 +82,16 @@ export function buildAccountingExport(journal: Journal, meta: AccountingExportMe
       `Организација: ${meta.tenantName}`,
       `Зграда: ${meta.buildingName ?? 'сите'}`,
       `Период: ${meta.from} — ${meta.to} (крајот не е вклучен)`,
-      `Изготвено: ${meta.createdAt.toISOString()}`,
-      `Ставки: ${t.entryCount}`,
-      `Редови: ${t.lineCount}`,
+      // A civil day in the tenant's own zone, like every other date in this file — not a bare UTC
+      // instant (fix round 1, item 8).
+      `Изготвено: ${day(meta.createdAt)}`,
+      `Ставки: ${journal.entries.length}`,
+      `Редови: ${journalLineCount}`,
       `Должи: ${money(t.debitMinor)}`,
       `Побарува: ${money(t.creditMinor)}`,
       `Разлика: ${money(t.debitMinor - t.creditMinor)}`,
       `Корекции од претходни периоди: ${journal.adjustments.length}`,
+      `Редови на корекции: ${adjustmentLineCount}`,
       `Затворени периоди во овој извоз: ${journal.closedPeriods.length ? journal.closedPeriods.join(', ') : 'нема'}`,
       '',
       // Slot by slot, so a chart that changed between two runs of the same window is visible here
@@ -91,5 +113,7 @@ export function buildAccountingExport(journal: Journal, meta: AccountingExportMe
       ])),
     ));
   }
-  return Buffer.from(zipSync(files, { level: 6 }));
+  // A fixed `mtime` (fix round 1, item 3): without it `zipSync` stamps `Date.now()` into every entry,
+  // so the same journal built twice produces two different zips and this export is not reproducible.
+  return Buffer.from(zipSync(files, { level: 6, mtime: FIXED_MTIME }));
 }

@@ -4,15 +4,17 @@ import { writeAudit } from '../../audit.js';
 import type { DocumentStore } from '../../documents/store.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { createDocumentFromBuffer } from '../documents/repo.js';
-import { requireChart } from './chart.js';
 import { buildJournalFor } from './data.js';
 import { buildAccountingExport } from './export.js';
 
 const AU = schema.auditLogs; const D = schema.documents;
 
+/** A listing this large would mean hundreds of exports filed against one tenant; item 7, fix round 1. */
+const EXPORTS_LIST_LIMIT = 200;
+
 export interface AccountingRuntime {
   documents: DocumentStore;
-  log: { warn(obj: unknown, msg: string): void };
+  log: { warn(obj: unknown, msg: string): void; error(obj: unknown, msg: string): void };
 }
 
 export interface AccountingExportInput {
@@ -28,22 +30,22 @@ export interface AccountingExportInput {
  */
 export async function exportAccounting(db: Db, ctx: TenantContext, input: AccountingExportInput, rt: AccountingRuntime) {
   return db.transaction(async (tx) => {
-    const { journal, buildingName, tenantName } = await buildJournalFor(tx, ctx, {
+    const { journal, buildingName, tenantName, chart, timeZone } = await buildJournalFor(tx, ctx, {
       from: input.from, to: input.to, ...(input.buildingId ? { buildingId: input.buildingId } : {}),
-    });
-    // Read again, in the same transaction, purely to print it: `buildJournalFor` already validated
-    // it and neither call sees a write in between, so this is the chart the derivation actually used.
-    const chart = await requireChart(tx, ctx);
+    }, rt.log);
     const createdAt = new Date();
-    const zip = buildAccountingExport(journal, { tenantName, buildingName, from: input.from, to: input.to, createdAt, chart });
-    const fileName = `smetkovodstvo-${input.from}-${input.to}.zip`;
+    const zip = buildAccountingExport(journal, { tenantName, buildingName, from: input.from, to: input.to, createdAt, chart, timeZone });
+    // The building id/name in both, so a tenant-wide and a per-building export of the same window
+    // never file as two identically named, identically titled zips with different contents (fix
+    // round 1, item 2) — `reports/service.ts` appends the id to its own file names the same way.
+    const fileName = `smetkovodstvo-${input.from}-${input.to}${input.buildingId ? `-${input.buildingId}` : ''}.zip`;
     const document = await createDocumentFromBuffer(tx, ctx, rt.documents, {
       // `other`, not `report`: the portal shows owners reports of their building, and a journal of
       // the whole organization is for the accountant, never for a resident. `buildingId` is `null`
       // for a tenant-wide export — the `documents` table exists for exactly that case (a document
       // with no building is never shown to the portal).
       buildingId: input.buildingId ?? null, kind: 'other',
-      title: `Сметководствен извоз ${input.from} — ${input.to}`,
+      title: `Сметководствен извоз ${input.from} — ${input.to}${buildingName ? ` — ${buildingName}` : ''}`,
       fileName, mime: 'application/zip', content: zip,
     });
     try {
@@ -87,24 +89,27 @@ export interface AccountingExportRow {
 }
 
 /**
- * Every zip this subsystem has filed, tenant-wide, newest first. There is no `buildingId` to page
- * `GET /api/buildings/:id/documents` by for a tenant-wide export (`buildingId: null`), so without
- * this the id `POST /export` hands back is the only way that document is ever reachable again
- * (controller ruling). The audit row `exportAccounting` writes in the same transaction as the
- * document is the source of truth here, joined back to the document row for its file name and size.
+ * Every zip this subsystem has filed, tenant-wide, newest first, up to `EXPORTS_LIST_LIMIT` (fix
+ * round 1, item 7: this was unbounded). There is no `buildingId` to page `GET
+ * /api/buildings/:id/documents` by for a tenant-wide export (`buildingId: null`), so without this the
+ * id `POST /export` hands back is the only way that document is ever reachable again (controller
+ * ruling). The audit row `exportAccounting` writes in the same transaction as the document is the
+ * source of truth here, `innerJoin`ed to the document row for its file name and size — a `leftJoin`
+ * would list a document someone deleted with an empty file name, which points at nothing (item 7).
  */
 export async function listAccountingExports(db: Db, ctx: TenantContext): Promise<{ rows: AccountingExportRow[] }> {
   const rows = await db.select({ a: AU, fileName: D.fileName, sizeBytes: D.sizeBytes })
     .from(AU)
-    .leftJoin(D, and(eq(D.id, AU.entityId), eq(D.tenantId, AU.tenantId)))
+    .innerJoin(D, and(eq(D.id, AU.entityId), eq(D.tenantId, AU.tenantId)))
     .where(and(eq(AU.tenantId, ctx.tenantId), eq(AU.action, 'accounting.export')))
-    .orderBy(desc(AU.createdAt));
+    .orderBy(desc(AU.createdAt))
+    .limit(EXPORTS_LIST_LIMIT);
   return {
     rows: rows.map((r) => {
       const after = (r.a.after ?? {}) as Record<string, unknown>;
       return {
         documentId: r.a.entityId ?? '',
-        fileName: r.fileName ?? '',
+        fileName: r.fileName,
         createdAt: r.a.createdAt,
         from: typeof after.from === 'string' ? after.from : '',
         to: typeof after.to === 'string' ? after.to : '',
@@ -113,7 +118,7 @@ export async function listAccountingExports(db: Db, ctx: TenantContext): Promise
         adjustmentCount: typeof after.adjustmentCount === 'number' ? after.adjustmentCount : 0,
         debitMinor: typeof after.debitMinor === 'number' ? after.debitMinor : 0,
         creditMinor: typeof after.creditMinor === 'number' ? after.creditMinor : 0,
-        sizeBytes: Number(r.sizeBytes ?? 0),
+        sizeBytes: Number(r.sizeBytes),
       };
     }),
   };

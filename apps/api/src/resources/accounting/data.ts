@@ -126,14 +126,27 @@ export async function collectJournalInput(db: Db, ctx: TenantContext, w: Account
 /**
  * The one entry point the preview, the export and the period close all share, so the three can never
  * disagree about what a month contains. A derivation failure is an API error the screen can read.
+ * Returns the chart it actually read (fix round 1, item 5): a caller that wants to print the chart —
+ * the README does — must print *this* one rather than reading it again outside the transaction, where
+ * a concurrent chart write could hand it a chart the journal never used. It also saves two redundant
+ * queries a second `requireChart`/`tenantPack` call would otherwise cost.
  */
-export async function buildJournalFor(db: Db, ctx: TenantContext, w: AccountingWindow): Promise<{ journal: Journal; buildingName: string | null; tenantName: string }> {
+export async function buildJournalFor(
+  db: Db, ctx: TenantContext, w: AccountingWindow, log: { error(obj: unknown, msg: string): void },
+): Promise<{ journal: Journal; buildingName: string | null; tenantName: string; chart: Chart; timeZone: string }> {
   const { chart, tenant, building } = await resolveWindow(db, ctx, w);
   const input = await collectFrom(db, ctx, w, chart, tenant);
   try {
-    return { journal: buildJournal(input), buildingName: building?.name ?? null, tenantName: tenant.name };
+    return { journal: buildJournal(input), buildingName: building?.name ?? null, tenantName: tenant.name, chart, timeZone: tenant.timezone };
   } catch (err) {
-    if (err instanceof JournalError) throw new AppError(409, err.code, err.message, err.details);
+    if (err instanceof JournalError) {
+      // `chart_incomplete` never reaches here — it's thrown earlier, before `buildJournal` runs, and
+      // it's a manager's problem (a slot they can map). These three codes mean the derivation's own
+      // double-entry invariant failed on data the app itself wrote; no UI action fixes that, so it's
+      // logged for an engineer to trace the posting. The client answer is unchanged: a 409.
+      log.error({ code: err.code, details: err.details }, err.message);
+      throw new AppError(409, err.code, err.message, err.details);
+    }
     throw err;
   }
 }

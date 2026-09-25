@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
 import { loadChart, putAccountCode } from './chart.js';
 import { buildJournalFor, type AccountingWindow } from './data.js';
+import { DOCUMENT_READ_ROLES } from '../documents/routes.js';
 import { exportAccounting, listAccountingExports } from './service.js';
 import {
   accountCodeListOut, accountCodeOut, accountCodePut, accountSlotParam,
@@ -33,13 +34,13 @@ export const accountCodeRoutes: FastifyPluginAsyncZod = async (app) => {
 const windowOf = (q: { from: string; to: string; buildingId?: string | undefined }): AccountingWindow =>
   ({ from: q.from, to: q.to, ...(q.buildingId ? { buildingId: q.buildingId } : {}) });
 
-/** Everything under `/api/accounting`. Reads are open to every role; writing is Tasks 5 and 6. */
+/** Everything under `/api/accounting`. `/preview` is open to every role; the rest, Tasks 5 and 6. */
 export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requireAuth);
 
   app.get('/preview', { schema: { querystring: accountingWindowQuery, response: { 200: accountingPreviewOut } } }, async (req) => {
     const w = windowOf(req.query);
-    const { journal, buildingName } = await buildJournalFor(req.db, req.ctx!, w);
+    const { journal, buildingName } = await buildJournalFor(req.db, req.ctx!, w, app.log);
     return {
       from: req.query.from, to: req.query.to, buildingName,
       trialBalance: journal.trialBalance, totals: journal.totals,
@@ -48,8 +49,12 @@ export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
     };
   });
 
-  // A read, open to every role like `/preview` above; filing the export itself is owner/accountant only.
-  app.get('/exports', { schema: { response: { 200: accountingExportListOut } } }, async (req) => listAccountingExports(req.db, req.ctx!));
+  // Same read gate as the documents it lists (fix round 1, item 6): a technician may not list or
+  // stream a document, and an accounting export is one, window and totals included.
+  app.get('/exports', {
+    preHandler: requireRole(...DOCUMENT_READ_ROLES),
+    schema: { response: { 200: accountingExportListOut } },
+  }, async (req) => listAccountingExports(req.db, req.ctx!));
 
   app.post('/export', {
     preHandler: requireRole(...WRITE_ROLES),

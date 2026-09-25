@@ -14,9 +14,10 @@ import { documentKindEnum, documentListOut, documentListQuery, documentOut, type
  * technician holding them could list and stream every document of the organization — including the
  * photos an owner uploaded through the portal onto a request that is not theirs. Their one door
  * onto a document is `GET /api/maintenance-requests/:id/photos/:documentId`, which goes through the
- * request's own technician scope (spec §10).
+ * request's own technician scope (spec §10). Exported for `accounting/routes.ts`'s `GET /exports`,
+ * which is the same tenant-wide, kind-agnostic document read and must be gated the same way.
  */
-const DOCUMENT_READ_ROLES: UserRole[] = ['owner', 'accountant', 'readonly'];
+export const DOCUMENT_READ_ROLES: UserRole[] = ['owner', 'accountant', 'readonly'];
 
 /** Multipart fields arrive before the file part; anything after it is invisible to busboy. */
 function fieldValue(fields: Record<string, unknown> | undefined, name: string): string | undefined {
