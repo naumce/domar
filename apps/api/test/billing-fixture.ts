@@ -67,3 +67,41 @@ export async function setupAssemblyBuilding(app: FastifyInstance, cookie: string
   }
   return { buildingId, owners };
 }
+
+export interface ReportBuilding extends PublishedBuilding {
+  /** The tenant's civil year, which is the year every figure this fixture sets up falls in. */
+  year: number;
+  paymentId: string;
+  supplierId: string;
+  expenses: { regularId: string; reserveId: string };
+}
+
+/**
+ * The billing-core building with the year's money actually moved: owner O1 pays their invoice in
+ * full, 500,00 den leaves the regular fund and 1.200,00 den leaves the reserve fund as works.
+ * Everything is stamped `now`, because publishing a period books its charges at the moment of
+ * publishing — dating the payments and the expenses to the same instant is what keeps the whole
+ * fixture inside one civil year whenever the suite runs.
+ */
+export async function setupReportBuilding(app: FastifyInstance, cookie: string): Promise<ReportBuilding> {
+  const h = { cookie };
+  const post = (url: string, payload: Record<string, unknown>) => app.inject({ method: 'POST', url, headers: h, payload });
+  const base = await setupPublishedBuilding(app, cookie);
+  // The tenant's zone, not the server's: a report window is civil, and the two differ for an hour
+  // either side of New Year in Skopje.
+  const year = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric' }).format(new Date()));
+  const now = Date.now();
+  const at = (msAgo: number) => new Date(now - msAgo).toISOString();
+  const supplierId = (await post('/api/suppliers', { name: 'Кровови ДООЕЛ' })).json().id;
+  const paymentId = (await post(`/api/invoices/${base.invoices.O1.id}/payments`, {
+    amountMinor: base.invoices.O1.totalMinor, method: 'bank_transfer', paidAt: at(3000), reference: 'ПЛ-1',
+  })).json().payment.id;
+  const regularId = (await post(`/api/buildings/${base.buildingId}/reserve-fund/expenses`, {
+    fund: 'regular', description: 'Струја за заедничките простории', supplierText: 'ЕВН Македонија',
+    amountMinor: 50_000, paidAt: at(2000),
+  })).json().id;
+  const reserveId = (await post(`/api/buildings/${base.buildingId}/reserve-fund/expenses`, {
+    fund: 'reserve', description: 'Санација на кровот', supplierId, amountMinor: 120_000, paidAt: at(1000),
+  })).json().id;
+  return { ...base, year, paymentId, supplierId, expenses: { regularId, reserveId } };
+}

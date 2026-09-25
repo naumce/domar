@@ -41,6 +41,7 @@ import { openingBalanceRoutes } from './resources/opening-balances/routes.js';
 import { buildingPaymentRoutes, invoicePaymentRoutes, paymentRoutes } from './resources/payments/routes.js';
 import { periodRoutes } from './resources/periods/routes.js';
 import { buildingReminderRoutes, jobRoutes, reminderRoutes } from './resources/reminders/routes.js';
+import { reportRoutes } from './resources/reports/routes.js';
 import { reserveFundRoutes } from './resources/reserve-fund/routes.js';
 import { serviceRoutes } from './resources/services/routes.js';
 import { buildingStatementRoutes, statementLineRoutes, statementRoutes } from './resources/statements/routes.js';
@@ -159,6 +160,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(assemblyInvitationRoutes, { prefix: '/assembly-invitations' });
     await api.register(buildingComplianceRoutes, { prefix: '/buildings/:buildingId/compliance' });
     await api.register(complianceRoutes, { prefix: '/compliance' });
+    await api.register(reportRoutes, { prefix: '/buildings/:buildingId/reports' });
     await api.register(buildingDocumentRoutes, { prefix: '/buildings/:buildingId/documents' });
     await api.register(documentRoutes, { prefix: '/documents' });
     await api.register(supplierRoutes, { prefix: '/suppliers' });
