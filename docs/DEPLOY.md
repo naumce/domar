@@ -104,15 +104,18 @@ the portal). Sending them is a second job, on the same shared token:
     */5 * * * * cd /srv/domar && . ./.env && curl -fsS -m 120 -X POST -H "x-job-token: $JOB_TOKEN" "https://$DOMAIN/api/jobs/notifications" >> /var/log/domar-notifications.log 2>&1
 
 Every five minutes, because a notification is worth little an hour late. The job claims the
-undelivered rows in chunks of 25 under `for update skip locked`, stamping each chunk's `delivered_at`
-before it sends that chunk, so two overlapping runs split the queue and a crash costs at most one
-chunk — never the whole queue, and never a double send. The job also carries its own 60-second
-wall-clock budget, checked between chunks: it stops cleanly and returns what it did rather than
-running past the cron tick, which is what keeps `-m 120` above meaningful. Like the reminder job's
-`-m 300`, `-m 120` only gives up on *waiting for the response* — the run itself continues
-server-side, so a timed-out line in the log is not a reason to fire the job again; it is simply below
-the drain's own budget with margin for a slow network hop. The answer counts what happened:
-`{"claimed","pushed","emailed","failed"}`. It answers `401` without the header, `403` with the wrong
+undelivered rows in chunks of 10 under `for update skip locked`, stamping each chunk's `delivered_at`
+before it sends that chunk, so two overlapping runs split the queue and a crash costs at most those
+ten rows — never the whole queue, and never a double send. The ten are delivered concurrently, and
+one row's fan-out to all the browsers behind it is bounded at 15 seconds (at most ten registered
+browsers per owner account, the least recently seen evicted beyond that), so a chunk of dead
+endpoints costs roughly one such bound rather than one 10-second push timeout per row. The job also
+carries its own 60-second wall-clock budget, checked between chunks: it stops cleanly and returns
+what it did rather than running past the cron tick. `-m 120` is exactly twice that budget, which is
+the margin a healthy run answers inside. Like the reminder job's `-m 300`, `-m 120` only gives up on
+*waiting for the response* — the run itself continues server-side, so a timed-out line in the log is
+not a reason to fire the job again; it is the client's ceiling, not the drain's. The answer counts
+what happened: `{"claimed","pushed","emailed","failed"}`. It answers `401` without the header, `403` with the wrong
 token and `503` when `JOB_TOKEN` is unset — the same three answers as the reminder job.
 
 Web Push needs a VAPID key pair. Generate one once, put both halves in `.env`, and never rotate them
