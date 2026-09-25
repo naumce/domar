@@ -1,4 +1,5 @@
 import { schema } from '@domar/db';
+import { civilDayStart } from '@domar/domain';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupPublishedBuilding } from './billing-fixture.js';
@@ -76,6 +77,25 @@ describe('notification triggers', () => {
     const opened = (await ownerRows()).filter((r) => r.kind === 'assembly_voting_opened');
     expect(opened).toHaveLength(1);
     expect(opened[0]!.body).toContain('Нов пристапен систем');
+  });
+
+  it('announces the assembly date in the tenant’s zone, not in UTC', async () => {
+    // Fix round 1, item 2: `scheduledAt.toISOString().slice(0, 10)` reads the UTC calendar day, which
+    // is the day *before* the tenant's local day whenever the local time is early enough (Skopje is
+    // always at least an hour ahead of UTC). 00:30 local time is exactly that case.
+    const timeZone = 'Europe/Skopje'; // tenants.timezone's default, and registerTenant never overrides it
+    const rough = new Date(Date.now() + 40 * 24 * 3600 * 1000);
+    const localDate = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(rough);
+    const scheduledAt = new Date(civilDayStart(localDate, timeZone).getTime() + 30 * 60 * 1000).toISOString();
+    // Sanity check on the fixture itself: this instant must actually straddle midnight in UTC, or the
+    // test would pass without ever exercising the bug.
+    expect(scheduledAt.slice(0, 10)).not.toBe(localDate);
+
+    const assembly = (await post(`/api/buildings/${A.buildingId}/assemblies`, { scheduledAt, location: 'Влез В', quorumBasis: 'count' })).json();
+    expect((await post(`/api/assemblies/${assembly.id}/invite`)).statusCode).toBe(200);
+    const invited = (await ownerRows()).filter((r) => r.kind === 'assembly_invited' && r.link === `/portal/assemblies/${assembly.id}`);
+    expect(invited).toHaveLength(1);
+    expect(invited[0]!.body).toContain(localDate);
   });
 
   it('a decision added to a draft assembly notifies nobody', async () => {

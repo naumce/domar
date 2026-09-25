@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { type Db, schema } from '@domar/db';
-import { type CountryCode, detectStatementParser, getCountryPack, type MatchCandidate, matchStatementLines, type ParsedStatementLine } from '@domar/domain';
+import { detectStatementParser, getCountryPack, type MatchCandidate, matchStatementLines, type ParsedStatementLine } from '@domar/domain';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { badRequest, conflict, notFound } from '../../errors.js';
@@ -86,7 +86,7 @@ export async function importStatement(db: Db, ctx: TenantContext, buildingId: st
   return db.transaction(async (tx) => {
     await getBuilding(tx, ctx, buildingId);
     const tenant = await tx.query.tenants.findFirst({ where: eq(schema.tenants.id, ctx.tenantId), columns: { countryCode: true } });
-    const pack = getCountryPack(tenant!.countryCode as CountryCode);
+    const pack = getCountryPack(tenant!.countryCode);
     const parser = detectStatementParser(input.content, pack);
     if (!parser) throw badRequest('unknown_format', 'Statement format not recognised (MT940 or CSV with date/amount columns)');
     const parsed = parser.parse(input.content, pack.parseAmountToMinor);

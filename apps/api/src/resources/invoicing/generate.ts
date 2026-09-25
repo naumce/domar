@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { calculatePeriod, type CalcInput, type CalcLine, type CountryCode, getCountryPack, type UnitKind } from '@domar/domain';
+import { calculatePeriod, type CalcInput, type CalcLine, getCountryPack, type UnitKind } from '@domar/domain';
 import { and, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { fundBalance, ownerBalances } from '../../ledger.js';
@@ -13,7 +13,7 @@ const INV = schema.invoices; const IL = schema.invoiceLines;
 export async function buildCalcInput(db: Db, ctx: TenantContext, buildingId: string, periodId: string): Promise<CalcInput> {
   const building = await getBuilding(db, ctx, buildingId);
   const tenant = await db.query.tenants.findFirst({ where: eq(schema.tenants.id, ctx.tenantId), columns: { countryCode: true } });
-  const pack = getCountryPack(tenant!.countryCode as CountryCode);
+  const pack = getCountryPack(tenant!.countryCode);
   const period = await getPeriod(db, ctx, buildingId, periodId);
   const units = await db.query.units.findMany({ where: and(eq(schema.units.tenantId, ctx.tenantId), eq(schema.units.buildingId, buildingId)), orderBy: (u, { asc }) => [asc(u.floor), asc(u.label)] });
   const lines: CalcLine[] = period.lines.map((l) => ({

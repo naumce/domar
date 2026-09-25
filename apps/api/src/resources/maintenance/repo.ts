@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { MAINTENANCE_STATUSES, can, canTransition, getCountryPack, isTerminal, type CountryCode, type MaintenanceCapability, type MaintenanceRole, type MaintenanceStatus } from '@domar/domain';
+import { MAINTENANCE_STATUSES, can, canTransition, getCountryPack, isTerminal, type MaintenanceCapability, type MaintenanceRole, type MaintenanceStatus } from '@domar/domain';
 import { and, asc, count, desc, eq, exists, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { writeAudit } from '../../audit.js';
@@ -297,7 +297,7 @@ export async function setStatus(db: Db, ctx: TenantContext, id: string, input: M
       // Spec §11: the money reaches the ledger through the existing expense flow and no other way.
       // Inside this transaction, so a refused supplier rolls the close back with it (addendum 5).
       const building = await getBuilding(tx, ctx, before.buildingId);
-      const pack = getCountryPack(building.countryCode as CountryCode);
+      const pack = getCountryPack(building.countryCode);
       const label = pack.maintenanceCategories.find((c) => c.key === before.category)?.label ?? before.category;
       costNote = `${pack.labels.maintenanceExpense}: ${label} — ${before.title}`.slice(0, 500);
       const expense = await createExpense(tx, ctx, before.buildingId, {

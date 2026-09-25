@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { type CountryCode, evaluateOwner, getCountryPack } from '@domar/domain';
+import { evaluateOwner, getCountryPack } from '@domar/domain';
 import { and, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { logEmail } from '../../email/log.js';
@@ -24,11 +24,10 @@ export interface ReminderRuntime {
   log: { warn(obj: unknown, msg: string): void };
 }
 
-/** The tenant row and its country pack. `tenants.country_code` is a plain varchar, so an unsupported value arrives here as undefined. */
+/** The tenant row and its country pack. `getCountryPack` itself throws on an unsupported code. */
 async function tenantPack(db: Db, ctx: TenantContext) {
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  const pack = getCountryPack(tenant.countryCode as CountryCode) as Pack | undefined;
-  if (!pack) throw new Error(`unknown country pack: ${tenant.countryCode}`);
+  const pack = getCountryPack(tenant.countryCode);
   return { tenant, pack };
 }
 

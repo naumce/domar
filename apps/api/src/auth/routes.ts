@@ -1,5 +1,5 @@
 import { schema } from '@domar/db';
-import { getCountryPack, type CountryCode } from '@domar/domain';
+import { getCountryPack } from '@domar/domain';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -29,7 +29,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       response: { 201: meResponse },
     },
   }, async (req, reply) => {
-    const pack = getCountryPack(req.body.tenant.countryCode as CountryCode);
+    const pack = getCountryPack(req.body.tenant.countryCode);
     const email = req.body.user.email.toLowerCase();
     const passwordHash = await hashPassword(req.body.user.password);
     const result = await req.db.transaction(async (tx) => {

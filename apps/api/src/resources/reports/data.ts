@@ -1,7 +1,7 @@
 import { type Db, schema } from '@domar/db';
 import {
   asOfWindow, buildAnnualReport, buildHandoverReport, civilDayStart, getCountryPack, localDayStart, yearWindow,
-  type AnnualReportInput, type CountryCode, type CountryPack, type FundMovementIn, type HandoverReportData,
+  type AnnualReportInput, type CountryPack, type FundMovementIn, type HandoverReportData,
   type OpenItem, type ReportAssembly, type ReportExpense, type ReportFund, type ReportOwner, type ReportPostingKind,
 } from '@domar/domain';
 import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
@@ -24,8 +24,7 @@ export type TenantRow = typeof T.$inferSelect;
  */
 export async function tenantPack(db: Db, ctx: TenantContext) {
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  const pack = getCountryPack(tenant.countryCode as CountryCode);
-  if (!pack) throw new Error(`unknown country pack: ${tenant.countryCode}`);
+  const pack = getCountryPack(tenant.countryCode);
   return { tenant, pack };
 }
 

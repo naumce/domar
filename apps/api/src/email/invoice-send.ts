@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { getCountryPack, type CountryCode } from '@domar/domain';
+import { getCountryPack } from '@domar/domain';
 import { and, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../audit.js';
 import { conflict } from '../errors.js';
@@ -22,7 +22,7 @@ export async function sendInvoiceEmail(db: Db, ctx: TenantContext, invoiceId: st
   if (!to) throw conflict('no_email', 'This owner has no email address');
 
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  const pack = getCountryPack(tenant.countryCode as CountryCode);
+  const pack = getCountryPack(tenant.countryCode);
   const html = renderInvoiceHtml({ invoice, tenant, formatMoney: pack.formatMoney, locale: 'mk' });
   const name = (invoice.number ?? `draft-${invoice.id}`).replace(/[^A-Za-z0-9_.-]/g, '_');
   const subject = `Фактура ${invoice.number ?? invoice.id} — ${invoice.building.name}`;

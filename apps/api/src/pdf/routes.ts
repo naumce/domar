@@ -1,4 +1,4 @@
-import { getCountryPack, type CountryCode } from '@domar/domain';
+import { getCountryPack } from '@domar/domain';
 import { schema, type Db } from '@domar/db';
 import { eq } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -14,7 +14,7 @@ export const pdfRoutes: FastifyPluginAsyncZod = async (app) => {
   const render = async (db: Db, ctx: TenantContext, id: string) => {
     const invoice = await getInvoice(db, ctx, id);
     const tenant = (await db.query.tenants.findFirst({ where: eq(schema.tenants.id, ctx.tenantId) }))!;
-    const pack = getCountryPack(tenant.countryCode as CountryCode);
+    const pack = getCountryPack(tenant.countryCode);
     return { html: renderInvoiceHtml({ invoice, tenant, formatMoney: pack.formatMoney, locale: 'mk' }), invoice };
   };
   app.get('/:id/html', { schema: { params: idParam } }, async (req, reply) => {

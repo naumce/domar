@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type Db, schema } from '@domar/db';
-import { type AssemblyOwner, type CountryCode, getCountryPack, shareWeightBp } from '@domar/domain';
+import { type AssemblyOwner, getCountryPack, shareWeightBp } from '@domar/domain';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { badRequest, conflict, notFound } from '../../errors.js';
@@ -21,11 +21,10 @@ export type QuorumBasisValue = (typeof schema.quorumBasis.enumValues)[number];
 /** The rendered documents and the tenant id never go on the wire; everything else does. */
 export const publicAssembly = ({ tenantId: _tenantId, invitationHtml: _invitationHtml, minutesHtml: _minutesHtml, createdBy: _createdBy, ...rest }: AssemblyRow) => rest;
 
-/** The tenant row and its country pack. `tenants.country_code` is a plain varchar, so an unsupported value arrives here as undefined. */
+/** The tenant row and its country pack. `getCountryPack` itself throws on an unsupported code. */
 export async function tenantPack(db: Db, ctx: TenantContext) {
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  const pack = getCountryPack(tenant.countryCode as CountryCode);
-  if (!pack) throw new Error(`unknown country pack: ${tenant.countryCode}`);
+  const pack = getCountryPack(tenant.countryCode);
   return { tenant, pack };
 }
 

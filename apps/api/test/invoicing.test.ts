@@ -1,3 +1,5 @@
+import { schema } from '@domar/db';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
@@ -261,5 +263,48 @@ describe('concurrent publish and draft deletion', () => {
       expect(charges).toHaveLength(0);
     }
     expect(period.status).not.toBe('generated');
+  });
+});
+
+describe('publish with an upper-case building country code', () => {
+  let t: Awaited<ReturnType<typeof createTestApp>>;
+  afterAll(async () => { await t.close(); });
+
+  // Fix round 1, item 1: `getCountryPack` used to return `undefined` for anything but lowercase
+  // `mk`, so a building whose `countryCode` was stored as `MK` published fine right up until the
+  // publish transaction tried to format the notification amount, and 500'd there instead. The pack
+  // lookup itself is now total and case-insensitive; this reproduces the exact building shape the
+  // review found and checks both that publish still returns 200 and that the owner's notification
+  // still carries a properly formatted amount — not a try/catch that would have swallowed the write.
+  it('publishes 200 and the owner still gets a notification with a formatted amount', async () => {
+    t = await createTestApp();
+    const a = await registerTenant(t.app, 'firma-mk-upper');
+    const h = { cookie: a.cookie };
+    const post = (url: string, payload: Record<string, unknown>) => t.app.inject({ method: 'POST', url, headers: h, payload });
+
+    const ownerContactId = (await post('/api/contacts', { firstName: 'Тест', lastName: 'Голем' })).json().id;
+    const buildingId = (await post('/api/buildings', { name: 'Голема зграда', shareBasis: 'equal', countryCode: 'MK' })).json().id;
+    await post(`/api/buildings/${buildingId}/units`, { label: '1', kind: 'apartment', areaM2: 50, ownerContactId });
+    const svc = (await post('/api/services', { name: 'Услуга', pricing: 'fixed_per_unit', defaultPriceMinor: 10000 })).json().id;
+    await post(`/api/buildings/${buildingId}/services`, { serviceId: svc, startsPeriod: '2026-01' });
+
+    const code = (await post(`/api/contacts/${ownerContactId}/portal-invite`, {})).json().code;
+    const reg = await t.app.inject({ method: 'POST', url: '/api/portal/register', payload: { code, email: 'golem@mk-upper.mk', password: 'correct-horse-1' } });
+    expect(reg.statusCode).toBe(201);
+    const accountId = reg.json().account.id;
+
+    const period = (await post(`/api/buildings/${buildingId}/periods`, { period: '2026-01' })).json();
+    expect((await post(`/api/buildings/${buildingId}/periods/${period.id}/generate`, {})).statusCode).toBe(200);
+    const pub = await post(`/api/buildings/${buildingId}/periods/${period.id}/publish`, {});
+    expect(pub.statusCode, pub.body).toBe(200);
+
+    const rows = await t.db.select().from(schema.notifications).where(and(
+      eq(schema.notifications.tenantId, a.tenantId),
+      eq(schema.notifications.ownerAccountId, accountId),
+      eq(schema.notifications.kind, 'invoice_published'),
+    ));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.title).not.toMatch(/ден\./);
+    expect(rows[0]!.body).toMatch(/ден\./);
   });
 });

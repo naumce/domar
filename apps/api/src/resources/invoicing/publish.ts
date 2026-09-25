@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { type CountryCode, getCountryPack, mulMinor } from '@domar/domain';
+import { getCountryPack, mulMinor } from '@domar/domain';
 import { and, asc, eq } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
 import { conflict, isUniqueViolation } from '../../errors.js';
@@ -93,7 +93,7 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
     // Spec §9: one notification per linked owner account, inside the publishing transaction, so an
     // invoice that is rolled back never announced itself. The amount stays out of `title`.
     const building = await getBuilding(tx, ctx, buildingId);
-    const pack = getCountryPack(building.countryCode as CountryCode);
+    const pack = getCountryPack(building.countryCode);
     await notifyOwners(tx, ctx, drafts.map(({ inv }) => ({
       contactId: inv.contactId,
       input: {

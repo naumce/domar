@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { getCountryPack, type CountryCode } from '@domar/domain';
+import { getCountryPack } from '@domar/domain';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -18,7 +18,7 @@ export async function ownerStatement(db: Db, ctx: TenantContext, contactId: stri
     building = b;
   }
   const tenant = await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId), columns: { countryCode: true } });
-  const pack = getCountryPack(tenant!.countryCode as CountryCode);
+  const pack = getCountryPack(tenant!.countryCode);
 
   const conds = [eq(P.tenantId, ctx.tenantId), eq(P.account, 'owner'), eq(P.contactId, contactId)];
   if (buildingId) conds.push(eq(P.buildingId, buildingId));

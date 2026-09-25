@@ -1,6 +1,6 @@
 import { type Db, schema } from '@domar/db';
 import {
-  type ComplianceSnapshot, type CountryCode, evaluateBuildingCompliance, evaluateOwner,
+  type ComplianceSnapshot, evaluateBuildingCompliance, evaluateOwner,
   getCountryPack, localDayStart,
 } from '@domar/domain';
 import { and, asc, count, countDistinct, desc, eq, inArray, isNotNull, max } from 'drizzle-orm';
@@ -20,8 +20,7 @@ const PRIOR_WINDOW_MS = 31 * 24 * 3600 * 1000;
 
 async function tenantPack(db: Db, ctx: TenantContext) {
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  const pack = getCountryPack(tenant.countryCode as CountryCode);
-  if (!pack) throw new Error(`unknown country pack: ${tenant.countryCode}`);
+  const pack = getCountryPack(tenant.countryCode);
   return { tenant, pack };
 }
 

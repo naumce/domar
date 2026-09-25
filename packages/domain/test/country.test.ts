@@ -6,6 +6,14 @@ describe('mk country pack', () => {
   it('is returned by getCountryPack', () => {
     expect(getCountryPack('mk')).toBe(mkPack);
   });
+  it('getCountryPack is case-insensitive, and throws by name on a code with no pack', () => {
+    // A database column is a plain varchar with no enum behind it (`buildings.country_code`,
+    // `tenants.country_code`), so a differently-cased value reaching here is routine, not exotic —
+    // it must resolve to the same pack, never to `undefined` for a caller to dereference.
+    expect(getCountryPack('MK')).toBe(mkPack);
+    expect(getCountryPack('Mk')).toBe(mkPack);
+    expect(() => getCountryPack('xx')).toThrow(/unknown country pack: xx/);
+  });
   it('has MKD currency and mk-MK locale', () => {
     expect(mkPack.currency).toBe('MKD');
     expect(mkPack.locale).toBe('mk-MK');

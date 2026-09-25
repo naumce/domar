@@ -35,6 +35,15 @@ export interface AssemblyRuntime {
 const civilDaysUntil = (from: Date, to: Date, timeZone: string) =>
   Math.round((localDayStart(to, timeZone).getTime() - localDayStart(from, timeZone).getTime()) / DAY_MS);
 
+/**
+ * `YYYY-MM-DD` as observed in the tenant's zone — the same expression `formatPeriod` uses in
+ * `resources/extraordinary/service.ts`. `scheduledAt.toISOString()` would read the UTC calendar day,
+ * which is the wrong day whenever the local time is late enough (or early enough) to fall on the
+ * other side of midnight from UTC.
+ */
+const localDateOnly = (instant: Date, timeZone: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(instant);
+
 interface InvitationTextInput {
   buildingName: string;
   scheduledAt: Date;
@@ -124,7 +133,7 @@ export async function inviteAssembly(db: Db, ctx: TenantContext, id: string, inp
       contactId: i.contactId,
       input: {
         kind: 'assembly_invited' as const, buildingName: building.name,
-        scheduledOn: claimed.scheduledAt.toISOString().slice(0, 10), assemblyId: id,
+        scheduledOn: localDateOnly(claimed.scheduledAt, tenant.timezone), assemblyId: id,
       },
     })));
     await writeAudit(tx, ctx, {

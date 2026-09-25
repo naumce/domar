@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { getCountryPack, type CountryCode } from '@domar/domain';
+import { getCountryPack } from '@domar/domain';
 import { and, desc, eq, gte, inArray } from 'drizzle-orm';
 import { notFound } from '../errors.js';
 import { billedToOwners, fundBalance } from '../ledger.js';
@@ -66,7 +66,7 @@ export async function portalInvoiceHtml(db: Db, portal: PortalContext, contactId
   const { ctx, contactId } = resolveLink(portal, contactIdParam);
   const invoice = await visibleInvoice(db, ctx, contactId, id);
   const tenant = (await db.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId) }))!;
-  const pack = getCountryPack(tenant.countryCode as CountryCode);
+  const pack = getCountryPack(tenant.countryCode);
   return { html: renderInvoiceHtml({ invoice, tenant, formatMoney: pack.formatMoney, locale: 'mk' }), invoice };
 }
 
