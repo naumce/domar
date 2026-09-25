@@ -23,18 +23,23 @@ vi.mock('playwright-core', () => {
 
 import { schema } from '@domar/db';
 import { hashPassword } from '../src/auth/password.js';
+import { fundBalance } from '../src/ledger.js';
 import { setupReportBuilding } from './billing-fixture.js';
 import { registerTenant } from './fixtures.js';
 import { createTestApp } from './helpers.js';
 
 interface Fields { [k: string]: string | number }
-interface FundSummary { fund: string; openingMinor: number; inflowMinor: number; outflowMinor: number; closingMinor: number }
+interface FundSummary {
+  fund: 'regular' | 'reserve';
+  openingMinor: number; inflowMinor: number; outflowMinor: number;
+  netInflowMinor: number; netOutflowMinor: number; closingMinor: number;
+}
 interface AnnualData {
   fields: Fields; funds: FundSummary[];
   expensesBySupplier: { supplier: string; count: number; amountMinor: number }[];
   works: { id: string; amountMinor: number }[];
   debtors: { contactId: string; balanceMinor: number }[];
-  owners: { contactId: string; billedMinor: number; collectedMinor: number; balanceMinor: number }[];
+  owners: { contactId: string; unitLabels: string[]; current: boolean; billedMinor: number; collectedMinor: number; balanceMinor: number }[];
 }
 
 describe('annual report (Art. 31)', () => {
@@ -213,5 +218,101 @@ describe('annual report (Art. 31)', () => {
     const after = (await get(`/api/buildings/${R.buildingId}/reports`)).json();
     expect(after.rows).toHaveLength(before.rows.length);
     expect(after.documents).toHaveLength(before.documents.length);
+  });
+
+  // Everything below moves the fixture's money, so it runs after the cases that read it untouched.
+
+  it('reconciles with the ledger itself, before and after a void', async () => {
+    const ctx = { tenantId: a.tenantId, userId: a.userId, role: 'owner' as const };
+    const reconcile = async (): Promise<AnnualData> => {
+      const d = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year}`)).json() as AnnualData;
+      for (const f of d.funds) {
+        expect(await fundBalance(t.db, ctx, R.buildingId, f.fund), f.fund).toBe(f.closingMinor);
+        expect(f.openingMinor + f.inflowMinor - f.outflowMinor, `gross ${f.fund}`).toBe(f.closingMinor);
+        expect(f.openingMinor + f.netInflowMinor - f.netOutflowMinor, `net ${f.fund}`).toBe(f.closingMinor);
+        expect(f.netInflowMinor, `net in ${f.fund}`).toBeGreaterThanOrEqual(0);
+        expect(f.netOutflowMinor, `net out ${f.fund}`).toBeGreaterThanOrEqual(0);
+      }
+      // The reserve fund screen and the report read the same cash.
+      expect((await get(`/api/buildings/${R.buildingId}/reserve-fund`)).json().balanceMinor)
+        .toBe(d.funds.find((f) => f.fund === 'reserve')!.closingMinor);
+      for (const o of d.owners) {
+        const statement = (await get(`/api/contacts/${o.contactId}/statement?buildingId=${R.buildingId}`)).json();
+        expect(statement.balanceMinor, o.contactId).toBe(o.balanceMinor);
+      }
+      return d;
+    };
+
+    await reconcile();
+    expect((await post(`/api/buildings/${R.buildingId}/reserve-fund/expenses/${R.expenses.regularId}/void`, { reason: 'погрешен износ' })).statusCode).toBe(200);
+    expect((await post(`/api/payments/${R.paymentId}/void`, { reason: 'вратена уплата' })).statusCode).toBe(200);
+    const after = await reconcile();
+
+    // The void is not spending and the voided payment is not income, on either side of the ledger.
+    expect(after.fields.expensesMinor).toBe(120_000);
+    expect(after.fields.collectedMinor).toBe(0);
+    expect(after.fields.billedMinor).toBe(billedMinor);
+    expect(after.fields.debtorsCount).toBe(3);
+    expect(after.owners.find((o) => o.contactId === R.owners.O1)!.balanceMinor).toBe(R.invoices.O1.totalMinor);
+    expect(after.funds.find((f) => f.fund === 'regular')).toMatchObject({ netInflowMinor: 0, netOutflowMinor: 0, closingMinor: 0 });
+    expect(after.funds.find((f) => f.fund === 'reserve')!.netOutflowMinor).toBe(120_000);
+  });
+
+  it('leaves an expense in the year it was paid when the void comes a year later', async () => {
+    const id = (await post(`/api/buildings/${R.buildingId}/reserve-fund/expenses`, {
+      fund: 'regular', description: 'Ланска поправка', supplierText: 'Мајстор', amountMinor: 90_000,
+      paidAt: `${R.year - 1}-06-15T10:00:00.000Z`,
+    })).json().id;
+    expect((await post(`/api/buildings/${R.buildingId}/reserve-fund/expenses/${id}/void`, { reason: 'двојно внесен' })).statusCode).toBe(200);
+
+    // Last year's report is the one already handed to the owners: the money was spent that year.
+    const prev = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year - 1}`)).json() as AnnualData;
+    expect(prev.fields.expensesMinor).toBe(90_000);
+    expect(prev.works).toHaveLength(0);
+
+    // This year books only the reversal, and it offsets nothing this year did not itself spend.
+    const ctx = { tenantId: a.tenantId, userId: a.userId, role: 'owner' as const };
+    const cur = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year}`)).json() as AnnualData;
+    expect(cur.fields.expensesMinor).toBe(120_000);
+    for (const f of cur.funds) {
+      expect(f.netInflowMinor, `net in ${f.fund}`).toBeGreaterThanOrEqual(0);
+      expect(f.netOutflowMinor, `net out ${f.fund}`).toBeGreaterThanOrEqual(0);
+      expect(f.openingMinor + f.netInflowMinor - f.netOutflowMinor, `net ${f.fund}`).toBe(f.closingMinor);
+      expect(await fundBalance(t.db, ctx, R.buildingId, f.fund), f.fund).toBe(f.closingMinor);
+    }
+    expect(cur.funds.find((f) => f.fund === 'regular')!.netOutflowMinor).toBe(0);
+  });
+
+  it('keeps an owner who sold during the year, with no units and their debt intact', async () => {
+    const buyer = (await post('/api/contacts', { firstName: 'Нов', lastName: 'Купувач' })).json().id;
+    const units = (await get(`/api/buildings/${R.buildingId}/units`)).json().rows as { id: string; ownerContactId: string | null }[];
+    const sold = units.find((u) => u.ownerContactId === R.owners.O2)!;
+    const patch = await t.app.inject({
+      method: 'PATCH', url: `/api/buildings/${R.buildingId}/units/${sold.id}`,
+      headers: { cookie: a.cookie }, payload: { ownerContactId: buyer },
+    });
+    expect(patch.statusCode).toBe(200);
+
+    const d = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year}`)).json() as AnnualData;
+    expect(d.fields.ownerCount).toBe(4);
+    const former = d.owners.find((o) => o.contactId === R.owners.O2)!;
+    expect(former).toMatchObject({ current: false, unitLabels: [] });
+    expect(former.billedMinor).toBe(R.invoices.O2.totalMinor);
+    expect(former.balanceMinor).toBe(R.invoices.O2.totalMinor);
+    expect(d.owners.find((o) => o.contactId === buyer)).toMatchObject({ current: true, billedMinor: 0, balanceMinor: 0 });
+    // The debt did not leave the building with the seller.
+    expect(d.debtors.map((x) => x.contactId)).toContain(R.owners.O2);
+    expect(d.fields.totalDebtMinor).toBe(billedMinor);
+  });
+
+  it('refuses a year that has not begun in the tenant zone', async () => {
+    const next = R.year + 1;
+    const preview = await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${next}`);
+    expect(preview.statusCode).toBe(400);
+    expect(preview.json().error.code).toBe('year_in_the_future');
+    const issued = await post(`/api/buildings/${R.buildingId}/reports/annual`, { year: next });
+    expect(issued.statusCode).toBe(400);
+    expect(issued.json().error.code).toBe('year_in_the_future');
+    expect((await get(`/api/buildings/${R.buildingId}/reports`)).json().rows).toHaveLength(2);
   });
 });

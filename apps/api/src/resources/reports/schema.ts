@@ -25,6 +25,8 @@ export const reportExpenseOut = z.object({
 });
 export const reportOwnerOut = z.object({
   contactId: z.string(), name: z.string(), unitLabels: z.array(z.string()),
+  /** False for somebody who owned during the window but owns nothing in the building at its end. */
+  current: z.boolean(),
   billedMinor: z.number().int(), collectedMinor: z.number().int(), balanceMinor: z.number().int(),
 });
 export const debtorOut = z.object({ contactId: z.string(), name: z.string(), unitLabels: z.array(z.string()), balanceMinor: z.number().int() });

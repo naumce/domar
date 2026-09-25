@@ -30,9 +30,9 @@ const annualInput = (): AnnualReportInput => ({
   ],
   // Deliberately out of order: the builder sorts, the caller does not have to.
   owners: [
-    { contactId: 'c-3', name: 'Вера Велкова', unitLabels: ['3', 'P-1'], billedMinor: 240_000, collectedMinor: 60_000, balanceMinor: 180_000 },
-    { contactId: 'c-1', name: 'Ана Анастасова', unitLabels: ['1'], billedMinor: 180_000, collectedMinor: 180_000, balanceMinor: 0 },
-    { contactId: 'c-2', name: 'Борис Богданов', unitLabels: ['2'], billedMinor: 180_000, collectedMinor: 120_000, balanceMinor: 60_000 },
+    { contactId: 'c-3', name: 'Вера Велкова', unitLabels: ['3', 'P-1'], billedMinor: 240_000, collectedMinor: 60_000, current: true, balanceMinor: 180_000 },
+    { contactId: 'c-1', name: 'Ана Анастасова', unitLabels: ['1'], billedMinor: 180_000, collectedMinor: 180_000, current: true, balanceMinor: 0 },
+    { contactId: 'c-2', name: 'Борис Богданов', unitLabels: ['2'], billedMinor: 180_000, collectedMinor: 120_000, current: true, balanceMinor: 60_000 },
   ],
   remindersSent: 4,
   assemblies: [{ heldAt: '2026-05-20T17:00:00.000Z', decisionCount: 2 }],
@@ -183,6 +183,45 @@ describe('buildAnnualReport — voids', () => {
     }
   });
 
+  it('clamps a void of something this window never booked, so no net column goes negative', () => {
+    // December's expense and December's payment, both voided in January: the new year books the two
+    // reversals alone, and neither belongs to its income or its spending.
+    const r = buildAnnualReport({
+      ...annualInput(),
+      opening: { regular: 500_000, reserve: 0 },
+      fundMovements: [
+        { fund: 'regular', kind: 'adjustment', refType: 'expense_void', inflowMinor: 150_000, outflowMinor: 0 },
+        { fund: 'regular', kind: 'adjustment', refType: 'payment_void', inflowMinor: 0, outflowMinor: 40_000 },
+      ],
+    });
+    expect(r.funds[0]).toMatchObject({
+      openingMinor: 500_000, inflowMinor: 150_000, outflowMinor: 40_000,
+      netInflowMinor: 150_000, netOutflowMinor: 40_000, closingMinor: 610_000,
+    });
+  });
+
+  it('offsets a straddling void only as far as the window\'s own gross reaches', () => {
+    // 60.000 of this year's spending is reversed by a 150.000 void; the other 90.000 undoes last
+    // year's expense and is reported there, not here.
+    const r = buildAnnualReport({
+      ...annualInput(),
+      opening: { regular: 0, reserve: 0 },
+      fundMovements: [
+        { fund: 'regular', kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 60_000 },
+        { fund: 'regular', kind: 'adjustment', refType: 'expense_void', inflowMinor: 150_000, outflowMinor: 0 },
+      ],
+    });
+    expect(r.funds[0]).toMatchObject({
+      inflowMinor: 150_000, outflowMinor: 60_000,
+      netInflowMinor: 90_000, netOutflowMinor: 0, closingMinor: 90_000,
+    });
+    for (const f of r.funds) {
+      expect(f.openingMinor + f.netInflowMinor - f.netOutflowMinor, f.fund).toBe(f.closingMinor);
+      expect(f.netInflowMinor, f.fund).toBeGreaterThanOrEqual(0);
+      expect(f.netOutflowMinor, f.fund).toBeGreaterThanOrEqual(0);
+    }
+  });
+
   it('leaves a voided expense out of every table and every total', () => {
     const input = annualInput();
     input.expenses = [
@@ -219,6 +258,21 @@ describe('buildAnnualReport — the tables', () => {
     ]);
   });
 
+  it('lists somebody who sold during the year with no units, and still counts their debt', () => {
+    const input = annualInput();
+    input.owners = [...input.owners,
+      { contactId: 'c-9', name: 'Жаклина Жежова', unitLabels: [], billedMinor: 60_000, collectedMinor: 0, current: false, balanceMinor: 60_000 }];
+    const r = buildAnnualReport(input);
+    expect(r.owners.find((o) => o.contactId === 'c-9')).toMatchObject({ current: false, unitLabels: [] });
+    expect(r.owners.filter((o) => !o.current)).toHaveLength(1);
+    // Equal debts, so the pack's alphabet decides: Борис before Жаклина.
+    expect(r.debtors.map((d) => d.contactId)).toEqual(['c-3', 'c-2', 'c-9']);
+    expect(r.fields.ownerCount).toBe(4);
+    expect(r.fields.billedMinor).toBe(660_000);
+    expect(r.fields.debtorsCount).toBe(3);
+    expect(r.fields.totalDebtMinor).toBe(300_000);
+  });
+
   it('hands back rows the caller cannot mutate the input through', () => {
     const input = annualInput();
     const r = buildAnnualReport(input);
@@ -236,8 +290,8 @@ describe('buildAnnualReport — the tables', () => {
   it("orders names by the pack's alphabet, in which Ќ follows Т", () => {
     const input = annualInput();
     input.owners = [
-      { contactId: 'c-k', name: 'Ќиро Ќирков', unitLabels: ['4'], billedMinor: 0, collectedMinor: 0, balanceMinor: 10_000 },
-      { contactId: 'c-t', name: 'Тодор Тодоров', unitLabels: ['5'], billedMinor: 0, collectedMinor: 0, balanceMinor: 10_000 },
+      { contactId: 'c-k', name: 'Ќиро Ќирков', unitLabels: ['4'], billedMinor: 0, collectedMinor: 0, current: true, balanceMinor: 10_000 },
+      { contactId: 'c-t', name: 'Тодор Тодоров', unitLabels: ['5'], billedMinor: 0, collectedMinor: 0, current: true, balanceMinor: 10_000 },
     ];
     const r = buildAnnualReport(input);
     expect(r.owners.map((o) => o.name)).toEqual(['Тодор Тодоров', 'Ќиро Ќирков']);
@@ -286,7 +340,7 @@ describe('buildAnnualReport — the fields map', () => {
 
   it('rounds the collection rate half up, in basis points', () => {
     const input = annualInput();
-    input.owners = [{ contactId: 'c-1', name: 'Ана', unitLabels: ['1'], billedMinor: 300_000, collectedMinor: 100_000, balanceMinor: 200_000 }];
+    input.owners = [{ contactId: 'c-1', name: 'Ана', unitLabels: ['1'], billedMinor: 300_000, collectedMinor: 100_000, current: true, balanceMinor: 200_000 }];
     // 100.000 / 300.000 = 33,3333 % → 3333 basis points.
     expect(buildAnnualReport(input).fields.collectionRateBp).toBe(3333);
   });

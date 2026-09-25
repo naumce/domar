@@ -4,7 +4,8 @@ import {
   type AnnualReportInput, type CountryCode, type CountryPack, type FundMovementIn,
   type ReportAssembly, type ReportExpense, type ReportFund, type ReportOwner, type ReportPostingKind,
 } from '@domar/domain';
-import { and, asc, count, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { badRequest } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 
@@ -55,26 +56,44 @@ async function fundMovements(db: Db, ctx: TenantContext, buildingId: string, fro
   }));
 }
 
-/** Expenses paid inside the window, voided ones left out, with the supplier's name resolved. */
+/**
+ * Expenses paid inside the window, with the supplier's name resolved. A void is read as of the end
+ * of the window, not as of today: money spent in 2026 and reversed in 2027 was spent in 2026 and
+ * stays in that year's report, which is the one already filed with the owners. The reversal lands in
+ * the year that booked it, where its `expense_void` posting sits.
+ */
 async function windowExpenses(db: Db, ctx: TenantContext, buildingId: string, from: Date, to: Date, noSupplier: string): Promise<ReportExpense[]> {
   const rows = await db.select({ e: E, supplierName: S.name }).from(E)
     .leftJoin(S, and(eq(S.id, E.supplierId), eq(S.tenantId, E.tenantId)))
-    .where(and(eq(E.tenantId, ctx.tenantId), eq(E.buildingId, buildingId), isNull(E.voidedAt), gte(E.paidAt, from), lt(E.paidAt, to)))
+    .where(and(
+      eq(E.tenantId, ctx.tenantId), eq(E.buildingId, buildingId),
+      or(isNull(E.voidedAt), gte(E.voidedAt, to)),
+      gte(E.paidAt, from), lt(E.paidAt, to),
+    ))
     .orderBy(asc(E.paidAt), asc(E.id));
   return rows.map((r) => ({
     id: r.e.id, fund: r.e.fund as ReportFund, description: r.e.description,
     supplier: r.supplierName ?? r.e.supplierText ?? noSupplier,
     amountMinor: r.e.amountMinor, paidAt: r.e.paidAt.toISOString(),
-    // The query already leaves voided rows out; the flag carries the row's own fact anyway, so the
-    // builder — the one place that decides what a void means — never has to trust the caller.
-    voided: r.e.voidedAt !== null,
+    // The query keeps the rows voided after the window closed, and the flag says so as of `to`; the
+    // builder — the one place that decides what a void means — does the excluding.
+    voided: r.e.voidedAt !== null && r.e.voidedAt.getTime() < to.getTime(),
   }));
 }
 
-/** Every owner of the building: what they were billed, what they paid, where they stand (addendum 7). */
+/**
+ * Every owner of the building: what they were billed, what they paid, where they stand (addendum 7).
+ * The set is today's owners *and* everybody the owner ledger of this building names up to the end of
+ * the window — somebody who sold in June was still billed in May, and their debt, if they left one,
+ * is still the building's. They are listed with no unit labels and `current: false`.
+ */
 async function reportOwners(db: Db, ctx: TenantContext, buildingId: string, from: Date, to: Date): Promise<ReportOwner[]> {
-  const units = await db.select({ ownerContactId: U.ownerContactId, label: U.label }).from(U)
-    .where(and(eq(U.tenantId, ctx.tenantId), eq(U.buildingId, buildingId)));
+  const [units, booked] = await Promise.all([
+    db.select({ ownerContactId: U.ownerContactId, label: U.label }).from(U)
+      .where(and(eq(U.tenantId, ctx.tenantId), eq(U.buildingId, buildingId))),
+    db.selectDistinct({ contactId: P.contactId }).from(P)
+      .where(and(eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'owner'), isNotNull(P.contactId), lt(P.bookedAt, to))),
+  ]);
   const labels = new Map<string, string[]>();
   for (const u of units) {
     if (!u.ownerContactId) continue;
@@ -82,7 +101,7 @@ async function reportOwners(db: Db, ctx: TenantContext, buildingId: string, from
     list.push(u.label);
     labels.set(u.ownerContactId, list);
   }
-  const contactIds = [...labels.keys()];
+  const contactIds = [...new Set([...labels.keys(), ...booked.map((r) => r.contactId!)])];
   if (contactIds.length === 0) return [];
   const owned = and(eq(P.tenantId, ctx.tenantId), eq(P.buildingId, buildingId), eq(P.account, 'owner'), inArray(P.contactId, contactIds));
   const [contacts, inWindow, atEnd] = await Promise.all([
@@ -105,6 +124,7 @@ async function reportOwners(db: Db, ctx: TenantContext, buildingId: string, from
     contactId: c.id,
     name: `${c.firstName} ${c.lastName}`.trim(),
     unitLabels: (labels.get(c.id) ?? []).slice().sort((x, y) => x.localeCompare(y)),
+    current: labels.has(c.id),
     billedMinor: billed.get(c.id) ?? 0,
     collectedMinor: collected.get(c.id) ?? 0,
     balanceMinor: balance.get(c.id) ?? 0,
@@ -113,8 +133,9 @@ async function reportOwners(db: Db, ctx: TenantContext, buildingId: string, from
 
 /**
  * Art. 28 reminders that actually reached an owner in the window. `coalesce(sent_at, created_at)` is
- * the same expression `priorRemindersByOwner` reads, so a letter created in December and printed in
- * January is counted once, in the year it was created.
+ * the same expression `priorRemindersByOwner` reads: a letter counts in the year it went out —
+ * marking one printed stamps `sent_at` too — and a row with no `sent_at` falls back to the day it
+ * was created, so every reminder is counted once and in exactly one year.
  */
 async function remindersSent(db: Db, ctx: TenantContext, buildingId: string, from: Date, to: Date): Promise<number> {
   const [row] = await db.select({ n: count() }).from(R).where(and(
@@ -173,6 +194,10 @@ export async function collectReportInput(
 export async function annualReport(db: Db, ctx: TenantContext, buildingId: string, year: number) {
   const building = await getBuilding(db, ctx, buildingId); // 404 across tenants
   const { tenant, pack } = await tenantPack(db, ctx);
+  // A year that has not happened cannot be reported on: the figures would read as a full year of
+  // nothing. The bound is the tenant's civil year, the same grain the window itself is cut in.
+  const thisYear = Number(new Intl.DateTimeFormat('en-CA', { timeZone: tenant.timezone, year: 'numeric' }).format(new Date()));
+  if (year > thisYear) throw badRequest('year_in_the_future', `The year ${year} has not begun yet`);
   const { from, to } = yearWindow(year, tenant.timezone);
   const input = await collectReportInput(db, ctx, building, tenant, pack, year, from, to);
   return { building, tenant, pack, from, to, data: buildAnnualReport(input) };

@@ -39,6 +39,7 @@ const L = {
     expenses: 'Трошоци по добавувач', supplier: 'Добавувач', countCol: 'Ставки', amount: 'Износ', totalExpenses: 'Вкупно трошоци',
     works: 'Изведени работи (резервен фонд)', description: 'Опис', date: 'Датум',
     debtors: 'Должници', owner: 'Сопственик', unit: 'Единица', debt: 'Долг', totalDebt: 'Вкупен долг', noDebtors: 'Нема должници на крајот на периодот.',
+    formerOwner: 'поранешен сопственик',
     activity: 'Активности во периодот', reminders: 'Испратени опомени', assemblies: 'Одржани собири', decisions: 'Донесени одлуки',
     generated: 'Изготвен на',
   },
@@ -75,8 +76,11 @@ export function renderAnnualReportHtml({ tenant, building, data, labels, formatM
     `<tr><td>${e(x.supplier)}</td><td class="num">${x.count}</td><td class="num">${e(m(x.amountMinor))}</td></tr>`).join('');
   const worksHtml = data.works.map((x) =>
     `<tr><td>${e(x.description)}</td><td>${e(x.supplier)}</td><td>${e(reportDate(x.paidAt, timeZone))}</td><td class="num">${e(m(x.amountMinor))}</td></tr>`).join('');
+  // Somebody who sold during the year has no unit to be named beside their debt, so the column says
+  // why it is empty rather than leaving the reader to guess.
+  const isCurrent = new Map(data.owners.map((o) => [o.contactId, o.current]));
   const debtorsHtml = data.debtors.map((x) =>
-    `<tr><td>${e(x.name)}</td><td>${e(x.unitLabels.join(', '))}</td><td class="num">${e(m(x.balanceMinor))}</td></tr>`).join('');
+    `<tr><td>${e(x.name)}</td><td>${isCurrent.get(x.contactId) === false ? `<span class="muted">${e(t.formerOwner)}</span>` : e(x.unitLabels.join(', '))}</td><td class="num">${e(m(x.balanceMinor))}</td></tr>`).join('');
   return `<!doctype html><html lang="mk"><head><meta charset="utf-8"><title>${e(labels.annualTitle)} ${e(String(f.year ?? ''))}</title>
 <style>${REPORT_CSS}</style></head><body>
 <div class="row"><div class="box"><h1>${e(labels.annualTitle)} ${e(String(f.year ?? ''))}</h1>

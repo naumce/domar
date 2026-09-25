@@ -45,6 +45,11 @@ export interface ReportOwner {
   contactId: string;
   name: string;
   unitLabels: string[];
+  /**
+   * False for somebody who owned a unit during the window but owns none at its end: their billing
+   * and their debt are still the building's, so they are listed, with no unit labels to their name.
+   */
+  current: boolean;
   /** Σ owner charges inside the window. */
   billedMinor: number;
   /** Σ owner payments inside the window, sign-flipped so a payment is positive (addendum 7). */
@@ -109,7 +114,9 @@ const FUNDS: readonly ReportFund[] = ['regular', 'reserve'];
  * inflow is never income. Both sides shed the same amount, which is why the closing balance is the
  * same whether it is read off the gross or the net columns.
  */
+const PAYMENT = 'payment';
 const PAYMENT_VOID = 'payment_void';
+const EXPENSE = 'expense';
 const EXPENSE_VOID = 'expense_void';
 
 function summariseFund(fund: ReportFund, openingMinor: number, movements: FundMovementIn[]): FundSummary {
@@ -128,8 +135,14 @@ function summariseFund(fund: ReportFund, openingMinor: number, movements: FundMo
     byKey.set(key, e);
   }
   const rows = [...byKey.values()].sort((a, b) => byCode(a.kind, b.kind) || byCode(a.refType, b.refType));
-  const voidsMinor = rows.reduce((s, r) =>
-    s + (r.refType === PAYMENT_VOID ? r.outflowMinor : 0) + (r.refType === EXPENSE_VOID ? r.inflowMinor : 0), 0);
+  // A void can reverse something the window never saw — a December expense voided in January is
+  // booked in the new year, alone. Only what this window itself took in can leave its income, and
+  // only what it itself spent can leave its spending, so each offset is clamped to its own side's
+  // gross; the rest belongs to the year that booked the original and is reported there.
+  const gross = (refType: string, pick: (r: FundMovement) => number) =>
+    rows.reduce((s, r) => s + (r.refType === refType ? pick(r) : 0), 0);
+  const voidsMinor = Math.min(gross(PAYMENT_VOID, (r) => r.outflowMinor), gross(PAYMENT, (r) => r.inflowMinor))
+    + Math.min(gross(EXPENSE_VOID, (r) => r.inflowMinor), gross(EXPENSE, (r) => r.outflowMinor));
   return {
     fund,
     openingMinor,
