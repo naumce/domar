@@ -161,6 +161,29 @@ describe('AssemblyPanel', () => {
     expect(w.emitted('changed')![0]![0]).toMatchObject({ status: 'held', minutesDocumentId: 'doc-1' });
   });
 
+  it('leaves a blank held-at at the scheduled moment once that moment has passed', async () => {
+    const invited = assembly({ status: 'invited', invitedAt: '2026-10-10T10:00:00.000Z' });
+    const fetchMock = vi.fn().mockResolvedValue(json(assembly({ status: 'held', heldAt: '2026-10-15T17:00:00.000Z' })));
+    vi.stubGlobal('fetch', fetchMock);
+    // Minutes typed three weeks after a meeting held on its scheduled day: the hold is dated to the
+    // day the owners were called to, not to the day the manager got round to the paperwork.
+    vi.setSystemTime(new Date('2026-11-05T12:00:00.000Z'));
+    const w = mount(AssemblyPanel, { props: { assembly: invited, owners, ownersError: '' }, global: { plugins: [i18n] } });
+    await w.get('[data-test=assembly-hold]').trigger('click');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await flushPromises();
+    expect(JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body)).heldAt).toBe('2026-10-15T17:00:00.000Z');
+
+    // An assembly closed before its scheduled hour is dated to the click, the earlier of the two.
+    vi.setSystemTime(new Date('2026-10-15T15:30:00.000Z'));
+    const early = mount(AssemblyPanel, { props: { assembly: invited, owners, ownersError: '' }, global: { plugins: [i18n] } });
+    await early.get('[data-test=assembly-hold]').trigger('click');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await flushPromises();
+    expect(JSON.parse(String((fetchMock.mock.calls[1]![1] as RequestInit).body)).heldAt).toBe('2026-10-15T15:30:00.000Z');
+    vi.useRealTimers();
+  });
+
   it('shows the tally and the minutes link once the assembly is held', async () => {
     const held = assembly({
       status: 'held', heldAt: '2026-10-15T17:00:00.000Z', minutesDocumentId: 'doc-1',

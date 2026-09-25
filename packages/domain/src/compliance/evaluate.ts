@@ -45,6 +45,8 @@ export interface ComplianceSnapshot {
   assemblyCount: number;
   lastAssemblyHeldAt: string | null;
   lastAssemblyInvitedAt: string | null;
+  /** `assemblies.late_invitation` of the assembly that was held: what the API stamped at invite time. */
+  lastAssemblyLateInvitation: boolean;
   lastAnnualReportAt: string | null;
   portalLinkedOwners: number;
   fundStatementAvailableAt: string | null;
@@ -143,10 +145,15 @@ function assemblyDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules, ti
   let status = windowStatus(deadline, addMonths(deadline, r.graceMonths), today);
   const invited = parse(s.lastAssemblyInvitedAt);
   const flags: string[] = [];
-  // Art. 37: the invitation must go out at least 15 civil days before the assembly it precedes. An
-  // invitation timestamped after the last held assembly belongs to the next one, not this one, and
-  // says nothing about whether this assembly's invitation was timely.
-  if (invited !== null && invited.getTime() < held.getTime() && civilDaysBetween(invited, held, timeZone) < r.assemblyInvitationMinDays) {
+  // Art. 37: the invitation must go out at least 15 civil days before the assembly it precedes. Two
+  // measures can say it did not, and either one alone raises the flag: the held row's own
+  // `late_invitation`, stamped against the *scheduled* date when the invitations went out (an
+  // override buys a reason, not absolution), or the gap actually run — invitation to hold — coming
+  // out under `assemblyInvitationMinDays` civil days. An invitation timestamped after the last held
+  // assembly belongs to the next one, not this one, so only the row flag speaks for that pair.
+  const shortGap = invited !== null && invited.getTime() < held.getTime()
+    && civilDaysBetween(invited, held, timeZone) < r.assemblyInvitationMinDays;
+  if (s.lastAssemblyLateInvitation || shortGap) {
     flags.push('late_invitation');
     // Elevates `ok` to `due`, but a late invitation on an already `due`/`overdue` assembly (stale
     // from age) still needs the flag recorded, so it isn't checked only when status is `ok`.

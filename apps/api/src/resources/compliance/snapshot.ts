@@ -81,7 +81,7 @@ export async function buildComplianceSnapshot(db: Db, ctx: TenantContext, buildi
     // so neither counts and a building with only drafts is still one domar knows nothing about.
     db.select({ n: count() }).from(AS)
       .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), inArray(AS.status, [...COUNTED_STATUSES]))),
-    db.select({ heldAt: AS.heldAt, invitedAt: AS.invitedAt }).from(AS)
+    db.select({ heldAt: AS.heldAt, invitedAt: AS.invitedAt, lateInvitation: AS.lateInvitation }).from(AS)
       .where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.buildingId, building.id), eq(AS.status, 'held')))
       .orderBy(desc(AS.heldAt)).limit(1),
     db.select({ invitedAt: AS.invitedAt }).from(AS)
@@ -103,6 +103,9 @@ export async function buildComplianceSnapshot(db: Db, ctx: TenantContext, buildi
     // The invitation of the assembly that was held, so a punctual assembly is never flagged because
     // a *later* one was called late; only when nothing was ever held does the newest one stand in.
     lastAssemblyInvitedAt: (lastHeld ? lastHeld.invitedAt : (lastInvited?.invitedAt ?? null))?.toISOString() ?? null,
+    // The held assembly's own stamp, so an overridden late invitation keeps flagging the card even
+    // when the minutes were written long enough after the hold to make the measured gap look ample.
+    lastAssemblyLateInvitation: lastHeld?.lateInvitation ?? false,
     lastAnnualReportAt: lastAnnualReportAt?.toISOString() ?? null,
     portalLinkedOwners: Number(linked?.n ?? 0),
     fundStatementAvailableAt: fundStatementAvailableAt?.toISOString() ?? null,

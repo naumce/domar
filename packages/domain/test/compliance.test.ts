@@ -20,6 +20,7 @@ const base: ComplianceSnapshot = {
   assemblyCount: 0,
   lastAssemblyHeldAt: null,
   lastAssemblyInvitedAt: null,
+  lastAssemblyLateInvitation: false,
   lastAnnualReportAt: null,
   portalLinkedOwners: 0,
   fundStatementAvailableAt: null,
@@ -140,6 +141,16 @@ describe('Art. 37 — assembly', () => {
     const flags = (tz: string) => evaluateBuildingCompliance(s, localDayStart(TODAY, tz), RULES, tz).duties.find((d) => d.key === 'assembly')!.flags;
     expect(flags('UTC')).toEqual([]);
     expect(flags('Europe/Skopje')).toEqual(['late_invitation']);
+  });
+  it('flags an invitation the row itself calls late, however wide the measured gap is', () => {
+    // The manager invited nine days before the scheduled date with an override, held the assembly on
+    // that date and typed the minutes three weeks later: invitation to hold is 30 civil days, ample
+    // on its face, but `assemblies.late_invitation` on the held row says what really happened.
+    const s = { assemblyCount: 1, lastAssemblyHeldAt: '2026-09-01T00:00:00.000Z', lastAssemblyInvitedAt: '2026-08-02T00:00:00.000Z' };
+    expect(dutyOf(s, 'assembly').flags).toEqual([]);
+    const d = dutyOf({ ...s, lastAssemblyLateInvitation: true }, 'assembly');
+    expect(d.flags).toEqual(['late_invitation']);
+    expect(d.status).toBe('due');
   });
   it('ignores an invitation dated after the last held assembly — that is a future assembly, not a late one', () => {
     const d = dutyOf({ assemblyCount: 1, lastAssemblyHeldAt: '2026-03-01T00:00:00.000Z', lastAssemblyInvitedAt: '2026-09-20T00:00:00.000Z' }, 'assembly');

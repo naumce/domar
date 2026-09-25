@@ -79,16 +79,20 @@ async function castPaper(decisionId: string, contactId: string, raw: string) {
   await run(() => api.post<Assembly>(`/api/assemblies/${props.assembly.id}/decisions/${decisionId}/votes`, { contactId, choice: raw as VoteChoice }));
 }
 
+const defaultHeldAt = () => new Date(Math.min(Date.parse(props.assembly.scheduledAt), Date.now())).toISOString();
+
 function hold() {
   const attendance = (props.owners?.rows ?? []).map((o) => ({
     contactId: o.contactId,
     present: present.value[o.contactId] === true,
     proxyName: (proxy.value[o.contactId] ?? '').trim() || null,
   }));
-  // A blank field means "now", never the scheduled date: the manager is closing the assembly at the
-  // moment they click, not silently re-declaring the invitation's original date as the held date.
+  // A blank field means the moment the manager clicks — but never later than the date the owners
+  // were called to (plan addendum 15). Minutes typed three weeks after a meeting held on its
+  // scheduled day must not stretch the invitation-to-hold gap by those three weeks and talk the
+  // Art. 37 card out of a flag the assembly earned.
   return run(() => api.post<Assembly>(`/api/assemblies/${props.assembly.id}/hold`, {
-    heldAt: heldAt.value ? new Date(heldAt.value).toISOString() : new Date().toISOString(),
+    heldAt: heldAt.value ? new Date(heldAt.value).toISOString() : defaultHeldAt(),
     attendance,
   }));
 }
