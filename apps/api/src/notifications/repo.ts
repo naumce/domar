@@ -104,7 +104,7 @@ export async function markAllUserRead(db: Db, ctx: TenantContext): Promise<void>
 
 /** Across every link the account holds: an owner has one bell, not one per management company. */
 export async function listForOwner(db: Db, portal: PortalContext): Promise<{ rows: NotificationRow[]; unread: number }> {
-  const tenantIds = [...new Set(portal.links.map((l) => l.tenantId))];
+  const tenantIds = ownerTenantIds(portal);
   if (tenantIds.length === 0) return { rows: [], unread: 0 };
   const scope = and(eq(N.ownerAccountId, portal.ownerAccountId), inArray(N.tenantId, tenantIds));
   const [rows, [unread]] = await Promise.all([
@@ -114,15 +114,26 @@ export async function listForOwner(db: Db, portal: PortalContext): Promise<{ row
   return { rows, unread: unread?.n ?? 0 };
 }
 
+/** The tenants a link revocation has not yet dropped — the same scope `listForOwner` reads by. */
+function ownerTenantIds(portal: PortalContext): string[] {
+  return [...new Set(portal.links.map((l) => l.tenantId))];
+}
+
 export async function markOwnerRead(db: Db, portal: PortalContext, id: string): Promise<void> {
+  const tenantIds = ownerTenantIds(portal);
+  // A row from a tenant the account is no longer linked to is a 404, exactly like one that never
+  // existed: `listForOwner` never shows it, so this must never confirm it exists either.
+  if (tenantIds.length === 0) throw notFound('Notification');
   const [row] = await db.update(N).set({ readAt: new Date() })
-    .where(and(eq(N.ownerAccountId, portal.ownerAccountId), eq(N.id, id))).returning({ id: N.id });
+    .where(and(eq(N.ownerAccountId, portal.ownerAccountId), inArray(N.tenantId, tenantIds), eq(N.id, id))).returning({ id: N.id });
   if (!row) throw notFound('Notification');
 }
 
 export async function markAllOwnerRead(db: Db, portal: PortalContext): Promise<void> {
+  const tenantIds = ownerTenantIds(portal);
+  if (tenantIds.length === 0) return;
   await db.update(N).set({ readAt: new Date() })
-    .where(and(eq(N.ownerAccountId, portal.ownerAccountId), isNull(N.readAt)));
+    .where(and(eq(N.ownerAccountId, portal.ownerAccountId), inArray(N.tenantId, tenantIds), isNull(N.readAt)));
 }
 
 export interface NewSubscription { endpoint: string; p256dh: string; auth: string; userAgent?: string | undefined }

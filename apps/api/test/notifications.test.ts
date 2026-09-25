@@ -1,3 +1,5 @@
+import { schema } from '@domar/db';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupPublishedBuilding } from './billing-fixture.js';
 import { createStaffUser, registerTenant } from './fixtures.js';
@@ -133,6 +135,32 @@ describe('notification bells', () => {
     expect((await portalGet('/api/portal/notifications')).json().unread).toBe(2);
     expect((await portalPost('/api/portal/notifications/read-all')).statusCode).toBe(204);
     expect((await portalGet('/api/portal/notifications')).json().unread).toBe(0);
+  });
+
+  it('a revoked link makes a row unreachable for reading and unmarkable, not merely invisible', async () => {
+    // A second link, in another tenant, so the account keeps its session once tenant a's link is gone
+    // (`deletePortalLink` drops the owner's sessions only once it holds no link at all).
+    const contactB = (await t.app.inject({ method: 'POST', url: '/api/contacts', headers: { cookie: b.cookie }, payload: { firstName: 'Тест', lastName: 'Б' } })).json().id;
+    const codeB = (await t.app.inject({ method: 'POST', url: `/api/contacts/${contactB}/portal-invite`, headers: { cookie: b.cookie } })).json().code;
+    expect((await portalPost('/api/portal/link', { code: codeB })).statusCode).toBe(201);
+
+    const { notify } = await import('../src/notifications/repo.js');
+    const account = (await portalGet('/api/portal/me')).json().account.id;
+    await notify(t.db, { tenantId: a.tenantId, userId: null, role: 'readonly' }, [
+      { ownerAccountId: account, kind: 'invoice_published', title: 'Пред откажан линк', body: '', link: '/portal/invoices/revoked' },
+    ]);
+    const row = (await portalGet('/api/portal/notifications')).json().rows.find((r: { title: string }) => r.title === 'Пред откажан линк');
+    expect(row).toBeDefined();
+
+    expect((await t.app.inject({ method: 'DELETE', url: `/api/contacts/${A.owners.O1}/portal-link`, headers: { cookie: a.cookie } })).statusCode).toBe(204);
+
+    // Invisible...
+    expect((await portalGet('/api/portal/notifications')).json().rows.map((r: { title: string }) => r.title)).not.toContain('Пред откажан линк');
+    // ...and not merely invisible: a direct mark 404s, and a bulk mark-all leaves it untouched.
+    expect((await portalPost(`/api/portal/notifications/${row.id}/read`)).statusCode).toBe(404);
+    expect((await portalPost('/api/portal/notifications/read-all')).statusCode).toBe(204);
+    const [stored] = await t.db.select().from(schema.notifications).where(eq(schema.notifications.id, row.id));
+    expect(stored!.readAt).toBeNull();
   });
 
   it('does not accept a staff cookie on the portal bell, nor an owner cookie on the manager bell', async () => {

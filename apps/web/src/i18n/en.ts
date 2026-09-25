@@ -88,6 +88,7 @@ export default {
       denied: 'Permission was denied in the browser',
       off: 'Device notifications are off',
       on: 'Device notifications are on',
+      unknown: 'Could not determine the device notification state',
       enable: 'Turn on',
       disable: 'Turn off',
     },
