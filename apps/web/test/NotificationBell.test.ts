@@ -102,7 +102,7 @@ describe('NotificationBell', () => {
     ];
     portal.select('c-a');
     // A fresh Response per call: a single one can only be read once, and this bell makes four.
-    const fetchMock = vi.fn(() => Promise.resolve(json({ rows: [], unread: 0 })));
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(json({ rows: [], unread: 0 })));
     vi.stubGlobal('fetch', fetchMock);
     const w = mountBell('portal');
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
