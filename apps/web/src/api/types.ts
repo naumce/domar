@@ -190,3 +190,40 @@ export interface PortalAssemblyDecision {
 export interface PortalAssembly extends Omit<PortalAssemblyRow, 'agendaCount'> {
   agenda: AgendaItem[]; votingOpen: boolean; decisions: PortalAssemblyDecision[];
 }
+
+export type MaintenanceStatus = 'new' | 'triaged' | 'assigned' | 'in_progress' | 'done' | 'rejected';
+export type MaintenanceCategory = 'plumbing' | 'electrical' | 'lift' | 'heating' | 'cleaning' | 'common_area' | 'other';
+export type MaintenancePriority = 'low' | 'normal' | 'high' | 'urgent';
+export type MaintenanceEventKind = 'created' | 'status_changed' | 'assigned' | 'comment' | 'photo_added';
+export type MaintenanceVisibility = 'internal' | 'owner';
+export interface MaintenancePhoto {
+  documentId: string; title: string; fileName: string; mime: string; sizeBytes: number; uploadedByName: string; createdAt: string;
+}
+export interface MaintenanceEvent {
+  id: string; kind: MaintenanceEventKind; fromStatus: MaintenanceStatus | null; toStatus: MaintenanceStatus | null;
+  note: string; visibility: MaintenanceVisibility; authorName: string; authorKind: 'manager' | 'owner' | 'system'; createdAt: string;
+}
+export interface MaintenanceRow {
+  id: string; buildingId: string; unitId: string | null; unitLabel: string | null;
+  title: string; category: MaintenanceCategory; priority: MaintenancePriority; status: MaintenanceStatus;
+  reporterName: string; reporterKind: 'manager' | 'owner';
+  assigneeUserId: string | null; assigneeName: string | null; supplierId: string | null; supplierName: string | null;
+  fund: Fund | null; costMinor: number | null; expenseId: string | null; photoCount: number;
+  closedAt: string | null; createdAt: string; updatedAt: string;
+}
+export interface MaintenanceRequest extends MaintenanceRow {
+  description: string; photos: MaintenancePhoto[]; events: MaintenanceEvent[];
+}
+export interface PortalMaintenancePhoto { documentId: string; fileName: string; mime: string; sizeBytes: number; createdAt: string }
+export interface PortalMaintenanceEvent {
+  id: string; kind: MaintenanceEventKind; toStatus: MaintenanceStatus | null; note: string;
+  authorName: string; authorKind: 'manager' | 'owner' | 'system'; createdAt: string;
+}
+export interface PortalMaintenanceRow {
+  id: string; buildingId: string; buildingName: string; unitLabel: string | null;
+  title: string; category: MaintenanceCategory; priority: MaintenancePriority; status: MaintenanceStatus;
+  photoCount: number; closedAt: string | null; createdAt: string; updatedAt: string;
+}
+export interface PortalMaintenanceRequest extends PortalMaintenanceRow {
+  description: string; photos: PortalMaintenancePhoto[]; events: PortalMaintenanceEvent[];
+}
