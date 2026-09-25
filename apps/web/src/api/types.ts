@@ -115,6 +115,35 @@ export interface BuildingContract {
   supplier: { id: string; name: string } | null;
   document: { id: string; title: string; fileName: string } | null;
 }
+export interface ReportFundSummary {
+  fund: Fund; openingMinor: number; inflowMinor: number; outflowMinor: number; closingMinor: number;
+  movements: { kind: string; refType: string; inflowMinor: number; outflowMinor: number; netMinor: number }[];
+}
+export interface ReportExpenseRow { id: string; fund: Fund; description: string; supplier: string; amountMinor: number; paidAt: string }
+export interface ReportOwnerRow { contactId: string; name: string; unitLabels: string[]; billedMinor: number; collectedMinor: number; balanceMinor: number }
+export interface ReportDebtorRow { contactId: string; name: string; unitLabels: string[]; balanceMinor: number }
+/** `fields` is the flat map the PDF template prints; every money key in it ends in `Minor`. */
+export interface AnnualReportData {
+  fields: Record<string, string | number>;
+  funds: ReportFundSummary[];
+  expenses: ReportExpenseRow[];
+  expensesBySupplier: { supplier: string; count: number; amountMinor: number }[];
+  works: ReportExpenseRow[];
+  owners: ReportOwnerRow[];
+  debtors: ReportDebtorRow[];
+  assemblies: { heldAt: string; decisionCount: number }[];
+}
+export type ReportKind = 'annual' | 'handover';
+export interface ReportRow {
+  eventId: string; kind: ReportKind; occurredAt: string;
+  documentId: string | null; exportDocumentId: string | null;
+  title: string; fileName: string; sizeBytes: number; evidence: Record<string, unknown>;
+}
+export interface ReportList { rows: ReportRow[]; documents: DocumentMeta[] }
+export interface ReportIssueResult {
+  document: DocumentMeta; exportDocumentId: string | null; eventId: string; year: number;
+  fields: Record<string, string | number>;
+}
 export type Distribution = 'share' | 'equal' | 'area';
 export interface ExtraordinaryCostResult { periodId: string; period: string; invoiceCount: number; totalMinor: number; invoiceIds: string[] }
 

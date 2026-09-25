@@ -21,10 +21,11 @@ const HOW_TO_FIX: Record<ComplianceDutyKey, string> = {
   invoices: '?tab=periods',
   reminders: '?tab=reminders',
   assembly: '?tab=assemblies',
-  annual_report: '?tab=compliance',
+  annual_report: '?tab=reports',
   fund_transparency: '?tab=units',
   fund_accounts: '?tab=compliance#fund-accounts',
-  handover: '?tab=contracts',
+  // Art. 30 is discharged by issuing the report, not by editing the contract that started the clock.
+  handover: '?tab=reports',
   extraordinary_costs: '?tab=extraordinary',
 };
 

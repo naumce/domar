@@ -14,6 +14,7 @@ import ImportTab from '@/components/building/ImportTab.vue';
 import OpeningBalancesTab from '@/components/building/OpeningBalancesTab.vue';
 import PeriodsTab from '@/components/building/PeriodsTab.vue';
 import RemindersTab from '@/components/building/RemindersTab.vue';
+import ReportsTab from '@/components/building/ReportsTab.vue';
 import ReserveFundTab from '@/components/building/ReserveFundTab.vue';
 import StatementsTab from '@/components/building/StatementsTab.vue';
 import DataTable from '@/components/DataTable.vue';
@@ -30,9 +31,9 @@ const contacts = ref<Contact[]>([]);
 const units = useResource<Unit>(`/api/buildings/${props.id}/units`);
 const open = ref(false); const editing = ref<Unit | null>(null); const formError = ref<string | null>(null);
 const route = useRoute(); const router = useRouter();
-const tabs = ['compliance', 'units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'reminders', 'assemblies', 'documents', 'contracts', 'extraordinary', 'import'] as const;
+const tabs = ['compliance', 'units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'reminders', 'assemblies', 'reports', 'documents', 'contracts', 'extraordinary', 'import'] as const;
 const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'compliance'));
-const tabLabel = (k: string) => ({ compliance: t('compliance.title'), units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), reminders: t('reminders.title'), assemblies: t('assemblies.title'), documents: t('documents.title'), contracts: t('contracts.title'), extraordinary: t('extraordinary.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
+const tabLabel = (k: string) => ({ compliance: t('compliance.title'), units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), reminders: t('reminders.title'), assemblies: t('assemblies.title'), reports: t('reports.title'), documents: t('documents.title'), contracts: t('contracts.title'), extraordinary: t('extraordinary.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
 
 async function loadContactsAndUnits() {
   contacts.value = (await api.get<{ rows: Contact[] }>('/api/contacts', { pageSize: 200 })).rows;
@@ -81,6 +82,7 @@ async function onSubmit(payload: UnitCreatePayload) {
     <StatementsTab v-else-if="tab === 'statements'" :building-id="id" />
     <RemindersTab v-else-if="tab === 'reminders'" :building-id="id" />
     <AssembliesTab v-else-if="tab === 'assemblies'" :building-id="id" />
+    <ReportsTab v-else-if="tab === 'reports'" :building-id="id" />
     <DocumentsTab v-else-if="tab === 'documents'" :building-id="id" />
     <ContractsTab v-else-if="tab === 'contracts'" :building-id="id" />
     <ExtraordinaryTab v-else-if="tab === 'extraordinary'" :building-id="id" />

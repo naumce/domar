@@ -42,8 +42,8 @@ describe('evaluateBuildingCompliance — shape', () => {
       'invoices', 'reminders', 'assembly', 'annual_report', 'fund_transparency', 'fund_accounts', 'handover', 'extraordinary_costs']);
     expect(r.duties.map((d) => d.article)).toEqual(['19/33', '28', '37', '31', '45(4)', '42/45', '30', '47(5)']);
     expect(r.duties.map((d) => d.howToFix)).toEqual([
-      '?tab=periods', '?tab=reminders', '?tab=assemblies', '?tab=compliance',
-      '?tab=units', '?tab=compliance#fund-accounts', '?tab=contracts', '?tab=extraordinary']);
+      '?tab=periods', '?tab=reminders', '?tab=assemblies', '?tab=reports',
+      '?tab=units', '?tab=compliance#fund-accounts', '?tab=reports', '?tab=extraordinary']);
   });
 
   it('summarises a fresh building as overdue because the fund accounts are empty', () => {
