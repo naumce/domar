@@ -2,8 +2,10 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
 import { loadChart, putAccountCode } from './chart.js';
 import { buildJournalFor, type AccountingWindow } from './data.js';
+import { exportAccounting, listAccountingExports } from './service.js';
 import {
   accountCodeListOut, accountCodeOut, accountCodePut, accountSlotParam,
+  accountingExportBody, accountingExportListOut, accountingExportOut,
   accountingPreviewOut, accountingWindowQuery,
 } from './schema.js';
 
@@ -45,4 +47,14 @@ export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
       balanced: journal.totals.debitMinor === journal.totals.creditMinor,
     };
   });
+
+  // A read, open to every role like `/preview` above; filing the export itself is owner/accountant only.
+  app.get('/exports', { schema: { response: { 200: accountingExportListOut } } }, async (req) => listAccountingExports(req.db, req.ctx!));
+
+  app.post('/export', {
+    preHandler: requireRole(...WRITE_ROLES),
+    schema: { body: accountingExportBody, response: { 201: accountingExportOut } },
+  }, async (req, reply) => reply.status(201).send(await exportAccounting(req.db, req.ctx!, req.body, {
+    documents: app.documents, log: app.log,
+  })));
 };

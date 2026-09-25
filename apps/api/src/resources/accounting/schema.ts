@@ -35,3 +35,19 @@ export const accountingPreviewOut = z.object({
   closedPeriods: z.array(z.string()),
   balanced: z.boolean(),
 });
+
+export const accountingExportBody = z.object({
+  from: dateOnly, to: dateOnly, buildingId: z.string().uuid().optional(),
+});
+export const accountingExportOut = z.object({
+  documentId: z.string(), fileName: z.string(), entryCount: z.number(), adjustmentCount: z.number(),
+  debitMinor: z.number(), creditMinor: z.number(),
+});
+
+export const accountingExportListRowOut = z.object({
+  documentId: z.string(), fileName: z.string(), createdAt: z.date().or(z.string()),
+  from: z.string(), to: z.string(), buildingId: z.string().nullable(),
+  entryCount: z.number(), adjustmentCount: z.number(), debitMinor: z.number(), creditMinor: z.number(),
+  sizeBytes: z.number(),
+});
+export const accountingExportListOut = z.object({ rows: z.array(accountingExportListRowOut) });
