@@ -65,6 +65,16 @@ export function localDayStart(instant: Date, timeZone: string): Date {
   return new Date(guess - zoneOffsetAt(candidate, timeZone));
 }
 
+/**
+ * A `YYYY-MM-DD` string onto the UTC instant of local midnight of that same civil day in `timeZone`,
+ * so it compares on equal footing with anything else put through `localDayStart`. Anchored at noon
+ * UTC rather than parsed directly as UTC midnight, so the civil day read back out is never pushed a
+ * day either way by the zone's offset.
+ */
+export function civilDayStart(dateOnly: string, timeZone: string): Date {
+  return localDayStart(new Date(`${dateOnly}T12:00:00.000Z`), timeZone);
+}
+
 export interface RecurrenceRule {
   frequency: 'monthly' | 'every_n_months';
   intervalMonths: number;

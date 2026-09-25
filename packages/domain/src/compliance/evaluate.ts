@@ -1,5 +1,5 @@
 import type { ComplianceDutyKey, ComplianceRules } from '../country/types.js';
-import { localDayStart } from '../period.js';
+import { civilDayStart, localDayStart } from '../period.js';
 
 /** `ComplianceDutyKey` lives on the country pack's types (`CountryLabels.compliance` is keyed by it); re-exported here since this module owns the evaluation that produces it. */
 export type { ComplianceDutyKey } from '../country/types.js';
@@ -31,7 +31,7 @@ const HOW_TO_FIX: Record<ComplianceDutyKey, string> = {
 /**
  * Dates and counts the API reads out of events and columns (spec §3, §11). Every timestamp is an ISO
  * string with an offset; `managementContractEndsOn` is a `YYYY-MM-DD` date, read onto the tenant's
- * civil day (`civilDay`, using the timezone `evaluateBuildingCompliance` is given) — the same grain
+ * civil day (`civilDayStart`, using the timezone `evaluateBuildingCompliance` is given) — the same grain
  * `today` is given in.
  */
 export interface ComplianceSnapshot {
@@ -90,16 +90,6 @@ const addDays = (d: Date, n: number): Date => new Date(d.getTime() + n * DAY_MS)
  */
 const civilDaysBetween = (from: Date, to: Date, timeZone: string): number =>
   Math.round((localDayStart(to, timeZone).getTime() - localDayStart(from, timeZone).getTime()) / DAY_MS);
-
-/**
- * A `YYYY-MM-DD` snapshot field onto the UTC instant of local midnight of that same civil day in
- * `timeZone`, so it compares on equal footing with `today` (also `localDayStart`). Anchored at noon
- * UTC rather than parsing the date directly as UTC midnight, so the civil day read back out via
- * `localDayStart` is never pushed a day either way by the zone's offset.
- */
-function civilDay(dateOnly: string, timeZone: string): Date {
-  return localDayStart(new Date(`${dateOnly}T12:00:00.000Z`), timeZone);
-}
 
 /** Calendar months in UTC; the 31st of a month lands on the last day of a shorter one. */
 function addMonths(d: Date, n: number): Date {
@@ -187,7 +177,7 @@ function fundAccountsDuty(s: ComplianceSnapshot): ComplianceDuty {
 function handoverDuty(s: ComplianceSnapshot, today: Date, r: ComplianceRules, timeZone: string): ComplianceDuty {
   // managementContractEndsOn is YYYY-MM-DD: read onto the same civil day as `today` (both via
   // localDayStart), not onto UTC midnight, or a zone ahead of UTC sees the deadline a day early.
-  const endsOn = s.managementContractEndsOn === null ? null : civilDay(s.managementContractEndsOn, timeZone);
+  const endsOn = s.managementContractEndsOn === null ? null : civilDayStart(s.managementContractEndsOn, timeZone);
   if (endsOn === null) return duty('handover', 'n/a', null, s.lastHandoverReportAt);
   const deadline = addDays(endsOn, r.handoverDays);
   const issued = parse(s.lastHandoverReportAt);
@@ -220,7 +210,7 @@ const EVALUATORS: Record<ComplianceDutyKey, (s: ComplianceSnapshot, today: Date,
  * Pure: the same snapshot, day, rules and timezone always give the same duties. `today` is local
  * midnight in the tenant's timezone (`localDayStart`), because every rule here is day- or
  * month-grained. `timeZone` is that same zone, given again so date-only snapshot fields (currently
- * `managementContractEndsOn`) can be read onto the same civil day as `today` via `civilDay`.
+ * `managementContractEndsOn`) can be read onto the same civil day as `today` via `civilDayStart`.
  */
 export function evaluateBuildingCompliance(snapshot: ComplianceSnapshot, today: Date, rules: ComplianceRules, timeZone: string): ComplianceResult {
   const duties = COMPLIANCE_DUTY_KEYS.map((key) => EVALUATORS[key](snapshot, today, rules, timeZone));

@@ -1,0 +1,230 @@
+import { describe, expect, it } from 'vitest';
+import { mkPack } from '../src/country/mk.js';
+import { buildAnnualReport, civilDayStart, yearWindow, type AnnualReportInput } from '../src/reports/annual.js';
+import { asOfWindow, buildHandoverReport, type HandoverReportInput } from '../src/reports/handover.js';
+
+const TZ = 'Europe/Skopje';
+
+/**
+ * The 2026 book of a three-owner building, with every number picked so the sums are checkable by eye:
+ * regular 100.000 + 300.000 − 150.000 = 250.000; reserve 800.000 + 60.000 − 600.000 = 260.000;
+ * billed 600.000, collected 360.000 → 60,00 %; debts 180.000 + 60.000 = 240.000.
+ */
+const annualInput = (): AnnualReportInput => ({
+  year: 2026,
+  window: { from: '2025-12-31T23:00:00.000Z', to: '2026-12-31T23:00:00.000Z' },
+  building: { name: 'Партизанска 12', address: 'Партизанска 12', city: 'Скопје', postalCode: '1000', unitCount: 4 },
+  manager: { name: 'Домар ДООЕЛ', companyNumber: '7654321' },
+  opening: { regular: 100_000, reserve: 800_000 },
+  fundMovements: [
+    { fund: 'regular', kind: 'payment', refType: 'payment', inflowMinor: 300_000, outflowMinor: 0 },
+    { fund: 'regular', kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 150_000 },
+    { fund: 'reserve', kind: 'payment', refType: 'payment', inflowMinor: 60_000, outflowMinor: 0 },
+    { fund: 'reserve', kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 600_000 },
+  ],
+  expenses: [
+    { id: 'e1', fund: 'regular', description: 'Струја за заедничките простории', supplier: 'ЕВН Македонија', amountMinor: 150_000, paidAt: '2026-03-05T09:00:00.000Z' },
+    { id: 'e2', fund: 'reserve', description: 'Санација на кровот', supplier: 'Кровови ДООЕЛ', amountMinor: 400_000, paidAt: '2026-06-11T09:00:00.000Z' },
+    { id: 'e3', fund: 'reserve', description: 'Фасада, влез Б', supplier: 'Кровови ДООЕЛ', amountMinor: 200_000, paidAt: '2026-08-02T09:00:00.000Z' },
+  ],
+  // Deliberately out of order: the builder sorts, the caller does not have to.
+  owners: [
+    { contactId: 'c-3', name: 'Вера Велкова', unitLabels: ['3', 'P-1'], billedMinor: 240_000, collectedMinor: 60_000, balanceMinor: 180_000 },
+    { contactId: 'c-1', name: 'Ана Анастасова', unitLabels: ['1'], billedMinor: 180_000, collectedMinor: 180_000, balanceMinor: 0 },
+    { contactId: 'c-2', name: 'Борис Богданов', unitLabels: ['2'], billedMinor: 180_000, collectedMinor: 120_000, balanceMinor: 60_000 },
+  ],
+  remindersSent: 4,
+  assemblies: [{ heldAt: '2026-05-20T17:00:00.000Z', decisionCount: 2 }],
+});
+
+const handoverInput = (over: Partial<HandoverReportInput> = {}): HandoverReportInput => ({
+  ...annualInput(),
+  window: { from: '2025-12-31T23:00:00.000Z', to: '2026-09-30T22:00:00.000Z' },
+  asOf: '2026-09-30',
+  contractEndsOn: '2026-09-30',
+  openItems: [
+    { invoiceId: 'i-2', number: '2026-000002', contactId: 'c-2', ownerName: 'Борис Богданов', period: '2026-08', dueAt: '2026-09-15T00:00:00.000Z', totalMinor: 60_000, paidMinor: 0, outstandingMinor: 60_000 },
+    { invoiceId: 'i-3', number: '2026-000003', contactId: 'c-3', ownerName: 'Вера Велкова', period: '2026-08', dueAt: '2026-09-15T00:00:00.000Z', totalMinor: 240_000, paidMinor: 60_000, outstandingMinor: 180_000 },
+  ],
+  bankBalances: { regularMinor: 250_000, reserveMinor: 265_000, asOf: '2026-09-30' },
+  note: 'Предадено на новиот управител.',
+  ...over,
+});
+
+describe('yearWindow and asOfWindow', () => {
+  it('opens and closes the year on local midnight in the tenant zone', () => {
+    const w = yearWindow(2026, TZ);
+    // Skopje is UTC+1 in January: 1 January 00:00 local is 31 December 23:00 UTC.
+    expect(w.from.toISOString()).toBe('2025-12-31T23:00:00.000Z');
+    expect(w.to.toISOString()).toBe('2026-12-31T23:00:00.000Z');
+  });
+
+  it('reads a date-only string onto the civil day, summer offset included', () => {
+    // Skopje is UTC+2 in July: 15 July 00:00 local is 14 July 22:00 UTC.
+    expect(civilDayStart('2026-07-15', TZ).toISOString()).toBe('2026-07-14T22:00:00.000Z');
+    expect(civilDayStart('2026-01-15', TZ).toISOString()).toBe('2026-01-14T23:00:00.000Z');
+  });
+
+  it('runs a handover window from 1 January to the end of the asOf day', () => {
+    const w = asOfWindow('2026-09-30', TZ);
+    expect(w.from.toISOString()).toBe('2025-12-31T23:00:00.000Z');
+    // Exclusive end: 1 October 00:00 local, which in CEST is 30 September 22:00 UTC.
+    expect(w.to.toISOString()).toBe('2026-09-30T22:00:00.000Z');
+  });
+
+  it('crosses the autumn DST change without losing or gaining an hour of the last day', () => {
+    // 25 October 2026 is the changeover; the day after it starts at 23:00 UTC, not 22:00.
+    expect(asOfWindow('2026-10-25', TZ).to.toISOString()).toBe('2026-10-25T23:00:00.000Z');
+  });
+});
+
+describe('buildAnnualReport — the funds', () => {
+  it('balances each fund: opening + inflow − outflow = closing', () => {
+    const r = buildAnnualReport(annualInput());
+    expect(r.funds.map((f) => f.fund)).toEqual(['regular', 'reserve']);
+    for (const f of r.funds) {
+      expect(f.openingMinor + f.inflowMinor - f.outflowMinor, f.fund).toBe(f.closingMinor);
+    }
+    expect(r.funds[0]).toEqual({
+      fund: 'regular', openingMinor: 100_000, inflowMinor: 300_000, outflowMinor: 150_000, closingMinor: 250_000,
+      movements: [
+        { kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 150_000, netMinor: -150_000 },
+        { kind: 'payment', refType: 'payment', inflowMinor: 300_000, outflowMinor: 0, netMinor: 300_000 },
+      ],
+    });
+    expect(r.funds[1]!.closingMinor).toBe(260_000);
+  });
+
+  it('gives a fund with no history an opening of zero rather than leaving it out', () => {
+    const r = buildAnnualReport({ ...annualInput(), opening: { regular: 0, reserve: 0 }, fundMovements: [] });
+    expect(r.funds.map((f) => [f.fund, f.openingMinor, f.inflowMinor, f.outflowMinor, f.closingMinor]))
+      .toEqual([['regular', 0, 0, 0, 0], ['reserve', 0, 0, 0, 0]]);
+  });
+});
+
+describe('buildAnnualReport — the tables', () => {
+  it('groups expenses by supplier, biggest first, and calls the reserve-fund ones works', () => {
+    const r = buildAnnualReport(annualInput());
+    expect(r.expensesBySupplier).toEqual([
+      { supplier: 'Кровови ДООЕЛ', count: 2, amountMinor: 600_000 },
+      { supplier: 'ЕВН Македонија', count: 1, amountMinor: 150_000 },
+    ]);
+    expect(r.works.map((w) => w.id)).toEqual(['e2', 'e3']);
+    expect(r.expenses.map((e) => e.id)).toEqual(['e1', 'e2', 'e3']); // oldest payment first
+  });
+
+  it('lists owners by name and debtors by amount, biggest debt first', () => {
+    const r = buildAnnualReport(annualInput());
+    expect(r.owners.map((o) => o.name)).toEqual(['Ана Анастасова', 'Борис Богданов', 'Вера Велкова']);
+    expect(r.debtors).toEqual([
+      { contactId: 'c-3', name: 'Вера Велкова', unitLabels: ['3', 'P-1'], balanceMinor: 180_000 },
+      { contactId: 'c-2', name: 'Борис Богданов', unitLabels: ['2'], balanceMinor: 60_000 },
+    ]);
+  });
+
+  it('never counts a credit balance as a debt', () => {
+    const input = annualInput();
+    input.owners[1]!.balanceMinor = -25_000; // Ана paid ahead
+    const r = buildAnnualReport(input);
+    expect(r.debtors.map((d) => d.contactId)).toEqual(['c-3', 'c-2']);
+    expect(r.fields.totalDebtMinor).toBe(240_000);
+  });
+});
+
+describe('buildAnnualReport — the fields map', () => {
+  it('is the whole scalar surface of the template, and nothing else', () => {
+    expect(buildAnnualReport(annualInput()).fields).toEqual({
+      year: 2026,
+      periodFrom: '2025-12-31T23:00:00.000Z',
+      periodTo: '2026-12-31T23:00:00.000Z',
+      buildingName: 'Партизанска 12',
+      buildingAddress: 'Партизанска 12, 1000 Скопје',
+      managerName: 'Домар ДООЕЛ',
+      managerCompanyNumber: '7654321',
+      unitCount: 4,
+      ownerCount: 3,
+      regularOpeningMinor: 100_000, regularInflowMinor: 300_000, regularOutflowMinor: 150_000, regularClosingMinor: 250_000,
+      reserveOpeningMinor: 800_000, reserveInflowMinor: 60_000, reserveOutflowMinor: 600_000, reserveClosingMinor: 260_000,
+      billedMinor: 600_000, collectedMinor: 360_000, expensesMinor: 750_000, collectionRateBp: 6000,
+      debtorsCount: 2, totalDebtMinor: 240_000,
+      remindersSent: 4, assembliesHeld: 1, decisionsTaken: 2,
+      worksCount: 2, worksMinor: 600_000,
+    });
+  });
+
+  it('reports a collection rate of zero for a year in which nothing was billed', () => {
+    const r = buildAnnualReport({ ...annualInput(), owners: [] });
+    expect(r.fields.billedMinor).toBe(0);
+    expect(r.fields.collectedMinor).toBe(0);
+    expect(r.fields.collectionRateBp).toBe(0);
+    expect(r.fields.ownerCount).toBe(0);
+    expect(r.fields.debtorsCount).toBe(0);
+  });
+
+  it('rounds the collection rate half up, in basis points', () => {
+    const input = annualInput();
+    input.owners = [{ contactId: 'c-1', name: 'Ана', unitLabels: ['1'], billedMinor: 300_000, collectedMinor: 100_000, balanceMinor: 200_000 }];
+    // 100.000 / 300.000 = 33,3333 % → 3333 basis points.
+    expect(buildAnnualReport(input).fields.collectionRateBp).toBe(3333);
+  });
+
+  it('prints an empty company number rather than the word undefined', () => {
+    const r = buildAnnualReport({ ...annualInput(), manager: { name: 'Домар ДООЕЛ', companyNumber: null } });
+    expect(r.fields.managerCompanyNumber).toBe('');
+  });
+});
+
+describe('buildHandoverReport', () => {
+  it('carries the annual data of the year so far and adds the handover fields', () => {
+    const r = buildHandoverReport(handoverInput());
+    expect(r.annual.funds[0]!.closingMinor).toBe(250_000);
+    expect(r.owners.map((o) => o.name)).toEqual(['Ана Анастасова', 'Борис Богданов', 'Вера Велкова']);
+    expect(r.fields.year).toBe(2026);
+    expect(r.fields.asOf).toBe('2026-09-30');
+    expect(r.fields.contractEndsOn).toBe('2026-09-30');
+    expect(r.fields.note).toBe('Предадено на новиот управител.');
+    expect(r.fields.periodTo).toBe('2026-09-30T22:00:00.000Z');
+  });
+
+  it('reconciles each fund against the bank and names the difference', () => {
+    const r = buildHandoverReport(handoverInput());
+    expect(r.reconciliation).toEqual([
+      { fund: 'regular', ledgerMinor: 250_000, bankMinor: 250_000, differenceMinor: 0 },
+      { fund: 'reserve', ledgerMinor: 260_000, bankMinor: 265_000, differenceMinor: 5_000 },
+    ]);
+    expect(r.fields.bankRegularMinor).toBe(250_000);
+    expect(r.fields.bankReserveMinor).toBe(265_000);
+    expect(r.fields.regularDifferenceMinor).toBe(0);
+    expect(r.fields.reserveDifferenceMinor).toBe(5_000);
+    expect(r.fields.bankAsOf).toBe('2026-09-30');
+  });
+
+  it('lists the open items biggest first and totals them', () => {
+    const r = buildHandoverReport(handoverInput());
+    expect(r.openItems.map((i) => i.invoiceId)).toEqual(['i-3', 'i-2']);
+    expect(r.fields.openItemsCount).toBe(2);
+    expect(r.fields.openItemsMinor).toBe(240_000);
+    // The two agree because every open item is somebody's debt: a cross-check worth keeping.
+    expect(r.fields.openItemsMinor).toBe(r.fields.totalDebtMinor);
+  });
+
+  it('is well-formed for a building handed over with no contract end on file and no open items', () => {
+    const r = buildHandoverReport(handoverInput({ contractEndsOn: null, openItems: [], note: null }));
+    expect(r.fields.contractEndsOn).toBe('');
+    expect(r.fields.note).toBe('');
+    expect(r.fields.openItemsCount).toBe(0);
+    expect(r.fields.openItemsMinor).toBe(0);
+    expect(r.openItems).toEqual([]);
+  });
+});
+
+describe('mk pack report labels', () => {
+  it('carries the Art. 31 and Art. 30 sentences the two documents print', () => {
+    expect(mkPack.labels.reports.annualTitle).toBe('Годишен извештај');
+    expect(mkPack.labels.reports.annualLegal).toContain('член 31');
+    expect(mkPack.labels.reports.handoverTitle).toBe('Извештај за примопредавање');
+    expect(mkPack.labels.reports.handoverLegal).toContain('член 30');
+    expect(mkPack.labels.reports.handoverLegal).toContain('8');
+    expect(mkPack.labels.reports.noSupplier).toBe('Без добавувач');
+  });
+});

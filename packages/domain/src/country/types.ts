@@ -55,6 +55,16 @@ export interface ComplianceLabel {
   hint: string;
 }
 
+/** Art. 31 and Art. 30: the fixed text the two report documents print. */
+export interface ReportLabels {
+  annualTitle: string;
+  annualLegal: string;
+  handoverTitle: string;
+  handoverLegal: string;
+  /** What an expense with neither a supplier row nor a supplier text is listed as. */
+  noSupplier: string;
+}
+
 /** Descriptions the billing engine synthesizes into invoices, in the country's language. */
 export interface CountryLabels {
   reserveFund: string;
@@ -70,6 +80,8 @@ export interface CountryLabels {
   assemblyInvitationIntro: string;
   /** Art. 37: the legal sentence printed on the invitation and repeated in the minutes. */
   assemblyLegal: string;
+  /** Art. 31 and Art. 30: what the annual and the handover report print. */
+  reports: ReportLabels;
   /** One entry per `ComplianceDutyKey`. */
   compliance: Record<ComplianceDutyKey, ComplianceLabel>;
 }
