@@ -340,6 +340,27 @@ describe('annual report (Art. 31)', () => {
     expect(cur.owners.find((o) => o.contactId === R.owners.O2)!.collectedMinor).toBe(0);
   });
 
+  it('nets exactly this owner\'s own collections when they both pay this year and have a last-year payment voided this year', async () => {
+    // O3 already collected 40,000 den this year, from the previous test, untouched by any reversal.
+    const before = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year}`)).json() as AnnualData;
+    const collectedSoFar = before.owners.find((o) => o.contactId === R.owners.O3)!.collectedMinor;
+    expect(collectedSoFar).toBe(40_000);
+
+    // The same owner also had a much larger payment last year, voided this year. Before the fix, the
+    // clamp let this eat O3's own in-window collections down to zero; the offset now belongs to last
+    // year's report, where the payment itself was booked.
+    const lastYearPaymentId = (await post(`/api/invoices/${R.invoices.O3.id}/payments`, {
+      amountMinor: 300_000, method: 'bank_transfer', paidAt: `${R.year - 1}-04-01T10:00:00.000Z`,
+    })).json().payment.id;
+    expect((await post(`/api/payments/${lastYearPaymentId}/void`, { reason: 'вратена уплата' })).statusCode).toBe(200);
+
+    const cur = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year}`)).json() as AnnualData;
+    const o3 = cur.owners.find((o) => o.contactId === R.owners.O3)!;
+    expect(o3.collectedMinor).toBe(collectedSoFar);
+    expect(cur.fields.collectedMinor).toBe(collectedSoFar);
+    expect(cur.fields.collectionRateBp).toBe(Math.round((collectedSoFar * 10_000) / billedMinor));
+  });
+
   it('leaves out a contact whose only posting predates the window, and keeps a silent current owner', async () => {
     // Somebody the ledger touched only last year: their money is in last year's report, not this one.
     const gone = (await post('/api/contacts', { firstName: 'Стар', lastName: 'Сопственик' })).json().id;

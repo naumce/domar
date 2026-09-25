@@ -13,6 +13,7 @@ const P = schema.postings; const E = schema.expenses; const S = schema.suppliers
 const C = schema.contacts; const R = schema.reminders; const AS = schema.assemblies; const AD = schema.assemblyDecisions;
 const T = schema.tenants;
 const INV = schema.invoices; const BP = schema.billingPeriods; const BC = schema.buildingContracts;
+const PM = schema.payments;
 
 export type BuildingRow = Awaited<ReturnType<typeof getBuilding>>;
 export type TenantRow = typeof T.$inferSelect;
@@ -115,9 +116,20 @@ async function reportOwners(db: Db, ctx: TenantContext, buildingId: string, from
       contactId: P.contactId,
       billed: sql<string>`coalesce(sum(case when ${P.kind} = 'charge' then ${P.amountMinor} else 0 end), 0)`,
       // A payment posts a negative to the owner and its void posts the same amount back, so negating
-      // both ref types nets a voided payment to exactly zero collected.
-      collected: sql<string>`coalesce(-sum(case when ${P.refType} in ('payment', 'payment_void') then ${P.amountMinor} else 0 end), 0)`,
-    }).from(P).where(and(owned, gte(P.bookedAt, from), lt(P.bookedAt, to))).groupBy(P.contactId),
+      // both ref types would net a voided payment to zero collected — but only when the payment being
+      // reversed was itself this window's: `payment_void.refId` is the payment's id, so the left join
+      // to `payments` (tenant-scoped, using the `(tenant_id, ref_type, ref_id)` index) recovers the
+      // original's `paid_at`, and a void only offsets when that falls inside `[from, to)`. A void
+      // whose original was booked in an earlier year's window is this year's alone to book; the
+      // payment it reverses was already collected and reported there.
+      collected: sql<string>`coalesce(-sum(case
+        when ${P.refType} = 'payment' then ${P.amountMinor}
+        when ${P.refType} = 'payment_void' and ${PM.paidAt} >= ${from.toISOString()}::timestamptz and ${PM.paidAt} < ${to.toISOString()}::timestamptz then ${P.amountMinor}
+        else 0
+      end), 0)`,
+    }).from(P)
+      .leftJoin(PM, and(eq(PM.id, P.refId), eq(PM.tenantId, ctx.tenantId)))
+      .where(and(owned, gte(P.bookedAt, from), lt(P.bookedAt, to))).groupBy(P.contactId),
     db.select({ contactId: P.contactId, total: sql<string>`coalesce(sum(${P.amountMinor}), 0)` })
       .from(P).where(and(owned, lt(P.bookedAt, to))).groupBy(P.contactId),
   ]);

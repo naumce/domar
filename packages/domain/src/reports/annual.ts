@@ -180,11 +180,10 @@ export function buildAnnualReport(input: AnnualReportInput): AnnualReportData {
   const expensesBySupplier = [...bySupplier.values()].sort((a, b) => b.amountMinor - a.amountMinor || byName(a.supplier, b.supplier));
   const works = expenses.filter((e) => e.fund === 'reserve').map((e) => ({ ...e }));
 
-  // The same clamp `summariseFund` applies to the fund columns, owner by owner: a void can reverse a
-  // payment this window never took in — last year's payment voided in January — and only what the
-  // window itself collected can leave its collections. Since the input is Σ payments − Σ voids, the
-  // clamp is `max(0, …)`: a within-window void still nets to exactly 0, and a prior-year void offsets
-  // nothing, because its original is reported in the year that booked it.
+  // The query behind `collectedMinor` (apps/api's `reportOwners`) already excludes a `payment_void`
+  // whose original payment was booked outside this window, so a prior-year void offsets nothing and
+  // a within-window void still nets that payment to exactly 0. `max(0, …)` is only a backstop against
+  // that invariant breaking upstream — it is unreachable in normal operation.
   const owners = input.owners
     .map((o) => ({ ...o, unitLabels: [...o.unitLabels], collectedMinor: Math.max(0, o.collectedMinor) }))
     .sort((a, b) => byName(a.name, b.name) || byCode(a.contactId, b.contactId));
