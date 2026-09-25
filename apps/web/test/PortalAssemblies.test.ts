@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import { i18n } from '@/i18n';
 import PortalAssembliesPage from '@/pages/portal/PortalAssembliesPage.vue';
 import PortalAssemblyPage from '@/pages/portal/PortalAssemblyPage.vue';
@@ -86,5 +87,34 @@ describe('PortalAssemblyPage', () => {
     expect(w.get('[data-test=portal-assembly-minutes]').attributes('href')).toBe('http://localhost:3001/api/portal/documents/doc-1/download?contactId=c1');
     expect(w.find('[data-test=portal-vote-for]').exists()).toBe(false);
     expect(w.get('[data-test=portal-assembly-closed]').text()).toBe('Гласањето е затворено.');
+  });
+
+  it('marks the current vote choice with aria-pressed', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(me)).mockResolvedValueOnce(json(voted));
+    await primedStore(fetchMock);
+    const w = mount(PortalAssemblyPage, { props: { id: 'as1' }, global: { plugins: [i18n], stubs: { RouterLink: true } } });
+    await flushPromises();
+    await vi.waitFor(() => expect(w.get('[data-test=portal-vote-for]').attributes('aria-pressed')).toBe('true'));
+    expect(w.get('[data-test=portal-vote-against]').attributes('aria-pressed')).toBe('false');
+    expect(w.get('[data-test=portal-vote-abstain]').attributes('aria-pressed')).toBe('false');
+  });
+
+  it('steps back to the assemblies list when the selected contact changes', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(me)).mockResolvedValueOnce(json(open));
+    const store = await primedStore(fetchMock);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/portal/assemblies', component: { template: '<div/>' } },
+        { path: '/portal/assemblies/:id', component: { template: '<div/>' }, props: true },
+      ],
+    });
+    await router.push('/portal/assemblies/as1');
+    await router.isReady();
+    mount(PortalAssemblyPage, { props: { id: 'as1' }, global: { plugins: [i18n, router] } });
+    await flushPromises();
+    store.select('c2');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/portal/assemblies');
   });
 });

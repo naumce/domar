@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 import { api, API_BASE } from '@/api/client';
 import type { PortalAssembly, VoteChoice } from '@/api/types';
 import AppButton from '@/components/ui/AppButton.vue';
@@ -9,6 +10,7 @@ import { usePortalStore } from '@/stores/portal';
 const props = defineProps<{ id: string }>();
 const { t, te } = useI18n();
 const portal = usePortalStore();
+const router = useRouter();
 const assembly = ref<PortalAssembly | null>(null);
 const error = ref('');
 const busy = ref('');
@@ -26,6 +28,9 @@ async function load() {
   catch { error.value = t('app.error'); }
 }
 onMounted(load);
+// The assembly belongs to the contact that was selected when the page loaded; switching the shell's
+// contact makes it someone else's, so the page steps back to the list (mirrors PortalInvoicePage).
+watch(() => portal.selectedContactId, () => { void router.push('/portal/assemblies'); });
 
 async function vote(decisionId: string, choice: VoteChoice) {
   if (!contactId.value) return;
@@ -67,7 +72,7 @@ async function vote(decisionId: string, choice: VoteChoice) {
         <div class="font-medium">{{ d.title }}</div>
         <p v-if="d.text" class="mb-2 text-sm text-slate-600">{{ d.text }}</p>
         <div v-if="assembly.votingOpen" class="mt-2 flex gap-2">
-          <AppButton v-for="c in CHOICES" :key="c" :variant="d.myChoice === c ? 'primary' : 'secondary'" :loading="busy === d.id" :data-test="`portal-vote-${c}`" @click="vote(d.id, c)">
+          <AppButton v-for="c in CHOICES" :key="c" :variant="d.myChoice === c ? 'primary' : 'secondary'" :pressed="d.myChoice === c" :loading="busy === d.id" :data-test="`portal-vote-${c}`" @click="vote(d.id, c)">
             {{ t(`portal.assemblyChoices.${c}`) }}
           </AppButton>
         </div>
