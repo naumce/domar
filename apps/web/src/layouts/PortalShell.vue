@@ -14,6 +14,7 @@ const nav = [
   { to: '/portal/payments', key: 'portal.payments', test: 'portal-nav-payments' },
   { to: '/portal/statement', key: 'portal.statement', test: 'portal-nav-statement' },
   { to: '/portal/fund', key: 'portal.fund', test: 'portal-nav-fund' },
+  { to: '/portal/assemblies', key: 'portal.assemblies', test: 'portal-nav-assemblies' },
   { to: '/portal/settings', key: 'portal.settings', test: 'portal-nav-settings' },
 ];
 async function logout() { await portal.logout(); await router.push('/portal/login'); }

@@ -38,6 +38,8 @@ export const router = createRouter({
         { path: 'payments', component: () => import('@/pages/portal/PortalPaymentsPage.vue') },
         { path: 'statement', component: () => import('@/pages/portal/PortalStatementPage.vue') },
         { path: 'fund', component: () => import('@/pages/portal/PortalFundPage.vue') },
+        { path: 'assemblies', component: () => import('@/pages/portal/PortalAssembliesPage.vue') },
+        { path: 'assemblies/:id', component: () => import('@/pages/portal/PortalAssemblyPage.vue'), props: true },
         { path: 'settings', component: () => import('@/pages/portal/PortalSettingsPage.vue') },
       ],
     },
