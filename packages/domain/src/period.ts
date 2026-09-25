@@ -67,12 +67,15 @@ export function localDayStart(instant: Date, timeZone: string): Date {
 
 /**
  * A `YYYY-MM-DD` string onto the UTC instant of local midnight of that same civil day in `timeZone`,
- * so it compares on equal footing with anything else put through `localDayStart`. Anchored at noon
- * UTC rather than parsed directly as UTC midnight, so the civil day read back out is never pushed a
- * day either way by the zone's offset.
+ * so it compares on equal footing with anything else put through `localDayStart`. The date's own
+ * parts are the local wall clock, resolved through the same two-pass offset as `periodStartDate`,
+ * which holds at any offset — an anchor inside the UTC day would read back a day out in Auckland.
  */
 export function civilDayStart(dateOnly: string, timeZone: string): Date {
-  return localDayStart(new Date(`${dateOnly}T12:00:00.000Z`), timeZone);
+  const [y, m, d] = dateOnly.split('-').map(Number);
+  const guess = Date.UTC(y!, m! - 1, d!, 0, 0, 0);
+  const candidate = guess - zoneOffsetAt(guess, timeZone);
+  return new Date(guess - zoneOffsetAt(candidate, timeZone));
 }
 
 export interface RecurrenceRule {

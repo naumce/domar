@@ -1,8 +1,6 @@
 import { divRoundHalfUp } from '../money.js';
 import { civilDayStart } from '../period.js';
-
-/** The civil-day helper the windows are cut on; shared with `compliance/evaluate.ts`. */
-export { civilDayStart } from '../period.js';
+import { byCode, byName } from './order.js';
 
 export type ReportFund = 'regular' | 'reserve';
 /** The `postings.kind` labels; a report never invents one (spec §11). */
@@ -27,6 +25,10 @@ export interface FundMovementIn {
   outflowMinor: number;
 }
 
+/**
+ * One paid expense. Callers pass the rows whose `voided_at` is null; `voided` carries the same fact on
+ * the row, and a voided row is left out of every table and every total by the builder itself.
+ */
 export interface ReportExpense {
   id: string;
   fund: ReportFund;
@@ -35,6 +37,8 @@ export interface ReportExpense {
   supplier: string;
   amountMinor: number;
   paidAt: string;
+  /** True for a reversed expense: it is neither spending nor a work, and never reaches the page. */
+  voided: boolean;
 }
 
 export interface ReportOwner {
@@ -70,9 +74,14 @@ export interface FundMovement { kind: ReportPostingKind; refType: string; inflow
 export interface FundSummary {
   fund: ReportFund;
   openingMinor: number;
+  /** Gross: every posting the ledger wrote, reversals included. */
   inflowMinor: number;
   outflowMinor: number;
-  /** Always `openingMinor + inflowMinor − outflowMinor` (plan addendum 5). */
+  /** Gross inflow less what the reversals took back out: what the fund actually took in. */
+  netInflowMinor: number;
+  /** Gross outflow less what the reversals took back in: what the fund actually spent. */
+  netOutflowMinor: number;
+  /** Always `openingMinor + inflowMinor − outflowMinor`, and equally `… + netInflowMinor − netOutflowMinor` (plan addendum 5). */
   closingMinor: number;
   movements: FundMovement[];
 }
@@ -94,6 +103,15 @@ export interface AnnualReportData {
 
 const FUNDS: readonly ReportFund[] = ['regular', 'reserve'];
 
+/**
+ * The two reversals (spec §11). A void nets its original out: the voided payment leaves income and
+ * the void's own outflow is not spending; the voided expense leaves spending and the void's own
+ * inflow is never income. Both sides shed the same amount, which is why the closing balance is the
+ * same whether it is read off the gross or the net columns.
+ */
+const PAYMENT_VOID = 'payment_void';
+const EXPENSE_VOID = 'expense_void';
+
 function summariseFund(fund: ReportFund, openingMinor: number, movements: FundMovementIn[]): FundSummary {
   const byKey = new Map<string, FundMovement>();
   let inflowMinor = 0;
@@ -109,8 +127,19 @@ function summariseFund(fund: ReportFund, openingMinor: number, movements: FundMo
     e.netMinor = e.inflowMinor - e.outflowMinor;
     byKey.set(key, e);
   }
-  const rows = [...byKey.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.refType.localeCompare(b.refType));
-  return { fund, openingMinor, inflowMinor, outflowMinor, closingMinor: openingMinor + inflowMinor - outflowMinor, movements: rows };
+  const rows = [...byKey.values()].sort((a, b) => byCode(a.kind, b.kind) || byCode(a.refType, b.refType));
+  const voidsMinor = rows.reduce((s, r) =>
+    s + (r.refType === PAYMENT_VOID ? r.outflowMinor : 0) + (r.refType === EXPENSE_VOID ? r.inflowMinor : 0), 0);
+  return {
+    fund,
+    openingMinor,
+    inflowMinor,
+    outflowMinor,
+    netInflowMinor: inflowMinor - voidsMinor,
+    netOutflowMinor: outflowMinor - voidsMinor,
+    closingMinor: openingMinor + inflowMinor - outflowMinor,
+    movements: rows,
+  };
 }
 
 /**
@@ -122,7 +151,10 @@ export function buildAnnualReport(input: AnnualReportInput): AnnualReportData {
   const regular = funds[0]!;
   const reserve = funds[1]!;
 
-  const expenses = [...input.expenses].sort((a, b) => a.paidAt.localeCompare(b.paidAt) || a.id.localeCompare(b.id));
+  const expenses = input.expenses
+    .filter((e) => !e.voided)
+    .map((e) => ({ ...e }))
+    .sort((a, b) => byCode(a.paidAt, b.paidAt) || byCode(a.id, b.id));
   const bySupplier = new Map<string, SupplierTotal>();
   for (const e of expenses) {
     const t = bySupplier.get(e.supplier) ?? { supplier: e.supplier, count: 0, amountMinor: 0 };
@@ -130,21 +162,23 @@ export function buildAnnualReport(input: AnnualReportInput): AnnualReportData {
     t.amountMinor += e.amountMinor;
     bySupplier.set(e.supplier, t);
   }
-  const expensesBySupplier = [...bySupplier.values()].sort((a, b) => b.amountMinor - a.amountMinor || a.supplier.localeCompare(b.supplier));
-  const works = expenses.filter((e) => e.fund === 'reserve');
+  const expensesBySupplier = [...bySupplier.values()].sort((a, b) => b.amountMinor - a.amountMinor || byName(a.supplier, b.supplier));
+  const works = expenses.filter((e) => e.fund === 'reserve').map((e) => ({ ...e }));
 
-  const owners = [...input.owners].sort((a, b) => a.name.localeCompare(b.name) || a.contactId.localeCompare(b.contactId));
+  const owners = input.owners
+    .map((o) => ({ ...o, unitLabels: [...o.unitLabels] }))
+    .sort((a, b) => byName(a.name, b.name) || byCode(a.contactId, b.contactId));
   const debtors: DebtorRow[] = owners
     .filter((o) => o.balanceMinor > 0)
-    .map((o) => ({ contactId: o.contactId, name: o.name, unitLabels: o.unitLabels, balanceMinor: o.balanceMinor }))
-    .sort((a, b) => b.balanceMinor - a.balanceMinor || a.name.localeCompare(b.name));
+    .map((o) => ({ contactId: o.contactId, name: o.name, unitLabels: [...o.unitLabels], balanceMinor: o.balanceMinor }))
+    .sort((a, b) => b.balanceMinor - a.balanceMinor || byName(a.name, b.name));
 
   const billedMinor = owners.reduce((s, o) => s + o.billedMinor, 0);
   const collectedMinor = owners.reduce((s, o) => s + o.collectedMinor, 0);
   const expensesMinor = expenses.reduce((s, e) => s + e.amountMinor, 0);
   const worksMinor = works.reduce((s, e) => s + e.amountMinor, 0);
   const totalDebtMinor = debtors.reduce((s, d) => s + d.balanceMinor, 0);
-  const assemblies = [...input.assemblies].sort((a, b) => a.heldAt.localeCompare(b.heldAt));
+  const assemblies = input.assemblies.map((a) => ({ ...a })).sort((a, b) => byCode(a.heldAt, b.heldAt));
 
   return {
     fields: {

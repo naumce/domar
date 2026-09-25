@@ -3,6 +3,7 @@ import {
   buildAnnualReport,
   type AnnualReportData, type AnnualReportInput, type ReportFund, type ReportOwner, type ReportWindow,
 } from './annual.js';
+import { byCode, byName } from './order.js';
 
 const DAY_MS = 86_400_000;
 
@@ -61,8 +62,9 @@ export interface HandoverReportData {
  */
 export function buildHandoverReport(input: HandoverReportInput): HandoverReportData {
   const annual = buildAnnualReport(input);
-  const openItems = [...input.openItems].sort((a, b) =>
-    b.outstandingMinor - a.outstandingMinor || a.ownerName.localeCompare(b.ownerName) || a.invoiceId.localeCompare(b.invoiceId));
+  const openItems = input.openItems
+    .map((i) => ({ ...i }))
+    .sort((a, b) => b.outstandingMinor - a.outstandingMinor || byName(a.ownerName, b.ownerName) || byCode(a.invoiceId, b.invoiceId));
   const bank: Record<ReportFund, number> = { regular: input.bankBalances.regularMinor, reserve: input.bankBalances.reserveMinor };
   const reconciliation: FundReconciliation[] = annual.funds.map((f) => ({
     fund: f.fund, ledgerMinor: f.closingMinor, bankMinor: bank[f.fund], differenceMinor: bank[f.fund] - f.closingMinor,

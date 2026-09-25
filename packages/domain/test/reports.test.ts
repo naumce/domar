@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mkPack } from '../src/country/mk.js';
-import { buildAnnualReport, civilDayStart, yearWindow, type AnnualReportInput } from '../src/reports/annual.js';
+import { civilDayStart } from '../src/period.js';
+import { buildAnnualReport, yearWindow, type AnnualReportInput, type FundMovementIn } from '../src/reports/annual.js';
 import { asOfWindow, buildHandoverReport, type HandoverReportInput } from '../src/reports/handover.js';
 
 const TZ = 'Europe/Skopje';
@@ -23,9 +24,9 @@ const annualInput = (): AnnualReportInput => ({
     { fund: 'reserve', kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 600_000 },
   ],
   expenses: [
-    { id: 'e1', fund: 'regular', description: 'Струја за заедничките простории', supplier: 'ЕВН Македонија', amountMinor: 150_000, paidAt: '2026-03-05T09:00:00.000Z' },
-    { id: 'e2', fund: 'reserve', description: 'Санација на кровот', supplier: 'Кровови ДООЕЛ', amountMinor: 400_000, paidAt: '2026-06-11T09:00:00.000Z' },
-    { id: 'e3', fund: 'reserve', description: 'Фасада, влез Б', supplier: 'Кровови ДООЕЛ', amountMinor: 200_000, paidAt: '2026-08-02T09:00:00.000Z' },
+    { id: 'e1', fund: 'regular', description: 'Струја за заедничките простории', supplier: 'ЕВН Македонија', amountMinor: 150_000, paidAt: '2026-03-05T09:00:00.000Z', voided: false },
+    { id: 'e2', fund: 'reserve', description: 'Санација на кровот', supplier: 'Кровови ДООЕЛ', amountMinor: 400_000, paidAt: '2026-06-11T09:00:00.000Z', voided: false },
+    { id: 'e3', fund: 'reserve', description: 'Фасада, влез Б', supplier: 'Кровови ДООЕЛ', amountMinor: 200_000, paidAt: '2026-08-02T09:00:00.000Z', voided: false },
   ],
   // Deliberately out of order: the builder sorts, the caller does not have to.
   owners: [
@@ -65,6 +66,17 @@ describe('yearWindow and asOfWindow', () => {
     expect(civilDayStart('2026-01-15', TZ).toISOString()).toBe('2026-01-14T23:00:00.000Z');
   });
 
+  it('holds at offsets a noon anchor cannot reach, either side of UTC', () => {
+    // +13 in January, +12 in July: noon UTC is already the next civil day in Auckland.
+    expect(civilDayStart('2026-01-15', 'Pacific/Auckland').toISOString()).toBe('2026-01-14T11:00:00.000Z');
+    expect(civilDayStart('2026-07-15', 'Pacific/Auckland').toISOString()).toBe('2026-07-14T12:00:00.000Z');
+    // −8 in January, −7 in July.
+    expect(civilDayStart('2026-01-15', 'America/Los_Angeles').toISOString()).toBe('2026-01-15T08:00:00.000Z');
+    expect(civilDayStart('2026-07-15', 'America/Los_Angeles').toISOString()).toBe('2026-07-15T07:00:00.000Z');
+    // The spring-forward day still opens at local midnight, before the hour goes missing.
+    expect(civilDayStart('2026-03-08', 'America/Los_Angeles').toISOString()).toBe('2026-03-08T08:00:00.000Z');
+  });
+
   it('runs a handover window from 1 January to the end of the asOf day', () => {
     const w = asOfWindow('2026-09-30', TZ);
     expect(w.from.toISOString()).toBe('2025-12-31T23:00:00.000Z');
@@ -86,7 +98,8 @@ describe('buildAnnualReport — the funds', () => {
       expect(f.openingMinor + f.inflowMinor - f.outflowMinor, f.fund).toBe(f.closingMinor);
     }
     expect(r.funds[0]).toEqual({
-      fund: 'regular', openingMinor: 100_000, inflowMinor: 300_000, outflowMinor: 150_000, closingMinor: 250_000,
+      fund: 'regular', openingMinor: 100_000, inflowMinor: 300_000, outflowMinor: 150_000,
+      netInflowMinor: 300_000, netOutflowMinor: 150_000, closingMinor: 250_000,
       movements: [
         { kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 150_000, netMinor: -150_000 },
         { kind: 'payment', refType: 'payment', inflowMinor: 300_000, outflowMinor: 0, netMinor: 300_000 },
@@ -97,8 +110,92 @@ describe('buildAnnualReport — the funds', () => {
 
   it('gives a fund with no history an opening of zero rather than leaving it out', () => {
     const r = buildAnnualReport({ ...annualInput(), opening: { regular: 0, reserve: 0 }, fundMovements: [] });
-    expect(r.funds.map((f) => [f.fund, f.openingMinor, f.inflowMinor, f.outflowMinor, f.closingMinor]))
-      .toEqual([['regular', 0, 0, 0, 0], ['reserve', 0, 0, 0, 0]]);
+    expect(r.funds.map((f) => [f.fund, f.openingMinor, f.inflowMinor, f.outflowMinor, f.netInflowMinor, f.netOutflowMinor, f.closingMinor]))
+      .toEqual([['regular', 0, 0, 0, 0, 0, 0], ['reserve', 0, 0, 0, 0, 0, 0]]);
+  });
+});
+
+/**
+ * Every posting kind on one book, with both reversals: regular gets a part-voided payment and a
+ * part-voided expense, reserve gets a payment and an expense voided whole. Gross keeps every line the
+ * ledger wrote; net is what the year actually took in and actually spent.
+ */
+const voidMovements = (): FundMovementIn[] => [
+  { fund: 'regular', kind: 'opening', refType: 'opening', inflowMinor: 50_000, outflowMinor: 0 },
+  { fund: 'regular', kind: 'charge', refType: 'invoice', inflowMinor: 20_000, outflowMinor: 0 },
+  // Two rows on one key: the builder merges them into a single movement of 300.000.
+  { fund: 'regular', kind: 'payment', refType: 'payment', inflowMinor: 200_000, outflowMinor: 0 },
+  { fund: 'regular', kind: 'payment', refType: 'payment', inflowMinor: 100_000, outflowMinor: 0 },
+  { fund: 'regular', kind: 'adjustment', refType: 'payment_void', inflowMinor: 0, outflowMinor: 100_000 },
+  { fund: 'regular', kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 150_000 },
+  { fund: 'regular', kind: 'adjustment', refType: 'expense_void', inflowMinor: 60_000, outflowMinor: 0 },
+  { fund: 'reserve', kind: 'payment', refType: 'payment', inflowMinor: 500_000, outflowMinor: 0 },
+  { fund: 'reserve', kind: 'adjustment', refType: 'payment_void', inflowMinor: 0, outflowMinor: 500_000 },
+  { fund: 'reserve', kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 200_000 },
+  { fund: 'reserve', kind: 'adjustment', refType: 'expense_void', inflowMinor: 200_000, outflowMinor: 0 },
+];
+
+const voidInput = (): AnnualReportInput => ({
+  ...annualInput(),
+  opening: { regular: 10_000, reserve: 25_000 },
+  fundMovements: voidMovements(),
+});
+
+describe('buildAnnualReport — voids', () => {
+  it('merges the rows of one (kind, refType) key and lists every kind once, in a fixed order', () => {
+    const r = buildAnnualReport(voidInput());
+    expect(r.funds[0]!.movements).toEqual([
+      { kind: 'adjustment', refType: 'expense_void', inflowMinor: 60_000, outflowMinor: 0, netMinor: 60_000 },
+      { kind: 'adjustment', refType: 'payment_void', inflowMinor: 0, outflowMinor: 100_000, netMinor: -100_000 },
+      { kind: 'charge', refType: 'invoice', inflowMinor: 20_000, outflowMinor: 0, netMinor: 20_000 },
+      { kind: 'expense', refType: 'expense', inflowMinor: 0, outflowMinor: 150_000, netMinor: -150_000 },
+      { kind: 'opening', refType: 'opening', inflowMinor: 50_000, outflowMinor: 0, netMinor: 50_000 },
+      { kind: 'payment', refType: 'payment', inflowMinor: 300_000, outflowMinor: 0, netMinor: 300_000 },
+    ]);
+  });
+
+  it('nets a voided payment out of income and a voided expense out of spending', () => {
+    const r = buildAnnualReport(voidInput());
+    // Gross: 50.000 + 20.000 + 300.000 + 60.000 in, 100.000 + 150.000 out.
+    expect(r.funds[0]).toMatchObject({
+      fund: 'regular', openingMinor: 10_000,
+      inflowMinor: 430_000, outflowMinor: 250_000,
+      // Net: the 100.000 void leaves income, the 60.000 void leaves spending, and neither is income.
+      netInflowMinor: 270_000, netOutflowMinor: 90_000,
+      closingMinor: 190_000,
+    });
+  });
+
+  it('shows a fund whose whole year was voided as having taken in and spent nothing', () => {
+    const r = buildAnnualReport(voidInput());
+    expect(r.funds[1]).toMatchObject({
+      fund: 'reserve', openingMinor: 25_000,
+      inflowMinor: 700_000, outflowMinor: 700_000,
+      netInflowMinor: 0, netOutflowMinor: 0,
+      closingMinor: 25_000,
+    });
+  });
+
+  it('keeps the invariant on both the gross and the net columns', () => {
+    for (const f of buildAnnualReport(voidInput()).funds) {
+      expect(f.openingMinor + f.inflowMinor - f.outflowMinor, f.fund).toBe(f.closingMinor);
+      expect(f.openingMinor + f.netInflowMinor - f.netOutflowMinor, f.fund).toBe(f.closingMinor);
+    }
+  });
+
+  it('leaves a voided expense out of every table and every total', () => {
+    const input = annualInput();
+    input.expenses = [
+      ...input.expenses,
+      { id: 'e4', fund: 'reserve', description: 'Сторнирана поправка', supplier: 'Кровови ДООЕЛ', amountMinor: 900_000, paidAt: '2026-09-09T09:00:00.000Z', voided: true },
+    ];
+    const r = buildAnnualReport(input);
+    expect(r.expenses.map((e) => e.id)).toEqual(['e1', 'e2', 'e3']);
+    expect(r.works.map((e) => e.id)).toEqual(['e2', 'e3']);
+    expect(r.expensesBySupplier.find((t) => t.supplier === 'Кровови ДООЕЛ')).toEqual({ supplier: 'Кровови ДООЕЛ', count: 2, amountMinor: 600_000 });
+    expect(r.fields.expensesMinor).toBe(750_000);
+    expect(r.fields.worksMinor).toBe(600_000);
+    expect(r.fields.worksCount).toBe(2);
   });
 });
 
@@ -120,6 +217,32 @@ describe('buildAnnualReport — the tables', () => {
       { contactId: 'c-3', name: 'Вера Велкова', unitLabels: ['3', 'P-1'], balanceMinor: 180_000 },
       { contactId: 'c-2', name: 'Борис Богданов', unitLabels: ['2'], balanceMinor: 60_000 },
     ]);
+  });
+
+  it('hands back rows the caller cannot mutate the input through', () => {
+    const input = annualInput();
+    const r = buildAnnualReport(input);
+    r.expenses[0]!.amountMinor = 1;
+    r.owners[0]!.name = 'мутирано';
+    r.owners[0]!.unitLabels.push('x');
+    r.debtors[0]!.unitLabels.push('x');
+    r.assemblies[0]!.decisionCount = 99;
+    expect(input.expenses.map((e) => e.amountMinor)).toEqual([150_000, 400_000, 200_000]);
+    expect(input.owners.map((o) => o.name)).toEqual(['Вера Велкова', 'Ана Анастасова', 'Борис Богданов']);
+    expect(input.owners.map((o) => o.unitLabels)).toEqual([['3', 'P-1'], ['1'], ['2']]);
+    expect(input.assemblies[0]!.decisionCount).toBe(2);
+  });
+
+  it("orders names by the pack's alphabet, in which Ќ follows Т", () => {
+    const input = annualInput();
+    input.owners = [
+      { contactId: 'c-k', name: 'Ќиро Ќирков', unitLabels: ['4'], billedMinor: 0, collectedMinor: 0, balanceMinor: 10_000 },
+      { contactId: 'c-t', name: 'Тодор Тодоров', unitLabels: ['5'], billedMinor: 0, collectedMinor: 0, balanceMinor: 10_000 },
+    ];
+    const r = buildAnnualReport(input);
+    expect(r.owners.map((o) => o.name)).toEqual(['Тодор Тодоров', 'Ќиро Ќирков']);
+    // Equal debts fall back to the same alphabet.
+    expect(r.debtors.map((d) => d.name)).toEqual(['Тодор Тодоров', 'Ќиро Ќирков']);
   });
 
   it('never counts a credit balance as a debt', () => {
@@ -206,6 +329,13 @@ describe('buildHandoverReport', () => {
     expect(r.fields.openItemsMinor).toBe(240_000);
     // The two agree because every open item is somebody's debt: a cross-check worth keeping.
     expect(r.fields.openItemsMinor).toBe(r.fields.totalDebtMinor);
+  });
+
+  it('hands back open items the caller cannot mutate the input through', () => {
+    const input = handoverInput();
+    const r = buildHandoverReport(input);
+    r.openItems[0]!.outstandingMinor = 1;
+    expect(input.openItems.map((i) => i.outstandingMinor)).toEqual([60_000, 180_000]);
   });
 
   it('is well-formed for a building handed over with no contract end on file and no open items', () => {
