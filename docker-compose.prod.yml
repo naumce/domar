@@ -40,6 +40,10 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       EMAIL_FROM: ${EMAIL_FROM:-domar <no-reply@${DOMAIN}>}
       JOB_TOKEN: ${JOB_TOKEN:?set JOB_TOKEN in .env}
+      # Web Push. All three optional, exactly like SMTP_URL above: unset means push stays off.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       PUBLIC_WEB_URL: https://${DOMAIN}
     volumes:
       - domar-data:/data
