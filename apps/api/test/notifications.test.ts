@@ -123,6 +123,18 @@ describe('notification bells', () => {
     expect((await portalGet('/api/portal/notifications')).json().unread).toBe(0);
   });
 
+  it('marks everything read at once for the owner too', async () => {
+    const { notify } = await import('../src/notifications/repo.js');
+    const account = (await portalGet('/api/portal/me')).json().account.id;
+    await notify(t.db, { tenantId: a.tenantId, userId: null, role: 'readonly' }, [
+      { ownerAccountId: account, kind: 'invoice_published', title: 'Втора фактура', body: '', link: '/portal/invoices/y' },
+      { ownerAccountId: account, kind: 'invoice_published', title: 'Трета фактура', body: '', link: '/portal/invoices/z' },
+    ]);
+    expect((await portalGet('/api/portal/notifications')).json().unread).toBe(2);
+    expect((await portalPost('/api/portal/notifications/read-all')).statusCode).toBe(204);
+    expect((await portalGet('/api/portal/notifications')).json().unread).toBe(0);
+  });
+
   it('does not accept a staff cookie on the portal bell, nor an owner cookie on the manager bell', async () => {
     expect((await portalGet('/api/portal/notifications', a.cookie)).statusCode).toBe(401);
     expect((await staffGet('/api/notifications', ownerCookie)).statusCode).toBe(401);

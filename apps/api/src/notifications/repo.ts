@@ -120,6 +120,11 @@ export async function markOwnerRead(db: Db, portal: PortalContext, id: string): 
   if (!row) throw notFound('Notification');
 }
 
+export async function markAllOwnerRead(db: Db, portal: PortalContext): Promise<void> {
+  await db.update(N).set({ readAt: new Date() })
+    .where(and(eq(N.ownerAccountId, portal.ownerAccountId), isNull(N.readAt)));
+}
+
 export interface NewSubscription { endpoint: string; p256dh: string; auth: string; userAgent?: string | undefined }
 
 /**

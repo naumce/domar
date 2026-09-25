@@ -1,5 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { listForOwner, markOwnerRead, removeSubscription, upsertSubscription } from '../notifications/repo.js';
+import { listForOwner, markAllOwnerRead, markOwnerRead, removeSubscription, upsertSubscription } from '../notifications/repo.js';
 import { notificationListOut } from '../notifications/schema.js';
 import { idParam } from '../resources/common.js';
 import { portalPushKeyOut, portalPushSubscribeBody, portalPushUnsubscribeBody } from './schema.js';
@@ -13,6 +13,11 @@ export const portalNotificationRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/notifications/:id/read', { schema: { params: idParam } }, async (req, reply) => {
     await markOwnerRead(req.db, req.portal!, req.params.id);
+    return reply.status(204).send();
+  });
+
+  app.post('/notifications/read-all', {}, async (req, reply) => {
+    await markAllOwnerRead(req.db, req.portal!);
     return reply.status(204).send();
   });
 
