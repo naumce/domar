@@ -84,7 +84,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   const mailer = createMailer(opts.config);
   app.decorate('mailer', mailer);
   app.addHook('onClose', async () => { await mailer.close(); });
-  app.decorate('pusher', createPusher(opts.config));
+  app.decorate('pusher', createPusher(opts.config, app.log));
 
   // `wildcard: false`: no catch-all GET route, so unknown paths reach the not-found handler below
   // and only that handler decides between the SPA shell and the JSON envelope.

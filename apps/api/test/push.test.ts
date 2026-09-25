@@ -41,6 +41,24 @@ describe('createPusher', () => {
     expect(Object.keys(pusher.sent[0]!.payload).sort()).toEqual(['id', 'link', 'title']);
   });
 
+  it('turns push off, and does not throw, when web-push rejects the key pair', async () => {
+    const webpush = (await import('web-push')).default;
+    // Every other test uses VAPID_PRIVATE_KEY=memory, which never reaches `setVapidDetails` — this
+    // is the boot path an operator hits by pasting the pair in the wrong order. web-push validates
+    // eagerly ("Vapid public key should be 65 bytes long when decoded."), and an uncaught throw
+    // here would take the whole API down instead of leaving push off as DEPLOY.md promises.
+    vi.mocked(webpush.setVapidDetails).mockImplementationOnce(() => { throw new Error('Vapid public key should be 65 bytes long when decoded.'); });
+    const warn = vi.fn();
+    const pusher = createPusher(loadConfig({ ...base, VAPID_PUBLIC_KEY: 'not-a-key', VAPID_PRIVATE_KEY: 'BPrivate', VAPID_SUBJECT: 'mailto:no-reply@domar.mk' }), { warn });
+    expect(pusher.configured).toBe(false);
+    expect(pusher.publicKey).toBeNull();
+    await expect(pusher.send(target, payload)).resolves.toEqual({ ok: false, error: 'vapid_invalid', gone: false });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]![1])).toContain('VAPID');
+    // And nothing was sent: the caller falls back to email on the recorded reason.
+    expect(webpush.sendNotification).not.toHaveBeenCalled();
+  });
+
   it('bounds the real transport with a socket timeout, and treats a timeout as recoverable, not gone', async () => {
     const webpush = (await import('web-push')).default;
     const pusher = createPusher(loadConfig({ ...base, VAPID_PUBLIC_KEY: 'BPublic', VAPID_PRIVATE_KEY: 'BPrivate', VAPID_SUBJECT: 'mailto:no-reply@domar.mk' }));

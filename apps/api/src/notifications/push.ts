@@ -22,22 +22,31 @@ const TTL_SECONDS = 86_400;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
- * Without `VAPID_PRIVATE_KEY` this is an explicit no-op: `send` answers
- * `{ ok: false, error: 'vapid_not_configured' }` so the caller records the reason and falls back to
- * email, and nothing ever throws for lack of a key (plan addendum 5, mirroring `createMailer`).
+ * Without `VAPID_PRIVATE_KEY` — or with a pair `web-push` refuses — this is an explicit no-op:
+ * `send` answers `{ ok: false, error: … }` so the caller records the reason and falls back to email,
+ * and nothing ever throws for lack of a usable key (plan addendum 5, mirroring `createMailer`).
  */
-export function createPusher(config: Config): Pusher {
+export function createPusher(config: Config, log?: { warn(obj: unknown, msg: string): void }): Pusher {
   const sent: SentPush[] = [];
-  if (!config.vapidPrivateKey || !config.vapidPublicKey) {
-    return {
-      configured: false,
-      publicKey: null,
-      sent,
-      async send() { return { ok: false, error: 'vapid_not_configured', gone: false }; },
-    };
-  }
+  const off = (error: string): Pusher => ({
+    configured: false,
+    publicKey: null,
+    sent,
+    async send() { return { ok: false, error, gone: false }; },
+  });
+  if (!config.vapidPrivateKey || !config.vapidPublicKey) return off('vapid_not_configured');
   const capture = config.vapidPrivateKey === 'memory';
-  if (!capture) webpush.setVapidDetails(config.vapidSubject, config.vapidPublicKey, config.vapidPrivateKey);
+  if (!capture) {
+    try {
+      webpush.setVapidDetails(config.vapidSubject, config.vapidPublicKey, config.vapidPrivateKey);
+    } catch (err) {
+      // web-push validates the pair eagerly and throws on a malformed key, a swapped pair or an
+      // empty subject. `.env.example` and DEPLOY.md both promise that bad VAPID configuration turns
+      // push off; an uncaught throw here would instead restart-loop the whole API.
+      log?.warn({ err }, 'VAPID configuration rejected; push is off and notifications fall back to email');
+      return off('vapid_invalid');
+    }
+  }
   return {
     configured: true,
     publicKey: config.vapidPublicKey,
