@@ -60,7 +60,9 @@ export const notifications = pgTable('notifications', {
 }, (t) => [
   index('notifications_tenant_user_idx').on(t.tenantId, t.userId, t.createdAt),
   index('notifications_tenant_account_idx').on(t.tenantId, t.ownerAccountId, t.createdAt),
-  // The drain job's only query: the undelivered tail, oldest first.
-  index('notifications_pending_idx').on(t.createdAt).where(sql`delivered_at is null`),
+  // The drain job's only query: the undelivered tail in insertion order. It claims by `seq`, not by
+  // `created_at` — rows written by one transaction share `created_at` — so the index is on `seq`,
+  // or every chunk would read and sort the whole pending set instead of the ten rows it takes.
+  index('notifications_pending_idx').on(t.seq).where(sql`delivered_at is null`),
   check('notifications_recipient_chk', sql`num_nonnulls(${t.ownerAccountId}, ${t.userId}) = 1`),
 ]);

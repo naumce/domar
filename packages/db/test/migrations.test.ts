@@ -430,6 +430,16 @@ describe('migrations', () => {
       'maintenance_status', 'maintenance_request_created', 'delivery_failed']);
   });
 
+  it('indexes the pending tail by the column the drain claims by', async () => {
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'notifications'`;
+    const pending = idx.find((i) => i.indexdef.includes('notifications_pending_idx'));
+    // Migration 0015: the claim orders by `seq`, so an index on `created_at` would leave every chunk
+    // reading and sorting the whole pending set.
+    expect(pending?.indexdef).toContain('(seq)');
+    expect(pending?.indexdef).toContain('delivered_at IS NULL');
+    expect(pending?.indexdef).not.toContain('(created_at)');
+  });
+
   it('a notification has exactly one recipient and carries no amount column', async () => {
     const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }[]>`
       select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'notifications' order by 1`;
