@@ -187,6 +187,20 @@ describe('documents', () => {
     expect((await get(`/api/documents/${created.id}`)).statusCode).toBe(200);
     await expect(access(join(t.dataDir, 'documents', a.tenantId, String(new Date().getUTCFullYear()), `${created.id}.pdf`))).resolves.toBeUndefined();
   });
+
+  it('refuses to delete the minutes of an assembly that was held', async () => {
+    const created = (await upload(A.buildingId, { kind: 'minutes', title: 'Записник' }, { filename: 'zapisnik.pdf', mime: 'application/pdf', content: PDF })).json();
+    // `minutes_document_id` is `on delete set null`, so without the guard the delete would succeed
+    // and silently strip the held assembly — and its `assembly_held` evidence — of the minutes.
+    await t.db.insert(schema.assemblies).values({
+      tenantId: a.tenantId, buildingId: A.buildingId, scheduledAt: new Date(), status: 'held',
+      heldAt: new Date(), minutesDocumentId: created.id,
+    });
+    const res = await t.app.inject({ method: 'DELETE', url: `/api/documents/${created.id}`, headers: { cookie: a.cookie } });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('document_referenced');
+    expect((await get(`/api/documents/${created.id}`)).statusCode).toBe(200);
+  });
 });
 
 describe('LocalDiskStore', () => {

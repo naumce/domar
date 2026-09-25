@@ -10,7 +10,7 @@ import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import type { DocumentKind } from './schema.js';
 
-const D = schema.documents; const BC = schema.buildingContracts; const E = schema.expenses;
+const D = schema.documents; const BC = schema.buildingContracts; const E = schema.expenses; const AS = schema.assemblies;
 
 export type DocumentRow = typeof D.$inferSelect;
 /** Everything but the storage key: what goes on the wire and into the audit trail. */
@@ -84,7 +84,7 @@ export async function createDocument(db: Db, ctx: TenantContext, store: Document
   }
 }
 
-/** Spec §4/addendum 13: a document a contract or an expense points at is not deletable. */
+/** Spec §4/addendum 13: a document a contract, an expense or an assembly points at is not deletable. */
 export async function deleteDocument(db: Db, ctx: TenantContext, store: DocumentStore, id: string, log?: FastifyBaseLogger) {
   const storageKey = await db.transaction(async (tx) => {
     // The document row is locked before the checks: inserting a contract or an expense that points
@@ -94,7 +94,11 @@ export async function deleteDocument(db: Db, ctx: TenantContext, store: Document
     if (!row) throw notFound('Document');
     const [contract] = await tx.select({ id: BC.id }).from(BC).where(and(eq(BC.tenantId, ctx.tenantId), eq(BC.documentId, id))).limit(1);
     const [expense] = await tx.select({ id: E.id }).from(E).where(and(eq(E.tenantId, ctx.tenantId), eq(E.documentId, id))).limit(1);
-    if (contract || expense) throw conflict('document_referenced', 'This document is attached to a contract or an expense');
+    // Art. 37 minutes: `minutes_document_id` is `on delete set null`, so deleting the file would
+    // quietly cut the held assembly loose from its own evidence and leave the `assembly_held` event
+    // pointing at a document id that no longer resolves.
+    const [assembly] = await tx.select({ id: AS.id }).from(AS).where(and(eq(AS.tenantId, ctx.tenantId), eq(AS.minutesDocumentId, id))).limit(1);
+    if (contract || expense || assembly) throw conflict('document_referenced', 'This document is attached to a contract, an expense or an assembly');
     await tx.delete(D).where(and(eq(D.tenantId, ctx.tenantId), eq(D.id, id)));
     await writeAudit(tx, ctx, { action: 'document.delete', entityType: 'document', entityId: id, before: publicDocument(row) });
     return row.storageKey;
