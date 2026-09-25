@@ -263,7 +263,7 @@ describe('migrations', () => {
     expect(channels.map((c) => c.enumlabel)).toEqual(['email', 'letter']);
     const statuses = await t!.sql<{ enumlabel: string }[]>`
       select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'assembly_invitation_status' order by e.enumsortorder`;
-    expect(statuses.map((c) => c.enumlabel)).toEqual(['pending', 'sent', 'failed', 'printed']);
+    expect(statuses.map((c) => c.enumlabel)).toEqual(['pending', 'sent', 'failed', 'printed', 'cancelled']);
     const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'assembly_invitations'`;
     expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(assembly_id, contact_id)'))).toBe(true);
     expect(idx.some((i) => i.indexdef.includes('(tenant_id, assembly_id, created_at)'))).toBe(true);
