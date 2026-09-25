@@ -338,6 +338,30 @@ describe('buildAnnualReport — the fields map', () => {
     expect(r.fields.debtorsCount).toBe(0);
   });
 
+  it('never lets a void of a payment this window never took in drive collections negative', () => {
+    const input = annualInput();
+    // Last year's payment, voided in this one: the owner paid nothing this year, and the void's
+    // posting is all the window sees of it. Its original belongs to last year's report.
+    input.owners = [
+      { contactId: 'c-1', name: 'Ана', unitLabels: ['1'], billedMinor: 300_000, collectedMinor: -250_000, current: true, balanceMinor: 300_000 },
+      { contactId: 'c-2', name: 'Борис', unitLabels: ['2'], billedMinor: 300_000, collectedMinor: 120_000, current: true, balanceMinor: 180_000 },
+    ];
+    const r = buildAnnualReport(input);
+    expect(r.owners.find((o) => o.contactId === 'c-1')!.collectedMinor).toBe(0);
+    expect(r.owners.find((o) => o.contactId === 'c-2')!.collectedMinor).toBe(120_000);
+    expect(r.fields.collectedMinor).toBe(120_000);
+    expect(r.fields.collectionRateBp).toBe(2000);
+  });
+
+  it('nets a payment voided inside the window to exactly zero collected, not below', () => {
+    const input = annualInput();
+    input.owners = [{ contactId: 'c-1', name: 'Ана', unitLabels: ['1'], billedMinor: 300_000, collectedMinor: 0, current: true, balanceMinor: 300_000 }];
+    const r = buildAnnualReport(input);
+    expect(r.owners[0]!.collectedMinor).toBe(0);
+    expect(r.fields.collectedMinor).toBe(0);
+    expect(r.fields.collectionRateBp).toBe(0);
+  });
+
   it('rounds the collection rate half up, in basis points', () => {
     const input = annualInput();
     input.owners = [{ contactId: 'c-1', name: 'Ана', unitLabels: ['1'], billedMinor: 300_000, collectedMinor: 100_000, current: true, balanceMinor: 200_000 }];

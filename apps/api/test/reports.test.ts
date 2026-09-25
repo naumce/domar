@@ -305,6 +305,41 @@ describe('annual report (Art. 31)', () => {
     expect(d.fields.totalDebtMinor).toBe(billedMinor);
   });
 
+  it('never reports a negative collection when a prior-year payment is voided in this one', async () => {
+    // One real collection this year, so the figure under test is a number and not merely a zero.
+    const collected = 40_000;
+    expect((await post(`/api/invoices/${R.invoices.O3.id}/payments`, {
+      amountMinor: collected, method: 'cash', paidAt: new Date().toISOString(),
+    })).statusCode).toBe(201);
+
+    // Two payments of last year. Their originals are booked in last year's window and their voids in
+    // this one, which is exactly the shape that used to drive this year's collections below zero.
+    const lastYear = `${R.year - 1}-06-15T10:00:00.000Z`;
+    const ids: string[] = [];
+    for (const [key, amountMinor] of [['O1', 150_000], ['O2', 200_000]] as const) {
+      ids.push((await post(`/api/invoices/${R.invoices[key].id}/payments`, { amountMinor, method: 'bank_transfer', paidAt: lastYear })).json().payment.id);
+    }
+    for (const id of ids) expect((await post(`/api/payments/${id}/void`, { reason: 'вратена уплата' })).statusCode).toBe(200);
+
+    // Last year collected the two payments and is the report already handed to the owners; the void
+    // belongs to the year that booked it and takes nothing out of last year's figure.
+    const prev = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year - 1}`)).json() as AnnualData;
+    expect(prev.fields.collectedMinor).toBe(350_000);
+    expect(prev.owners.find((o) => o.contactId === R.owners.O2)!.collectedMinor).toBe(200_000);
+
+    // This year collected 400,00 den and nothing else: the two voids reverse money it never took in.
+    const cur = (await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${R.year}`)).json() as AnnualData;
+    expect(cur.fields.collectedMinor).toBe(collected);
+    expect(cur.fields.collectionRateBp).toBe(Math.round((collected * 10_000) / billedMinor));
+    expect(cur.fields.collectionRateBp).toBeGreaterThan(0);
+    for (const o of cur.owners) {
+      expect(o.collectedMinor, o.contactId).toBeGreaterThanOrEqual(0);
+    }
+    expect(cur.owners.find((o) => o.contactId === R.owners.O3)!.collectedMinor).toBe(collected);
+    expect(cur.owners.find((o) => o.contactId === R.owners.O1)!.collectedMinor).toBe(0);
+    expect(cur.owners.find((o) => o.contactId === R.owners.O2)!.collectedMinor).toBe(0);
+  });
+
   it('refuses a year that has not begun in the tenant zone', async () => {
     const next = R.year + 1;
     const preview = await get(`/api/buildings/${R.buildingId}/reports/annual/preview?year=${next}`);
