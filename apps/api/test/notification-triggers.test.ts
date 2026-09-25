@@ -126,6 +126,26 @@ describe('notification triggers', () => {
     expect(owner[0]!.link).toBe(`/portal/maintenance/${requestId}`);
   });
 
+  it('publishes a building whose country code is not the tenant’s, formatting from the tenant’s pack', async () => {
+    // `buildingCreate`/`buildingPatch` take any two characters and store them verbatim, so this is a
+    // state the API itself lets a manager reach. Resolving the notification's pack from it threw
+    // inside the publishing transaction and rolled the whole publish back.
+    const patched = await t.app.inject({ method: 'PATCH', url: `/api/buildings/${A.buildingId}`, headers: { cookie: a.cookie }, payload: { countryCode: 'de' } });
+    expect(patched.statusCode, patched.body).toBe(200);
+
+    const period = (await post(`/api/buildings/${A.buildingId}/periods`, { period: '2026-11' })).json();
+    await post(`/api/buildings/${A.buildingId}/periods/${period.id}/generate`);
+    const published = await post(`/api/buildings/${A.buildingId}/periods/${period.id}/publish`);
+    expect(published.statusCode, published.body).toBe(200);
+
+    const rows = (await ownerRows()).filter((r) => r.kind === 'invoice_published' && r.body.includes('2026-11'));
+    expect(rows).toHaveLength(1);
+    // The invoice itself was computed with the tenant's pack (`generate.ts`), so the announcement
+    // formats with it too — денари, not whatever `de` would have meant.
+    expect(rows[0]!.body).toMatch(/Вкупно за плаќање: [\d.,]+ ден\./);
+    expect(rows[0]!.title).not.toMatch(/ден\./);
+  });
+
   it('a staff-created request notifies no owner: there is no owner behind it', async () => {
     const before = (await ownerRows()).filter((r) => r.kind === 'maintenance_status').length;
     const own = (await post(`/api/buildings/${A.buildingId}/maintenance`, { title: 'Фарбање на влез', category: 'common_area' })).json();

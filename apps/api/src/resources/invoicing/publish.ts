@@ -40,7 +40,7 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
     const drafts = await tx.select({ inv: INV, lastName: C.lastName, firstName: C.firstName }).from(INV).innerJoin(C, eq(C.id, INV.contactId))
       .where(and(eq(INV.tenantId, ctx.tenantId), eq(INV.periodId, periodId), eq(INV.status, 'draft'))).orderBy(asc(C.lastName), asc(C.firstName), asc(INV.id));
     if (drafts.length === 0) throw conflict('nothing_to_publish', 'There are no draft invoices in this period');
-    const tenant = await tx.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId), columns: { timezone: true } });
+    const tenant = await tx.query.tenants.findFirst({ where: eq(T.id, ctx.tenantId), columns: { timezone: true, countryCode: true } });
     const issuedAt = new Date();
     const year = Number(new Intl.DateTimeFormat('en-US', { timeZone: tenant!.timezone, year: 'numeric' }).format(issuedAt));
     const dueAt = input.dueAt ?? new Date(issuedAt.getTime() + (input.dueDays ?? DUE_DAYS) * 24 * 3600 * 1000);
@@ -93,7 +93,11 @@ export async function publishPeriod(db: Db, ctx: TenantContext, buildingId: stri
     // Spec §9: one notification per linked owner account, inside the publishing transaction, so an
     // invoice that is rolled back never announced itself. The amount stays out of `title`.
     const building = await getBuilding(tx, ctx, buildingId);
-    const pack = getCountryPack(building.countryCode);
+    // The tenant's pack, exactly like `generate.ts` — the notification must announce the amount the
+    // invoice was computed with, from the same source of truth. `buildings.country_code` is a free
+    // two-character field the API never validates, so reading it here made a building stored with
+    // any other code throw inside this transaction and roll a working publish back.
+    const pack = getCountryPack(tenant!.countryCode);
     await notifyOwners(tx, ctx, drafts.map(({ inv }) => ({
       contactId: inv.contactId,
       input: {
