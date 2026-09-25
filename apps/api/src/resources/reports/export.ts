@@ -22,6 +22,11 @@ function csv(header: string[], rows: (string | number | null)[][]): string {
   return `${BOM}${[line(header), ...rows.map(line)].join('\n')}\n`;
 }
 
+/** A `numeric` column with the comma decimal every other number in these files uses. */
+function decimal(x: string | null): string {
+  return x === null ? '' : x.replace('.', ',');
+}
+
 /** Minor units as a decimal with a comma, which is what a `;` file means in this locale. Integer arithmetic only. */
 function money(minor: number): string {
   const sign = minor < 0 ? '-' : '';
@@ -81,7 +86,7 @@ export async function buildHandoverExport(
   const day = dayIn(timeZone);
   const ownerIds = data.owners.map((o) => o.contactId);
   const [units, contacts, invoices, payments, paidByInvoice, expenses, documents] = await Promise.all([
-    db.select({ u: U, firstName: C.firstName, lastName: C.lastName, email: C.email }).from(U)
+    db.select({ u: U, firstName: C.firstName, lastName: C.lastName, email: C.email, phone: C.phone }).from(U)
       .leftJoin(C, and(eq(C.id, U.ownerContactId), eq(C.tenantId, U.tenantId)))
       .where(and(eq(U.tenantId, ctx.tenantId), eq(U.buildingId, buildingId)))
       .orderBy(asc(U.floor), asc(U.label)),
@@ -109,11 +114,13 @@ export async function buildHandoverExport(
   const issued = invoices.filter((i) => i.issuedAt !== null && i.issuedAt.getTime() < to.getTime());
 
   const files: Record<string, Uint8Array> = {
+    // The units import's own column names, in its own order: the archive the next manager gets is
+    // the file they can feed straight back into the units import (plan addendum 11).
     'edinici.csv': strToU8(csv(
-      ['број', 'кат', 'тип', 'површина', 'удел', 'сопственик', 'е-пошта'],
+      ['број', 'кат', 'тип', 'површина', 'удел', 'име', 'презиме', 'е-пошта', 'телефон'],
       units.map((r) => [
-        r.u.label, r.u.floor, r.u.kind, r.u.areaM2, r.u.ownershipShare,
-        r.firstName === null ? '' : `${r.firstName} ${r.lastName}`.trim(), r.email,
+        r.u.label, r.u.floor, r.u.kind, decimal(r.u.areaM2), decimal(r.u.ownershipShare),
+        r.firstName, r.lastName, r.email, r.phone,
       ]),
     )),
     'sopstvenici.csv': strToU8(csv(

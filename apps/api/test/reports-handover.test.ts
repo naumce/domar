@@ -13,6 +13,7 @@ vi.mock('playwright-core', () => {
 });
 
 import { schema } from '@domar/db';
+import { parseUnitImport } from '@domar/domain';
 import { and, eq } from 'drizzle-orm';
 import { strFromU8, unzipSync } from 'fflate';
 import { hashPassword } from '../src/auth/password.js';
@@ -202,8 +203,13 @@ describe('handover report and data export (Art. 30)', () => {
     const read = (name: string) => readCsv(entries, name);
 
     const units = read('edinici.csv');
-    expect(units.header).toBe('број;кат;тип;површина;удел;сопственик;е-пошта');
+    expect(units.header).toBe('број;кат;тип;површина;удел;име;презиме;е-пошта;телефон');
     expect(units.rows).toHaveLength(5);
+    // The archive is the file the next manager feeds straight back into the units import.
+    const reimported = parseUnitImport(strFromU8(entries['edinici.csv']!));
+    expect(reimported.errors).toEqual([]);
+    expect(reimported.rows.map((r) => r.label).sort()).toEqual(['1', '2', 'L1', 'P-1', 'S-1']);
+    expect(reimported.rows.find((r) => r.label === '2')).toMatchObject({ kind: 'apartment', areaM2: 75, ownerLastName: 'Бошковски' });
 
     const owners = read('sopstvenici.csv');
     expect(owners.header).toBe('име;презиме;е-пошта;телефон;адреса;единици');
