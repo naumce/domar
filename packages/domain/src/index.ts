@@ -10,6 +10,8 @@ export * from './notifications/payload.js';
 export * from './reports/annual.js';
 export * from './reports/handover.js';
 export * from './statements/index.js';
+export * from './accounting/slots.js';
+export * from './accounting/journal.js';
 export * from './import/units.js';
 export * from './import/serialize.js';
 export * from './migration/domexa.js';
