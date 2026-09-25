@@ -16,6 +16,7 @@ import { authRoutes } from './auth/routes.js';
 import { LocalDiskStore, MAX_DOCUMENT_BYTES, type DocumentStore } from './documents/store.js';
 import { AppError } from './errors.js';
 import { createMailer, type Mailer } from './email/mailer.js';
+import { notificationJobRoutes } from './notifications/job-routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { createPusher, type Pusher } from './notifications/push.js';
 import { pdfRoutes } from './pdf/routes.js';
@@ -178,6 +179,7 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
     await api.register(contractRoutes, { prefix: '/buildings/:buildingId/contracts' });
     await api.register(reminderRoutes, { prefix: '/reminders' });
     await api.register(jobRoutes, { prefix: '/jobs' });
+    await api.register(notificationJobRoutes, { prefix: '/jobs' });
   }, { prefix: '/api' });
 
   return app;

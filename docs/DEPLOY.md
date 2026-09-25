@@ -95,6 +95,32 @@ whether email is configured at all.
 For local development, `docker compose up -d mailpit` gives SMTP on `localhost:1025` and a web
 inbox on `http://localhost:8025`; point `SMTP_URL=smtp://localhost:1025` at it.
 
+## Notifications
+
+Notification rows are written by the events that cause them (a published period, a new reminder, an
+assembly invitation, a maintenance status change, a request filed from the portal). Sending them is a
+second job, on the same shared token:
+
+    */5 * * * * cd /srv/domar && . ./.env && curl -fsS -m 120 -X POST -H "x-job-token: $JOB_TOKEN" "https://$DOMAIN/api/jobs/notifications" >> /var/log/domar-notifications.log 2>&1
+
+Every five minutes, because a notification is worth little an hour late. The job claims the
+undelivered rows with `for update skip locked` and stamps `delivered_at` before it sends anything, so
+two overlapping runs split the queue and a crash never double-sends. The answer counts what happened:
+`{"claimed","pushed","emailed","failed"}`. It answers `401` without the header, `403` with the wrong
+token and `503` when `JOB_TOKEN` is unset — the same three answers as the reminder job.
+
+Web Push needs a VAPID key pair. Generate one once, put both halves in `.env`, and never rotate them
+without expecting every installed portal to resubscribe:
+
+    docker compose -f docker-compose.prod.yml run --rm api pnpm --filter @domar/api exec web-push generate-vapid-keys
+
+With `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` unset, push is simply off: the portal hides the "enable
+notifications" button, every notification falls through to email, and nothing fails. Push payloads
+carry a title and a link and nothing else — the amount is loaded in the app, behind the session
+(spec §11). A push service answering `404` or `410` has retired that endpoint, and domar deletes the
+subscription. When neither push nor email delivered, the managers of that tenant get a bell entry
+saying so, which is the signal that `SMTP_URL` needs looking at.
+
 ## Why the image runs `tsx`
 
 `@domar/db` and `@domar/domain` are workspace packages whose `exports` point at TypeScript sources, so

@@ -1,8 +1,8 @@
-import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
-import { AppError, forbidden, unauthorized } from '../../errors.js';
+import { AppError } from '../../errors.js';
+import { assertJobToken } from '../../jobs/token.js';
 import { htmlToPdf } from '../../pdf/html-to-pdf.js';
 import { getBuilding } from '../buildings/repo.js';
 import { idParam } from '../common.js';
@@ -49,15 +49,7 @@ export const reminderRoutes: FastifyPluginAsyncZod = async (app) => {
 /** No session: the nightly cron authenticates with a shared token (spec §18.3). */
 export const jobRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post('/reminders', { config: { rateLimit: { max: 6, timeWindow: '1 minute' } }, schema: { response: { 200: jobResultOut } } }, async (req) => {
-    // The header is checked first: an unauthenticated caller learns nothing about this server's
-    // configuration, and a misconfigured server still answers a token-less probe with 401.
-    const given = req.headers['x-job-token'];
-    if (typeof given !== 'string' || given.length === 0) throw unauthorized();
-    const expected = app.config.jobToken;
-    if (!expected) throw new AppError(503, 'job_token_not_configured', 'JOB_TOKEN is not configured on this server');
-    const a = Buffer.from(given, 'utf8');
-    const b = Buffer.from(expected, 'utf8');
-    if (a.length !== b.length || !timingSafeEqual(a, b)) throw forbidden();
+    assertJobToken(app.config, req.headers);
     return runAllTenants(req.db, runtime(app));
   });
 };
