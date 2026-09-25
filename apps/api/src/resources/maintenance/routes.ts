@@ -1,10 +1,11 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { MAINTENANCE_ROLES, requireRole, WRITE_ROLES } from '../../auth/roles.js';
+import { contentDisposition } from '../../documents/store.js';
 import { badRequest } from '../../errors.js';
 import { idParam } from '../common.js';
 import { buildingParam } from '../units/schema.js';
-import { addPhoto, deletePhoto, MAX_PHOTO_BYTES } from './photos.js';
-import { addEvent, assignRequest, createRequest, getRequest, listRequests, setStatus, updateRequest } from './repo.js';
+import { addPhoto, deletePhoto, MAX_PHOTO_BYTES, photoFile } from './photos.js';
+import { addEvent, assignRequest, createRequest, getRequest, getRequestRow, listRequests, setStatus, updateRequest } from './repo.js';
 import { maintenanceAssignBody, maintenanceCreate, maintenanceEventBody, maintenanceListOut, maintenanceListQuery, maintenanceOut, maintenancePatch, maintenancePhotoParam, maintenanceStatusBody } from './schema.js';
 
 /** Spec §8 board of one building. Reads are open to every role; a technician's list is their own. */
@@ -66,6 +67,24 @@ export const maintenanceRoutes: FastifyPluginAsyncZod = async (app) => {
       throw err;
     }
     return reply.status(201).send(await getRequest(req.db, req.ctx!, req.params.id));
+  });
+
+  /**
+   * The gallery's own download. `/api/documents/:id/download` is staff-wide and is now closed to a
+   * technician, so a photo reaches them through the request it hangs on: `getRequestRow` applies the
+   * same technician scope the card itself does, and a request that is not theirs is a 404 — with it,
+   * every photo on it. Open to every role, exactly like the card (spec §10).
+   */
+  app.get('/:id/photos/:documentId', { schema: { params: maintenancePhotoParam } }, async (req, reply) => {
+    await getRequestRow(req.db, req.ctx!, req.params.id);
+    const row = await photoFile(req.db, req.ctx!, req.params.id, req.params.documentId);
+    const stream = await app.documents.open(row.storageKey);
+    return reply
+      .type(row.mime)
+      .header('content-length', String(row.sizeBytes))
+      .header('x-content-type-options', 'nosniff')
+      .header('content-disposition', contentDisposition(row.fileName, 'inline'))
+      .send(stream);
   });
 
   app.delete('/:id/photos/:documentId', { ...write, schema: { params: maintenancePhotoParam } }, async (req, reply) => {

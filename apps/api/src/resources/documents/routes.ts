@@ -2,11 +2,21 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
 import { contentDisposition } from '../../documents/store.js';
 import { badRequest } from '../../errors.js';
+import type { UserRole } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
 import { idParam } from '../common.js';
 import { buildingParam } from '../units/schema.js';
 import { createDocument, deleteDocument, getDocumentRow, listDocuments, publicDocument } from './repo.js';
 import { documentKindEnum, documentListOut, documentListQuery, documentOut, type DocumentKind } from './schema.js';
+
+/**
+ * Every role but `technician`. These two surfaces are tenant-scoped and nothing more, so a
+ * technician holding them could list and stream every document of the organization — including the
+ * photos an owner uploaded through the portal onto a request that is not theirs. Their one door
+ * onto a document is `GET /api/maintenance-requests/:id/photos/:documentId`, which goes through the
+ * request's own technician scope (spec §10).
+ */
+const DOCUMENT_READ_ROLES: UserRole[] = ['owner', 'accountant', 'readonly'];
 
 /** Multipart fields arrive before the file part; anything after it is invisible to busboy. */
 function fieldValue(fields: Record<string, unknown> | undefined, name: string): string | undefined {
@@ -17,7 +27,7 @@ function fieldValue(fields: Record<string, unknown> | undefined, name: string): 
 export const buildingDocumentRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requireAuth);
 
-  app.get('/', { schema: { params: buildingParam, querystring: documentListQuery, response: { 200: documentListOut } } }, async (req) =>
+  app.get('/', { preHandler: requireRole(...DOCUMENT_READ_ROLES), schema: { params: buildingParam, querystring: documentListQuery, response: { 200: documentListOut } } }, async (req) =>
     listDocuments(req.db, req.ctx!, req.params.buildingId, req.query.kind));
 
   // No zod `body`: the payload is multipart, validated field by field below.
@@ -53,10 +63,10 @@ export const buildingDocumentRoutes: FastifyPluginAsyncZod = async (app) => {
 export const documentRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requireAuth);
 
-  app.get('/:id', { schema: { params: idParam, response: { 200: documentOut } } }, async (req) =>
+  app.get('/:id', { preHandler: requireRole(...DOCUMENT_READ_ROLES), schema: { params: idParam, response: { 200: documentOut } } }, async (req) =>
     publicDocument(await getDocumentRow(req.db, req.ctx!, req.params.id)));
 
-  app.get('/:id/download', { schema: { params: idParam } }, async (req, reply) => {
+  app.get('/:id/download', { preHandler: requireRole(...DOCUMENT_READ_ROLES), schema: { params: idParam } }, async (req, reply) => {
     const row = await getDocumentRow(req.db, req.ctx!, req.params.id);
     const stream = await app.documents.open(row.storageKey);
     return reply

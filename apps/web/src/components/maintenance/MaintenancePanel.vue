@@ -27,7 +27,8 @@ const mayReject = computed(() => props.canWrite && (status.value === 'new' || st
 const mayAssign = computed(() => props.canWrite && open.value);
 const mayStart = computed(() => status.value === 'assigned');
 const mayClose = computed(() => status.value === 'assigned' || status.value === 'in_progress');
-const downloadUrl = (id: string) => `${API_BASE}/api/documents/${id}/download`;
+// Through the request, not the generic document route: that one is closed to a technician (spec §10).
+const downloadUrl = (id: string) => `${API_BASE}/api/maintenance-requests/${props.request.id}/photos/${id}`;
 const dateTime = (iso: string) => new Date(iso).toLocaleString('mk-MK', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 function fail(e: unknown) {

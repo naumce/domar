@@ -66,6 +66,10 @@ describe('maintenance photos and the cost of a closed request', () => {
     expect(download.statusCode).toBe(200);
     expect(download.headers['content-type']).toBe('image/png');
     expect(Buffer.from(download.rawPayload).equals(PNG)).toBe(true);
+    // The gallery's own route hands the owner the same bytes.
+    const throughRequest = await get(`/api/maintenance-requests/${row.id}/photos/${photos[0].documentId}`);
+    expect(throughRequest.statusCode, throughRequest.body).toBe(200);
+    expect(Buffer.from(throughRequest.rawPayload).equals(PNG)).toBe(true);
 
     const events = (await get(`/api/maintenance-requests/${row.id}`)).json().events;
     expect(events.at(-1)).toMatchObject({ kind: 'photo_added', visibility: 'owner' });
@@ -87,6 +91,27 @@ describe('maintenance photos and the cost of a closed request', () => {
     expect(ok.statusCode, ok.body).toBe(201);
     expect(ok.json().photos[0].uploadedByName).toBe('Стефан Стефановски');
     expect((await upload(theirs.id, { filename: 'x.png', mime: 'image/png', content: PNG }, tech.cookie)).statusCode).toBe(404);
+  });
+
+  it('gives a technician the photos of their own request and no other document of the tenant', async () => {
+    const mine = await create();
+    const theirs = await create();
+    await post(`/api/maintenance-requests/${mine.id}/assign`, { assigneeUserId: tech.id });
+    const ours = (await upload(mine.id, { filename: 'moe.png', mime: 'image/png', content: PNG })).json().photos[0].documentId;
+    const notOurs = (await upload(theirs.id, { filename: 'tugo.png', mime: 'image/png', content: PNG })).json().photos[0].documentId;
+
+    const ok = await get(`/api/maintenance-requests/${mine.id}/photos/${ours}`, tech.cookie);
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(Buffer.from(ok.rawPayload).equals(PNG)).toBe(true);
+    // A request that is not theirs is a 404, and so is every photo hanging on it.
+    expect((await get(`/api/maintenance-requests/${theirs.id}/photos/${notOurs}`, tech.cookie)).statusCode).toBe(404);
+    // Nor is the document reachable the generic way: that is the whole point of the new route.
+    expect((await get(`/api/documents/${notOurs}`, tech.cookie)).statusCode).toBe(403);
+    expect((await get(`/api/documents/${notOurs}/download`, tech.cookie)).statusCode).toBe(403);
+    expect((await get(`/api/buildings/${A.buildingId}/documents?kind=photo`, tech.cookie)).statusCode).toBe(403);
+    // The manager keeps both doors.
+    expect((await get(`/api/documents/${notOurs}/download`)).statusCode).toBe(200);
+    expect((await get(`/api/buildings/${A.buildingId}/documents?kind=photo`)).statusCode).toBe(200);
   });
 
   it('deletes a photo, its document row and its bytes', async () => {

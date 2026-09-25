@@ -94,7 +94,7 @@ describe('MaintenanceTab', () => {
     expect(w.get('[data-test=maintenance-panel-status]').text()).toBe('Ново');
     expect(w.findAll('[data-test=maintenance-event]')).toHaveLength(1);
     const photo = w.get('[data-test=maintenance-photo]');
-    expect(photo.attributes('href')).toBe('http://localhost:3001/api/documents/doc-1/download');
+    expect(photo.attributes('href')).toBe('http://localhost:3001/api/maintenance-requests/mr-1/photos/doc-1');
   });
 
   it('triages and assigns from the panel', async () => {
