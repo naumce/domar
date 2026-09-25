@@ -68,6 +68,30 @@ describe('AssembliesTab', () => {
     });
     expect(String(fetchMock.mock.calls[4]![0])).toBe('http://localhost:3001/api/assemblies/a1/owners');
   });
+
+  it('edits a draft assembly, sending a PATCH with only the changed field', async () => {
+    const original = assembly();
+    const patched = assembly({ location: 'Влез Б' });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json({ rows: [original] }))    // initial list
+      .mockResolvedValueOnce(json(patched))                 // PATCH
+      .mockResolvedValueOnce(json({ rows: [patched] }));    // list again
+    vi.stubGlobal('fetch', fetchMock);
+    const w = mount(AssembliesTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n] } });
+    await vi.waitFor(() => expect(w.find('[data-test=assembly-edit]').exists()).toBe(true));
+
+    await w.get('[data-test=assembly-edit]').trigger('click');
+    expect((w.get('[data-test=assembly-location]').element as HTMLInputElement).value).toBe('Влез А');
+    await w.get('[data-test=assembly-location]').setValue('Влез Б');
+    await w.get('[data-test=assembly-create]').trigger('click');
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await flushPromises();
+
+    const call = fetchMock.mock.calls[1]!;
+    expect(String(call[0])).toBe('http://localhost:3001/api/assemblies/a1');
+    expect((call[1] as RequestInit).method).toBe('PATCH');
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ location: 'Влез Б' });
+  });
 });
 
 describe('AssemblyPanel', () => {

@@ -23,6 +23,7 @@ const present = ref<Record<string, boolean>>({});
 const proxy = ref<Record<string, string>>({});
 
 const editable = computed(() => props.assembly.status === 'draft' || props.assembly.status === 'invited');
+const canDeleteDecision = computed(() => props.assembly.status === 'draft');
 const votingOpen = computed(() => props.assembly.status === 'invited');
 const held = computed(() => props.assembly.status === 'held');
 const quorumLine = computed(() => props.assembly.decisions[0] ?? null);
@@ -84,8 +85,10 @@ function hold() {
     present: present.value[o.contactId] === true,
     proxyName: (proxy.value[o.contactId] ?? '').trim() || null,
   }));
+  // A blank field means "now", never the scheduled date: the manager is closing the assembly at the
+  // moment they click, not silently re-declaring the invitation's original date as the held date.
   return run(() => api.post<Assembly>(`/api/assemblies/${props.assembly.id}/hold`, {
-    ...(heldAt.value ? { heldAt: new Date(heldAt.value).toISOString() } : {}),
+    heldAt: heldAt.value ? new Date(heldAt.value).toISOString() : new Date().toISOString(),
     attendance,
   }));
 }
@@ -124,7 +127,7 @@ function hold() {
             <td class="py-1 text-right">{{ d.againstWeight }}</td>
             <td class="py-1 text-right">{{ d.abstainWeight }}</td>
             <td class="py-1" data-test="decision-result">{{ t(`assemblies.results.${d.result}`) }}</td>
-            <td class="py-1 text-right"><AppButton v-if="editable" variant="danger" data-test="decision-remove" @click="removeDecision(d.id)">{{ t('app.delete') }}</AppButton></td>
+            <td class="py-1 text-right"><AppButton v-if="canDeleteDecision" variant="danger" data-test="decision-remove" @click="removeDecision(d.id)">{{ t('app.delete') }}</AppButton></td>
           </tr>
         </tbody>
       </table>
