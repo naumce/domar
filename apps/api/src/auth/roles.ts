@@ -10,3 +10,6 @@ export function requireRole(...roles: UserRole[]) {
 }
 
 export const WRITE_ROLES: UserRole[] = ['owner', 'accountant'];
+
+/** Spec §10: the roles that may work a maintenance request. A technician is scoped again in the repo. */
+export const MAINTENANCE_ROLES: UserRole[] = ['owner', 'accountant', 'technician'];
