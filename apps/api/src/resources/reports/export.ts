@@ -3,6 +3,7 @@ import { csvCell, type HandoverReportData } from '@domar/domain';
 import { and, asc, eq, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { strToU8, zipSync } from 'fflate';
 import type { TenantContext } from '../../tenant-context.js';
+import { dayIn } from '../common.js';
 import { listDocuments } from '../documents/repo.js';
 import { listInvoices } from '../invoices/repo.js';
 import { listPayments } from '../payments/repo.js';
@@ -42,12 +43,6 @@ function statusAt(status: string, totalMinor: number, paidMinor: number): string
   if (status === 'cancelled' || status === 'draft') return status;
   if (paidMinor >= totalMinor) return 'paid';
   return paidMinor > 0 ? 'partially_paid' : 'published';
-}
-
-/** A civil day of the tenant's zone, never UTC: the export prints the days the manager saw. */
-function dayIn(timeZone: string): (x: Date | string | null) => string {
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
-  return (x) => (x === null ? '' : fmt.format(new Date(x)));
 }
 
 /**

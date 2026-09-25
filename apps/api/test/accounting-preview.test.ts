@@ -29,7 +29,11 @@ beforeAll(async () => {
   await post(`/api/buildings/${buildingId}/periods/${period.id}/publish`);
   const invoices = (await t.app.inject({ method: 'GET', url: `/api/invoices?buildingId=${buildingId}`, headers: { cookie } })).json();
   invoiceId = invoices.rows[0].id;
-  await post(`/api/invoices/${invoiceId}/payments`, { amountMinor: 118000, method: 'bank_transfer', paidAt: new Date().toISOString() });
+  // Pinned inside the 2026-09 window every assertion below targets, not "now": the invoice's own
+  // charge posting is booked when the period is published (above, at real test-run time) and this
+  // fixture only controls the payment's date, so pinning it is what keeps the trial-balance and
+  // entry-count assertions from drifting with the calendar.
+  await post(`/api/invoices/${invoiceId}/payments`, { amountMinor: 118000, method: 'bank_transfer', paidAt: '2026-09-15T10:00:00.000Z' });
 });
 afterAll(async () => { await t.close(); });
 
@@ -94,15 +98,24 @@ describe('GET /api/accounting/preview', () => {
   });
 
   it('reports a payment that arrived after its month as a prior-period adjustment', async () => {
+    // Built in the tenant's own zone (the default, Europe/Skopje), the same way the production
+    // window is resolved (civilDayStart) — a UTC calendar date can name the wrong civil day and
+    // exclude the instant it was meant to bracket for a couple of hours around UTC midnight.
+    const skopjeDay = (x: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric', month: '2-digit', day: '2-digit' }).format(x);
+    const from = skopjeDay(new Date(Date.now() - 60_000));
+    const to = skopjeDay(new Date(Date.now() + 86_400_000));
+    // This "now"-centred window also reaches the 2026-09-15 payment pinned in `beforeAll` (its
+    // `bookedAt` is before `from` and its `createdAt`, set at insert time, is inside this window
+    // too) — so the baseline is measured, not assumed, and the assertion below is about what this
+    // test's own payment adds, not the tenant's total adjustment count.
+    const before = (await t.app.inject({ method: 'GET', url: `/api/accounting/preview?from=${from}&to=${to}`, headers: { cookie } })).json();
     // Booked in August (`paidAt`), created now: it belongs to August and arrives in this window.
     await t.app.inject({
       method: 'POST', url: `/api/invoices/${invoiceId}/payments`, headers: { cookie },
       payload: { amountMinor: 1000, method: 'cash', paidAt: '2026-08-15T10:00:00.000Z' },
     });
-    const from = new Date(Date.now() - 60_000).toISOString().slice(0, 10);
-    const to = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
     const res = await t.app.inject({ method: 'GET', url: `/api/accounting/preview?from=${from}&to=${to}`, headers: { cookie } });
     expect(res.statusCode).toBe(200);
-    expect(res.json().adjustmentCount).toBe(1);
+    expect(res.json().adjustmentCount).toBe(before.adjustmentCount + 1);
   });
 });

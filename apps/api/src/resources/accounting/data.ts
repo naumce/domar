@@ -1,13 +1,14 @@
 import { type Db, schema } from '@domar/db';
 import {
-  buildJournal, civilDayStart, JournalError, type Journal, type JournalExpenseIn, type JournalInput,
+  buildJournal, type Chart, civilDayStart, JournalError, type Journal, type JournalExpenseIn, type JournalInput,
   type JournalInvoiceIn, type JournalLineKind, type JournalPostingIn,
 } from '@domar/domain';
 import { and, asc, eq, gte, inArray, lt, or } from 'drizzle-orm';
 import { AppError, badRequest } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
-import { tenantPack } from '../reports/data.js';
+import { dayIn } from '../common.js';
+import { tenantPack, type BuildingRow, type TenantRow } from '../reports/data.js';
 import { requireChart } from './chart.js';
 
 const P = schema.postings; const B = schema.buildings; const C = schema.contacts;
@@ -16,15 +17,26 @@ const E = schema.expenses; const S = schema.suppliers; const AC = schema.account
 const AP = schema.accountingPeriods;
 
 export interface AccountingWindow {
-  from: Date;
-  to: Date;
+  /** `YYYY-MM-DD`, a civil day in the tenant's own zone — resolved to an instant only once the
+   * tenant's timezone is known (see `resolveWindow`), never by reinterpreting a UTC instant. */
+  from: string;
+  /** `YYYY-MM-DD`, exclusive, same zone as `from`. */
+  to: string;
   buildingId?: string | undefined;
 }
 
-/** A civil day of the tenant's zone, never UTC — the same helper `resources/reports/data.ts` uses. */
-function dayIn(timeZone: string): (x: Date) => string {
-  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
-  return (x) => fmt.format(x);
+/**
+ * Everything a window's derivation needs before it can touch `postings`: the chart (or a 409 naming
+ * what's unmapped), the tenant (for its zone and name), and the building (or a 404 across tenants) —
+ * fetched exactly once per request, whichever of `collectJournalInput`/`buildJournalFor` is called.
+ */
+async function resolveWindow(db: Db, ctx: TenantContext, w: AccountingWindow): Promise<{ chart: Chart; tenant: TenantRow; building: BuildingRow | null }> {
+  // Plain string comparison: `YYYY-MM-DD` sorts exactly like the dates it spells, so this needs
+  // neither the tenant's zone nor a database round trip to catch a window that ends before it starts.
+  if (w.to <= w.from) throw badRequest('invalid_window', 'The window must end after it starts');
+  const [chart, { tenant }] = await Promise.all([requireChart(db, ctx), tenantPack(db, ctx)]);
+  const building = w.buildingId ? await getBuilding(db, ctx, w.buildingId) : null; // 404 across tenants
+  return { chart, tenant, building };
 }
 
 /**
@@ -38,15 +50,11 @@ function dayIn(timeZone: string): (x: Date) => string {
  * scan turns up (`inArray`, never per-row) — six queries whether the window holds one posting or ten
  * thousand, so a year's worth of invoices never triggers an N+1.
  */
-export async function collectJournalInput(db: Db, ctx: TenantContext, w: AccountingWindow): Promise<JournalInput> {
-  if (w.to.getTime() <= w.from.getTime()) throw badRequest('invalid_window', 'The window must end after it starts');
-  const [chart, { tenant }] = await Promise.all([requireChart(db, ctx), tenantPack(db, ctx)]);
-  if (w.buildingId) await getBuilding(db, ctx, w.buildingId); // 404 across tenants
-
-  // `w.from`/`w.to` carry only the calendar date (see routes.ts's `windowOf`); the instants the
-  // window actually opens and closes at are the tenant's own civil midnight, not UTC midnight.
-  const from = civilDayStart(w.from.toISOString().slice(0, 10), tenant.timezone);
-  const to = civilDayStart(w.to.toISOString().slice(0, 10), tenant.timezone);
+async function collectFrom(db: Db, ctx: TenantContext, w: AccountingWindow, chart: Chart, tenant: TenantRow): Promise<JournalInput> {
+  // `w.from`/`w.to` are civil days of the tenant's own zone; resolved to instants here, in the one
+  // place that knows the timezone, rather than by reinterpreting a UTC-anchored `Date`.
+  const from = civilDayStart(w.from, tenant.timezone);
+  const to = civilDayStart(w.to, tenant.timezone);
 
   const day = dayIn(tenant.timezone);
   const rows = await db.select({
@@ -110,15 +118,20 @@ export async function collectJournalInput(db: Db, ctx: TenantContext, w: Account
   return { chart, postings, invoices, expenses, closedPeriods: closedRows.map((r) => r.period) };
 }
 
+export async function collectJournalInput(db: Db, ctx: TenantContext, w: AccountingWindow): Promise<JournalInput> {
+  const { chart, tenant } = await resolveWindow(db, ctx, w);
+  return collectFrom(db, ctx, w, chart, tenant);
+}
+
 /**
  * The one entry point the preview, the export and the period close all share, so the three can never
  * disagree about what a month contains. A derivation failure is an API error the screen can read.
  */
 export async function buildJournalFor(db: Db, ctx: TenantContext, w: AccountingWindow): Promise<{ journal: Journal; buildingName: string | null; tenantName: string }> {
-  const [input, { tenant }] = await Promise.all([collectJournalInput(db, ctx, w), tenantPack(db, ctx)]);
-  const buildingName = w.buildingId ? (await getBuilding(db, ctx, w.buildingId)).name : null;
+  const { chart, tenant, building } = await resolveWindow(db, ctx, w);
+  const input = await collectFrom(db, ctx, w, chart, tenant);
   try {
-    return { journal: buildJournal(input), buildingName, tenantName: tenant.name };
+    return { journal: buildJournal(input), buildingName: building?.name ?? null, tenantName: tenant.name };
   } catch (err) {
     if (err instanceof JournalError) throw new AppError(409, err.code, err.message, err.details);
     throw err;

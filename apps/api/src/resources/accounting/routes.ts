@@ -29,7 +29,7 @@ export const accountCodeRoutes: FastifyPluginAsyncZod = async (app) => {
 
 /** `to` is exclusive and both bounds are plain civil days, as every window in this product is. */
 const windowOf = (q: { from: string; to: string; buildingId?: string | undefined }): AccountingWindow =>
-  ({ from: new Date(`${q.from}T00:00:00.000Z`), to: new Date(`${q.to}T00:00:00.000Z`), ...(q.buildingId ? { buildingId: q.buildingId } : {}) });
+  ({ from: q.from, to: q.to, ...(q.buildingId ? { buildingId: q.buildingId } : {}) });
 
 /** Everything under `/api/accounting`. Reads are open to every role; writing is Tasks 5 and 6. */
 export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
