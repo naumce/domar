@@ -24,6 +24,7 @@ export const router = createRouter({
         { path: 'invoices', component: () => import('@/pages/InvoicesPage.vue') },
         { path: 'invoices/:id', component: () => import('@/pages/InvoicePage.vue'), props: true },
         { path: 'payments', component: () => import('@/pages/PaymentsPage.vue') },
+        { path: 'accounting', component: () => import('@/pages/AccountingPage.vue') },
         { path: 'settings', component: () => import('@/pages/SettingsPage.vue') },
       ],
     },

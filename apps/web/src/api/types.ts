@@ -108,7 +108,7 @@ export interface DocumentMeta {
 }
 export interface Supplier {
   id: string; name: string; companyNumber: string | null; vatNumber: string | null; email: string | null;
-  phone: string | null; iban: string | null; notes: string | null; isActive: boolean;
+  phone: string | null; iban: string | null; notes: string | null; isActive: boolean; accountCodeId: string | null;
 }
 export type ContractKind = 'management' | 'service' | 'insurance' | 'other';
 export interface BuildingContract {
@@ -234,3 +234,23 @@ export type NotificationKind =
   | 'maintenance_status' | 'maintenance_request_created' | 'delivery_failed';
 export interface NotificationRow { id: string; kind: NotificationKind; title: string; body: string; link: string; createdAt: string; readAt: string | null }
 export interface NotificationList { rows: NotificationRow[]; unread: number }
+
+export type AccountSlot =
+  | 'owner_receivable' | 'revenue_service' | 'revenue_management_fee' | 'revenue_reserve_fund'
+  | 'vat_output' | 'cash_regular' | 'cash_reserve' | 'expense_default' | 'opening_balance';
+export interface AccountCode { id: string; slot: AccountSlot; code: string; name: string; isActive: boolean }
+export interface AccountCodeList { rows: AccountCode[]; missing: AccountSlot[] }
+export interface TrialBalanceRow { code: string; name: string; debitMinor: number; creditMinor: number; differenceMinor: number }
+export interface AccountingPreview {
+  from: string; to: string; buildingName: string | null;
+  trialBalance: TrialBalanceRow[];
+  totals: { debitMinor: number; creditMinor: number; entryCount: number; lineCount: number };
+  adjustmentCount: number; closedPeriods: string[]; balanced: boolean;
+}
+export interface AccountingExport {
+  documentId: string; fileName: string; entryCount: number; adjustmentCount: number; debitMinor: number; creditMinor: number;
+}
+export interface AccountingPeriod {
+  id: string; period: string; closedAt: string; closedBy: string | null; closedByName: string | null;
+  debitTotalMinor: number; creditTotalMinor: number; entryCount: number;
+}

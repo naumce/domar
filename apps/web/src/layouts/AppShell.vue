@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import NotificationBell from '@/components/layout/NotificationBell.vue';
@@ -8,12 +9,16 @@ import { useAuthStore } from '@/stores/auth';
 const { t } = useI18n();
 const auth = useAuthStore();
 const router = useRouter();
-const nav = [
+// The accounting page has no part for a technician (controller ruling): a role is not shown what
+// it cannot use, same precedent as BuildingDetailPage's tab gating.
+const nav = computed(() => [
   { to: '/app', key: 'nav.dashboard' }, { to: '/app/compliance', key: 'nav.compliance' }, { to: '/app/buildings', key: 'nav.buildings' }, { to: '/app/services', key: 'nav.services' },
   { to: '/app/suppliers', key: 'nav.suppliers' },
-  { to: '/app/contacts', key: 'nav.contacts' }, { to: '/app/invoices', key: 'nav.invoices' }, { to: '/app/payments', key: 'nav.payments' }, { to: '/app/tax-rates', key: 'nav.taxRates' },
+  { to: '/app/contacts', key: 'nav.contacts' }, { to: '/app/invoices', key: 'nav.invoices' }, { to: '/app/payments', key: 'nav.payments' },
+  ...(auth.user?.role === 'technician' ? [] : [{ to: '/app/accounting', key: 'nav.accounting' }]),
+  { to: '/app/tax-rates', key: 'nav.taxRates' },
   { to: '/app/settings', key: 'nav.settings' },
-];
+]);
 async function logout() { await auth.logout(); await router.push('/login'); }
 function toggleLocale() { setLocale((i18n.global.locale.value === 'mk' ? 'en' : 'mk') as Locale); }
 </script>
