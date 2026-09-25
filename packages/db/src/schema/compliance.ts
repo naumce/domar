@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { bigint, bigserial, boolean, date, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { accountCodes } from './accounting.js';
 import { users } from './auth.js';
 import { buildings } from './building.js';
 import { tenants } from './tenant.js';
@@ -76,6 +77,8 @@ export const suppliers = pgTable('suppliers', {
   email: text('email'),
   phone: text('phone'),
   iban: text('iban'),
+  /** Spec §3: an expense booked to this supplier uses its account instead of `expense_default`. */
+  accountCodeId: uuid('account_code_id').references(() => accountCodes.id, { onDelete: 'set null' }),
   notes: text('notes'),
   isActive: boolean('is_active').notNull().default(true),
   ...ts(),

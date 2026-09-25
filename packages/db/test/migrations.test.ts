@@ -489,4 +489,45 @@ describe('migrations', () => {
       where k.table_name = 'push_subscriptions' and k.column_name = 'owner_account_id'`;
     expect(fk!.delete_rule).toBe('CASCADE');
   });
+
+  it('account_codes hold one accountant code per slot per tenant', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable from information_schema.columns where table_name = 'account_codes' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(['code', 'created_at', 'id', 'is_active', 'name', 'slot', 'tenant_id', 'updated_at']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['code']!.is_nullable).toBe('NO');
+    expect(by['name']!.is_nullable).toBe('NO');
+    const slots = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'account_slot' order by e.enumsortorder`;
+    expect(slots.map((s) => s.enumlabel)).toEqual([
+      'owner_receivable', 'revenue_service', 'revenue_management_fee', 'revenue_reserve_fund',
+      'vat_output', 'cash_regular', 'cash_reserve', 'expense_default', 'opening_balance']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'account_codes'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(tenant_id, slot)'))).toBe(true);
+  });
+
+  it('accounting_periods record one close per period per tenant', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string }[]>`
+      select column_name, data_type, is_nullable from information_schema.columns where table_name = 'accounting_periods' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(
+      ['closed_at', 'closed_by', 'created_at', 'credit_total_minor', 'debit_total_minor', 'entry_count', 'id', 'period', 'tenant_id', 'updated_at']);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['debit_total_minor']!.data_type).toBe('bigint');
+    expect(by['credit_total_minor']!.data_type).toBe('bigint');
+    expect(by['entry_count']!.data_type).toBe('integer');
+    expect(by['closed_by']!.is_nullable).toBe('YES');
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'accounting_periods'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(tenant_id, period)'))).toBe(true);
+  });
+
+  it('a supplier can name the account its expenses are booked to', async () => {
+    const [col] = await t!.sql<{ is_nullable: string }[]>`
+      select is_nullable from information_schema.columns where table_name = 'suppliers' and column_name = 'account_code_id'`;
+    expect(col!.is_nullable).toBe('YES');
+    const [fk] = await t!.sql<{ delete_rule: string }[]>`
+      select rc.delete_rule from information_schema.referential_constraints rc
+      join information_schema.table_constraints tc on tc.constraint_name = rc.constraint_name
+      where tc.table_name = 'suppliers' and rc.constraint_name like '%account_code%'`;
+    expect(fk!.delete_rule).toBe('SET NULL');
+  });
 });
