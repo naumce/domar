@@ -23,18 +23,25 @@ import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import UnitForm, { type UnitCreatePayload } from '@/components/units/UnitForm.vue';
 import { swallow, useResource } from '@/composables/useResource';
+import { useAuthStore } from '@/stores/auth';
 import { formatNumber } from '@/utils/money';
 
 const props = defineProps<{ id: string }>();
 const { t, te } = useI18n();
+const auth = useAuthStore();
 const building = ref<Building | null>(null);
 const contacts = ref<Contact[]>([]);
 const units = useResource<Unit>(`/api/buildings/${props.id}/units`);
 const open = ref(false); const editing = ref<Unit | null>(null); const formError = ref<string | null>(null);
 const route = useRoute(); const router = useRouter();
-const tabs = ['compliance', 'units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'reminders', 'assemblies', 'maintenance', 'reports', 'documents', 'contracts', 'extraordinary', 'import'] as const;
-const tab = computed(() => (tabs.includes(route.query.tab as never) ? (route.query.tab as (typeof tabs)[number]) : 'compliance'));
-const tabLabel = (k: string) => ({ compliance: t('compliance.title'), units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), reminders: t('reminders.title'), assemblies: t('assemblies.title'), maintenance: t('maintenance.title'), reports: t('reports.title'), documents: t('documents.title'), contracts: t('contracts.title'), extraordinary: t('extraordinary.title'), import: t('imports.title') })[k as (typeof tabs)[number]];
+const ALL_TABS = ['compliance', 'units', 'services', 'reserve-fund', 'opening-balances', 'periods', 'statements', 'reminders', 'assemblies', 'maintenance', 'reports', 'documents', 'contracts', 'extraordinary', 'import'] as const;
+type TabKey = (typeof ALL_TABS)[number];
+// Spec §10: a technician's job here is maintenance. The other tabs read endpoints their role is
+// refused, so they are not drawn at all rather than drawn blank; an old link falls back to compliance.
+const TECHNICIAN_TABS: readonly TabKey[] = ['compliance', 'units', 'maintenance'];
+const tabs = computed<readonly TabKey[]>(() => (auth.user?.role === 'technician' ? TECHNICIAN_TABS : ALL_TABS));
+const tab = computed(() => (tabs.value.includes(route.query.tab as TabKey) ? (route.query.tab as TabKey) : 'compliance'));
+const tabLabel = (k: string) => ({ compliance: t('compliance.title'), units: t('units.title'), services: t('buildingServices.title'), 'reserve-fund': t('reserveFund.title'), 'opening-balances': t('openingBalances.title'), periods: t('periods.title'), statements: t('statements.title'), reminders: t('reminders.title'), assemblies: t('assemblies.title'), maintenance: t('maintenance.title'), reports: t('reports.title'), documents: t('documents.title'), contracts: t('contracts.title'), extraordinary: t('extraordinary.title'), import: t('imports.title') })[k as TabKey];
 
 async function loadContactsAndUnits() {
   contacts.value = (await api.get<{ rows: Contact[] }>('/api/contacts', { pageSize: 200 })).rows;
