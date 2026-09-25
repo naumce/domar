@@ -1,3 +1,4 @@
+import { byCode } from '../reports/order.js';
 import { type AccountRef, ACCOUNT_SLOTS, type AccountSlot, type Chart, chartFrom, missingSlots } from './slots.js';
 
 export { ACCOUNT_SLOTS, chartFrom, missingSlots };
@@ -136,13 +137,15 @@ function invoiceLines(chart: Chart, group: JournalPostingIn[], invoice: JournalI
     byRevenue.set(REVENUE_SLOT[l.kind], (byRevenue.get(REVENUE_SLOT[l.kind]) ?? 0) + l.ownerNetMinor);
     tax += l.ownerTaxMinor;
   }
-  const out = [debit(chart.owner_receivable, gross, invoice.number)];
+  // signed() throughout: a credit note (negative gross/net/tax) must flip to the other side rather
+  // than emit a negative debit or credit.
+  const out = [signed(chart.owner_receivable, gross, invoice.number)];
   // Canonical slot order, so two runs of the same month produce byte-identical files.
   for (const slot of ACCOUNT_SLOTS) {
     const net = byRevenue.get(slot);
-    if (net !== undefined) out.push(credit(chart[slot], net, invoice.number));
+    if (net !== undefined) out.push(signed(chart[slot], -net, invoice.number));
   }
-  if (tax !== 0) out.push(credit(chart.vat_output, tax, invoice.number));
+  if (tax !== 0) out.push(signed(chart.vat_output, -tax, invoice.number));
   return out;
 }
 
@@ -191,6 +194,14 @@ function entryLines(input: JournalInput, group: JournalPostingIn[]): JournalLine
       return cashLines(input.chart, group, head.counterparty);
     case 'expense':
     case 'expense_void': {
+      // expenseLines derives both lines from one posting's amount; it has no way to fold a second
+      // posting in without guessing which one the description and fund belong to. A dropped posting
+      // is the one failure mode this module exists to prevent, so a group of more than one is a
+      // refusal, not a silent group.length === 1 assumption.
+      if (group.length !== 1) {
+        throw new JournalError('unknown_source', `expense ${head.refId} has ${group.length} postings, expected exactly 1`,
+          { refType: head.refType, postingId: head.id, refId: head.refId, postingCount: group.length });
+      }
       const expense = input.expenses[head.refId!];
       if (!expense) throw new JournalError('unknown_source', `no expense ${head.refId} for posting ${head.id}`, { refType: head.refType, postingId: head.id, refId: head.refId });
       return expenseLines(input.chart, head, expense);
@@ -198,6 +209,11 @@ function entryLines(input: JournalInput, group: JournalPostingIn[]): JournalLine
     case 'opening_balance':
       return openingLines(input.chart, head, head.counterparty);
     default:
+      // Unreachable: buildJournal checks every posting's refType against KNOWN before any group is
+      // built (see below), so entryLines never sees one it doesn't recognise. It stays because
+      // refType is a plain string, not a literal union, so TypeScript can't prove the switch
+      // exhaustive without it — and because entryLines is defense in depth if it's ever called on
+      // its own.
       throw new JournalError('unknown_source', `unknown refType ${head.refType}`, { refType: head.refType, postingId: head.id });
   }
 }
@@ -224,9 +240,11 @@ export function buildJournal(input: JournalInput): Journal {
   const closed = new Set(input.closedPeriods);
   const ordered = [...groups.values()].sort((a, b) => {
     const [x, y] = [a[0]!, b[0]!];
-    // Adjustments last, then oldest first, then a stable tiebreak so two runs agree byte for byte.
-    return Number(x.prior) - Number(y.prior) || x.date.localeCompare(y.date)
-      || x.refType.localeCompare(y.refType) || groupKey(x).localeCompare(groupKey(y));
+    // Adjustments last, then oldest first, then a stable tiebreak so two runs agree byte for byte —
+    // these are machine strings (dates, refTypes, keys), so they sort by code unit (order.ts's
+    // byCode), not by locale.
+    return Number(x.prior) - Number(y.prior) || byCode(x.date, y.date)
+      || byCode(x.refType, y.refType) || byCode(groupKey(x), groupKey(y));
   });
 
   const entries: JournalEntry[] = [];
@@ -234,9 +252,12 @@ export function buildJournal(input: JournalInput): Journal {
   let no = 0;
   for (const group of ordered) {
     const head = group[0]!;
-    const sourceId = head.refType === 'opening_balance' ? head.id : head.refId!;
-    no += 1;
+    // Same fallback groupKey already uses: a non-opening posting's refId is expected but the type
+    // allows null, and asserting past that would silently write `null` into a `string` field.
+    const sourceId = head.refType === 'opening_balance' ? head.id : (head.refId ?? head.id);
     const lines = entryLines(input, group).filter((l) => l.debitMinor !== 0 || l.creditMinor !== 0);
+    if (lines.length === 0) continue; // nothing moved: no entry, no number, no line in the file.
+    no += 1;
     const difference = lines.reduce((s, l) => s + l.debitMinor - l.creditMinor, 0);
     if (difference !== 0) {
       throw new JournalError('unbalanced_entry', `entry ${no} (${head.refType} ${sourceId}) is out by ${difference} minor units`,
@@ -273,7 +294,7 @@ export function buildJournal(input: JournalInput): Journal {
   const covered = new Set(all.map((e) => e.period));
   return {
     entries, adjustments,
-    trialBalance: [...byAccount.values()].sort((a, b) => a.code.localeCompare(b.code)),
+    trialBalance: [...byAccount.values()].sort((a, b) => byCode(a.code, b.code)),
     totals,
     closedPeriods: [...covered].filter((p) => closed.has(p)).sort(),
   };

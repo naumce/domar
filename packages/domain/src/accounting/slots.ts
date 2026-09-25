@@ -29,7 +29,9 @@ export function missingSlots(rows: readonly { slot: AccountSlot; code: string; i
 
 /** The rows as the derivation wants them. Callers check `missingSlots` first; a gap here is a bug. */
 export function chartFrom(rows: readonly { slot: AccountSlot; code: string; name: string; isActive: boolean }[]): Chart {
-  const by = new Map(rows.filter((r) => r.isActive).map((r) => [r.slot, { code: r.code, name: r.name }]));
+  // Same definition of "usable" as missingSlots: active and a non-blank code. Otherwise a row that
+  // missingSlots reports as unmapped could still silently build a chart with an empty account code.
+  const by = new Map(rows.filter((r) => r.isActive && r.code.trim() !== '').map((r) => [r.slot, { code: r.code, name: r.name }]));
   const out = {} as Chart;
   for (const slot of ACCOUNT_SLOTS) {
     const ref = by.get(slot);

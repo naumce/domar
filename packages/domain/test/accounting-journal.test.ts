@@ -31,6 +31,27 @@ describe('missingSlots', () => {
   });
 });
 
+describe('chartFrom', () => {
+  it('maps every slot to its own code and name', () => {
+    const rows = ACCOUNT_SLOTS.map((slot, i) => ({ slot, code: `${200 + i}`, name: `${slot} name`, isActive: true }));
+    const chart = chartFrom(rows);
+    expect(chart.owner_receivable).toEqual({ code: '200', name: 'owner_receivable name' });
+    expect(chart.opening_balance).toEqual({ code: `${200 + ACCOUNT_SLOTS.length - 1}`, name: 'opening_balance name' });
+  });
+
+  it('agrees with missingSlots that a blank code is not a mapping, even when the row is active', () => {
+    const rows = ACCOUNT_SLOTS.map((slot) => ({ slot, code: slot === 'vat_output' ? '' : '1', name: slot, isActive: true }));
+    expect(missingSlots(rows)).toEqual(['vat_output']);
+    expect(() => chartFrom(rows)).toThrow(RangeError);
+  });
+
+  it('agrees with missingSlots that a disabled row is not a mapping, even with a code', () => {
+    const rows = ACCOUNT_SLOTS.map((slot) => ({ slot, code: '1', name: slot, isActive: slot !== 'cash_regular' }));
+    expect(missingSlots(rows)).toEqual(['cash_regular']);
+    expect(() => chartFrom(rows)).toThrow(RangeError);
+  });
+});
+
 describe('buildJournal — an invoice', () => {
   // 3.000,00 service net + 540,00 VAT, 1.000,00 reserve fund, 500,00 management fee: gross 5.040,00.
   const j = buildJournal(input({
@@ -76,6 +97,22 @@ describe('buildJournal — a manual line is service revenue', () => {
       invoices: { inv2: { number: 'INV-2/2026', lines: [{ kind: 'manual', ownerNetMinor: 20000, ownerTaxMinor: 0, ownerGrossMinor: 20000 }] } },
     }));
     expect(j.entries[0]!.lines.map((l) => l.name)).toEqual(['owner_receivable', 'revenue_service']);
+  });
+});
+
+describe('buildJournal — a credit note reverses the sides', () => {
+  it('a negative gross, net and tax flip to the other side rather than posting a negative line', () => {
+    const j = buildJournal(input({
+      postings: [posting({ id: 'p1', amountMinor: -118000, refType: 'invoice', refId: 'cn1' })],
+      invoices: {
+        cn1: { number: 'CN-1/2026', lines: [{ kind: 'service', ownerNetMinor: -100000, ownerTaxMinor: -18000, ownerGrossMinor: -118000 }] },
+      },
+    }));
+    expect(j.entries[0]!.lines.map((l) => [l.name, l.debitMinor, l.creditMinor])).toEqual([
+      ['owner_receivable', 0, 118000],
+      ['revenue_service', 100000, 0],
+      ['vat_output', 18000, 0],
+    ]);
   });
 });
 
@@ -137,6 +174,21 @@ describe('buildJournal — money in and out', () => {
       ['expense_default', 0, 60000],
     ]);
   });
+
+  it('refuses an expense group of more than one posting rather than dropping one of them', () => {
+    const run = () => buildJournal(input({
+      postings: [
+        posting({ id: 'p1', amountMinor: -30000, refType: 'expense', refId: 'e1', kind: 'expense', account: 'fund' }),
+        posting({ id: 'p2', amountMinor: -30000, refType: 'expense', refId: 'e1', kind: 'expense', account: 'fund' }),
+      ],
+      expenses: { e1: { description: 'Струја', account: null } },
+    }));
+    expect(run).toThrow(JournalError);
+    try { run(); } catch (e) {
+      expect((e as JournalError).code).toBe('unknown_source');
+      expect((e as JournalError).details).toMatchObject({ refType: 'expense', refId: 'e1', postingCount: 2 });
+    }
+  });
 });
 
 describe('buildJournal — opening balances follow the sign', () => {
@@ -146,15 +198,19 @@ describe('buildJournal — opening balances follow the sign', () => {
         posting({ id: 'p1', amountMinor: 45000, refType: 'opening_balance', kind: 'opening' }),
         posting({ id: 'p2', amountMinor: -15000, refType: 'opening_balance', kind: 'opening' }),
         posting({ id: 'p3', amountMinor: 900000, refType: 'opening_balance', kind: 'opening', account: 'fund', fund: 'reserve' }),
+        // The fourth sign/account combination: a fund account, negative — a negative opening cash
+        // balance, e.g. correcting an overstated float.
+        posting({ id: 'p4', amountMinor: -30000, refType: 'opening_balance', kind: 'opening', account: 'fund' }),
       ],
     }));
     expect(j.entries.map((e) => e.lines.map((l) => [l.name, l.debitMinor, l.creditMinor]))).toEqual([
       [['owner_receivable', 45000, 0], ['opening_balance', 0, 45000]],
       [['owner_receivable', 0, 15000], ['opening_balance', 15000, 0]],
       [['cash_reserve', 900000, 0], ['opening_balance', 0, 900000]],
+      [['cash_regular', 0, 30000], ['opening_balance', 30000, 0]],
     ]);
     // `refId` is null on an opening balance, so each posting is its own entry.
-    expect(j.entries.map((e) => e.sourceId)).toEqual(['p1', 'p2', 'p3']);
+    expect(j.entries.map((e) => e.sourceId)).toEqual(['p1', 'p2', 'p3', 'p4']);
   });
 });
 
@@ -229,5 +285,28 @@ describe('buildJournal — the trial balance and the sections', () => {
 
   it('reports which of the periods it covers were already closed', () => {
     expect(j.closedPeriods).toEqual(['2026-08']);
+  });
+});
+
+describe('buildJournal — closedPeriod reflects the closed set on its own, not the section', () => {
+  it('an entry in the entries section (not `prior`) is still closedPeriod when its own period is closed', () => {
+    const j = buildJournal(input({
+      postings: [posting({ id: 'p1', amountMinor: 45000, refType: 'opening_balance', kind: 'opening', period: '2026-09' })],
+      closedPeriods: ['2026-09'],
+    }));
+    expect(j.entries).toHaveLength(1);
+    expect(j.adjustments).toHaveLength(0);
+    expect(j.entries[0]).toMatchObject({ period: '2026-09', closedPeriod: true });
+  });
+});
+
+describe('buildJournal — a source that moves nothing produces no entry', () => {
+  it('an all-zero invoice is skipped rather than numbered as an empty entry', () => {
+    const j = buildJournal(input({
+      postings: [posting({ id: 'p1', amountMinor: 0, refType: 'invoice', refId: 'inv0' })],
+      invoices: { inv0: { number: 'INV-0/2026', lines: [{ kind: 'service', ownerNetMinor: 0, ownerTaxMinor: 0, ownerGrossMinor: 0 }] } },
+    }));
+    expect(j.entries).toEqual([]);
+    expect(j.totals).toEqual({ debitMinor: 0, creditMinor: 0, entryCount: 0, lineCount: 0 });
   });
 });
