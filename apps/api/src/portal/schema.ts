@@ -121,3 +121,17 @@ export const portalMaintenanceCreateBody = z.object({
 });
 export const portalMaintenanceEventBody = z.object({ contactId: z.string().uuid(), note: z.string().min(1).max(2000) });
 export const portalMaintenancePhotoParam = z.object({ id: z.string().uuid(), documentId: z.string().uuid() });
+
+/**
+ * No `contactId` and no tenant: `push_subscriptions` has no `tenant_id` column, an owner account is
+ * deliberately cross-tenant (like `owner_sessions`), and every statement here is keyed on the
+ * caller's own account alone.
+ */
+export const portalPushSubscribeBody = z.object({
+  endpoint: z.string().url().max(2000),
+  p256dh: z.string().min(1).max(500),
+  auth: z.string().min(1).max(500),
+  userAgent: z.string().max(500).optional(),
+});
+export const portalPushUnsubscribeBody = z.object({ endpoint: z.string().url().max(2000) });
+export const portalPushKeyOut = z.object({ publicKey: z.string().nullable() });
