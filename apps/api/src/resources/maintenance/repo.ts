@@ -1,5 +1,5 @@
 import { type Db, schema } from '@domar/db';
-import { MAINTENANCE_STATUSES, can, canTransition, getCountryPack, type CountryCode, type MaintenanceCapability, type MaintenanceRole, type MaintenanceStatus } from '@domar/domain';
+import { MAINTENANCE_STATUSES, can, canTransition, getCountryPack, isTerminal, type CountryCode, type MaintenanceCapability, type MaintenanceRole, type MaintenanceStatus } from '@domar/domain';
 import { and, asc, count, desc, eq, exists, inArray, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { writeAudit } from '../../audit.js';
@@ -303,7 +303,8 @@ export async function setStatus(db: Db, ctx: TenantContext, id: string, input: M
         fund: cost.fund,
         description: costNote,
         supplierText: null,
-        supplierId: cost.supplierId ?? before.supplierId,
+        // Explicitly `null` means "no supplier on this expense"; only a missing key falls back (addendum 5).
+        supplierId: cost.supplierId === undefined ? before.supplierId : cost.supplierId,
         documentId: cost.documentId ?? null,
         amountMinor: cost.costMinor,
         paidAt: new Date().toISOString(),
@@ -352,6 +353,9 @@ export async function assignRequest(db: Db, ctx: TenantContext, id: string, inpu
 export async function addEvent(db: Db, ctx: TenantContext, id: string, input: MaintenanceEventInput) {
   return db.transaction(async (tx) => {
     const row = await getRequestRow(tx, ctx, id);
+    // Same answer `addPhoto` and `updateRequest` give: a closed request is evidence of what was
+    // done, and its feed stops where it stopped (plan addendum 2).
+    if (isTerminal(row.status)) throw conflict('status_locked', 'A closed request takes no more comments');
     await recordEvent(tx, ctx, { requestId: row.id, kind: 'comment', note: input.note, visibility: input.visibility });
     await writeAudit(tx, ctx, { action: 'maintenance.event', entityType: 'maintenance_request', entityId: id, after: { note: input.note, visibility: input.visibility } });
     return getRequest(tx, ctx, id);

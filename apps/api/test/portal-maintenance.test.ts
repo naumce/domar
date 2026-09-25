@@ -178,4 +178,10 @@ describe('portal maintenance', () => {
     expect(fund.transactions[0]).toMatchObject({ kind: 'expense', fund: 'reserve', amountMinor: -1_200_000 });
     expect(fund.transactions[0].description).toBe('Одржување: Водовод и канализација — Протекува цевка во визбата');
   });
+
+  it('gives the owner the same answer on a closed request as the board gives the manager', async () => {
+    const res = await portalPost(`/api/portal/maintenance/${requestId}/events`, { contactId: A.owners.O1, note: 'Фала, се е во ред.' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('status_locked');
+  });
 });

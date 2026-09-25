@@ -247,6 +247,35 @@ describe('maintenance photos and the cost of a closed request', () => {
     expect((await get(`/api/maintenance-requests/${row.id}`)).json().photoCount).toBe(12);
   });
 
+  it('books no supplier when the close says so explicitly', async () => {
+    const row = await create();
+    await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: tech.id, supplierId });
+    const done = await post(`/api/maintenance-requests/${row.id}/status`, {
+      status: 'done', cost: { fund: 'reserve', costMinor: 33_000, supplierId: null },
+    });
+    expect(done.statusCode, done.body).toBe(200);
+    const expense = (await get(`/api/buildings/${A.buildingId}/reserve-fund/expenses`)).json().rows
+      .find((e: { id: string }) => e.id === done.json().expenseId);
+    // `null` is a decision, not a missing key: the assignment's supplier is not booked behind it.
+    expect(expense.supplierId).toBeNull();
+    expect(done.json().supplierId).toBe(supplierId);
+  });
+
+  it('lets no race carry the gallery past the cap', async () => {
+    const row = await create();
+    for (let i = 0; i < 11; i += 1) {
+      const res = await upload(row.id, { filename: `trka-${i}.png`, mime: 'image/png', content: PNG });
+      expect(res.statusCode, res.body).toBe(201);
+    }
+    const [one, two] = await Promise.all([
+      upload(row.id, { filename: 'trka-a.png', mime: 'image/png', content: PNG }),
+      upload(row.id, { filename: 'trka-b.png', mime: 'image/png', content: PNG }),
+    ]);
+    expect([one.statusCode, two.statusCode].sort((x, y) => x - y)).toEqual([201, 409]);
+    expect([one, two].find((r) => r.statusCode === 409)!.json().error.code).toBe('too_many_photos');
+    expect((await get(`/api/maintenance-requests/${row.id}`)).json().photoCount).toBe(12);
+  });
+
   it('books one expense when the same close arrives twice at once', async () => {
     const row = await create();
     await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: tech.id });

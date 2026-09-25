@@ -1,9 +1,9 @@
 import { type Db, schema } from '@domar/db';
-import type { MaintenanceCategory, MaintenancePriority } from '@domar/domain';
+import { isTerminal, type MaintenanceCategory, type MaintenancePriority } from '@domar/domain';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../audit.js';
 import type { DocumentStore } from '../documents/store.js';
-import { badRequest, notFound } from '../errors.js';
+import { badRequest, conflict, notFound } from '../errors.js';
 import { addPhoto, photoFile, type NewPhoto } from '../resources/maintenance/photos.js';
 import { MR, PHOTO_COUNT, recordEvent, requestEvents, requestPhotos } from '../resources/maintenance/repo.js';
 import type { TenantContext } from '../tenant-context.js';
@@ -104,6 +104,8 @@ export async function portalMaintenanceCreate(db: Db, portal: PortalContext, inp
 export async function portalMaintenanceComment(db: Db, portal: PortalContext, contactIdParam: string, id: string, note: string) {
   const { ctx, contactId } = resolveLink(portal, contactIdParam);
   const row = await ownedRequest(db, ctx, contactId, id);
+  // The board's answer, from the portal side too: a closed request takes no more comments.
+  if (isTerminal(row.status)) throw conflict('status_locked', 'A closed request takes no more comments');
   return db.transaction(async (tx) => {
     await recordEvent(tx, ctx, { requestId: row.id, kind: 'comment', note, visibility: 'owner', authorContactId: contactId });
     await writeAudit(tx, ctx, { action: 'maintenance.portal_event', entityType: 'maintenance_request', entityId: row.id, after: { note, contactId } });

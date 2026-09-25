@@ -8,7 +8,7 @@ import type { DocumentStore } from '../../documents/store.js';
 import { conflict, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { createDocument, deleteDocument } from '../documents/repo.js';
-import { getRequestRow, recordEvent } from './repo.js';
+import { getRequestRow, MR, recordEvent } from './repo.js';
 
 const MP = schema.maintenancePhotos;
 const D = schema.documents;
@@ -40,11 +40,6 @@ export interface NewPhoto {
 export async function addPhoto(db: Db, ctx: TenantContext, store: DocumentStore, requestId: string, input: NewPhoto) {
   const request = await getRequestRow(db, ctx, requestId);
   if (isTerminal(request.status)) throw conflict('status_locked', 'A closed request takes no more photos');
-  const [existing] = await db.select({ n: count() }).from(MP)
-    .where(and(eq(MP.tenantId, ctx.tenantId), eq(MP.maintenanceRequestId, requestId)));
-  if (Number(existing?.n ?? 0) >= MAX_PHOTOS_PER_REQUEST) {
-    throw conflict('too_many_photos', `A request holds at most ${MAX_PHOTOS_PER_REQUEST} photos`);
-  }
   const created = await createDocument(db, ctx, store, {
     buildingId: request.buildingId,
     kind: 'photo',
@@ -57,6 +52,17 @@ export async function addPhoto(db: Db, ctx: TenantContext, store: DocumentStore,
   });
   try {
     await db.transaction(async (tx) => {
+      // The cap is counted here, not before `createDocument`: a count taken outside this write lets
+      // two uploads racing at eleven both pass and land thirteen. The row lock on the request is what
+      // orders them — the count alone would still be read twice under READ COMMITTED. A refused
+      // upload unwinds its document and its bytes through the catch below.
+      await tx.select({ id: MR.id }).from(MR)
+        .where(and(eq(MR.tenantId, ctx.tenantId), eq(MR.id, requestId))).for('update');
+      const [existing] = await tx.select({ n: count() }).from(MP)
+        .where(and(eq(MP.tenantId, ctx.tenantId), eq(MP.maintenanceRequestId, requestId)));
+      if (Number(existing?.n ?? 0) >= MAX_PHOTOS_PER_REQUEST) {
+        throw conflict('too_many_photos', `A request holds at most ${MAX_PHOTOS_PER_REQUEST} photos`);
+      }
       await tx.insert(MP).values({
         tenantId: ctx.tenantId,
         maintenanceRequestId: requestId,

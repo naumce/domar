@@ -273,6 +273,15 @@ describe('maintenance requests', () => {
     expect(detail.events.filter((e: { kind: string }) => e.kind === 'status_changed')).toHaveLength(1);
   });
 
+  it('refuses a comment on a closed request, as it refuses a photo and a patch', async () => {
+    const row = await create();
+    await post(`/api/maintenance-requests/${row.id}/status`, { status: 'rejected', note: 'Двојна пријава.' });
+    const res = await post(`/api/maintenance-requests/${row.id}/events`, { note: 'Сепак, дојдете да погледнете.' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe('status_locked');
+    expect((await get(`/api/maintenance-requests/${row.id}`)).json().events.filter((e: { kind: string }) => e.kind === 'comment')).toEqual([]);
+  });
+
   it('audits every mutation', async () => {
     const row = await create();
     await post(`/api/maintenance-requests/${row.id}/assign`, { assigneeUserId: tech.id });
