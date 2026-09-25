@@ -8,7 +8,7 @@ import { buildingParam } from '../units/schema.js';
 import { holdAssembly } from './hold.js';
 import { createAssembly, createDecision, deleteAssembly, deleteDecision, getAssembly, listAssemblies, updateAssembly, updateDecision } from './repo.js';
 import { assemblyCreate, assemblyDecisionParam, assemblyListOut, assemblyOut, assemblyOwnersOut, assemblyPatch, cancelBody, decisionCreate, decisionPatch, holdBody, inviteBody, paperVoteBody } from './schema.js';
-import { assemblyInvitationHtml, cancelAssembly, inviteAssembly, markInvitationPrinted, type AssemblyRuntime } from './service.js';
+import { assemblyInvitationHtml, assemblyMinutesHtml, cancelAssembly, inviteAssembly, markInvitationPrinted, type AssemblyRuntime } from './service.js';
 import { castPaperVote, listAssemblyOwners } from './votes.js';
 
 export const assemblyRuntime = (app: FastifyInstance): AssemblyRuntime => ({
@@ -57,6 +57,11 @@ export const assemblyRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post('/:id/cancel', { ...write, schema: { params: idParam, body: cancelBody, response: { 200: assemblyOut } } }, async (req) =>
     cancelAssembly(req.db, req.ctx!, req.params.id, req.body.reason));
 
+  // Readable by any authenticated role, like the invitation: it is a record, not a write.
+  app.get('/:id/minutes/html', { schema: { params: idParam } }, async (req, reply) => {
+    const html = await assemblyMinutesHtml(req.db, req.ctx!, req.params.id);
+    return reply.type('text/html; charset=utf-8').send(html);
+  });
   app.get('/:id/invitation/html', { schema: { params: idParam } }, async (req, reply) => {
     const html = await assemblyInvitationHtml(req.db, req.ctx!, req.params.id);
     return reply.type('text/html; charset=utf-8').send(html);

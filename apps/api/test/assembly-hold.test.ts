@@ -214,6 +214,23 @@ describe('assembly voting, hold and the portal', () => {
     await post(`/api/assemblies/${assembly.id}/cancel`, { reason: 'Тест' });
   });
 
+  it('serves the minutes it stored, to any authenticated role, once the assembly is held', async () => {
+    const assembly = await called(A.buildingId, 'share', ['Одлука за записник']);
+    // Nothing to show before the meeting: the row has no minutes yet.
+    const early = await get(`/api/assemblies/${assembly.id}/minutes/html`);
+    expect(early.statusCode).toBe(409);
+    expect(early.json().error.code).toBe('not_held');
+
+    await post(`/api/assemblies/${assembly.id}/hold`, { attendance: [{ contactId: A.owners.A, present: true }, { contactId: A.owners.B, present: true }] });
+    const html = await get(`/api/assemblies/${assembly.id}/minutes/html`);
+    expect(html.statusCode).toBe(200);
+    expect(html.headers['content-type']).toContain('text/html');
+    expect(html.body).toContain('Одлука за записник');
+    // A reader may read it; another tenant may not see that it exists.
+    expect((await get(`/api/assemblies/${assembly.id}/minutes/html`, readonlyCookie)).statusCode).toBe(200);
+    expect((await get(`/api/assemblies/${assembly.id}/minutes/html`, b.cookie)).statusCode).toBe(404);
+  });
+
   it('lets a readonly user read the owners but neither vote nor close the meeting', async () => {
     const assembly = await called(A.buildingId, 'share', ['Одлука']);
     expect((await get(`/api/assemblies/${assembly.id}/owners`, readonlyCookie)).statusCode).toBe(200);

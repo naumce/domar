@@ -73,8 +73,10 @@ export async function inviteAssembly(db: Db, ctx: TenantContext, id: string, inp
     const building = await getBuilding(tx, ctx, claimed.buildingId);
     const { tenant, pack } = await tenantPack(tx, ctx);
     const now = new Date();
+    // Civil days answer Art. 37's fifteen; whether the assembly has already happened is a question
+    // about instants, so an assembly scheduled for nine this morning is past at noon, not tonight.
+    if (claimed.scheduledAt.getTime() <= now.getTime()) throw badRequest('assembly_in_the_past', 'This assembly is scheduled in the past');
     const days = civilDaysUntil(now, claimed.scheduledAt, tenant.timezone);
-    if (days < 0) throw badRequest('assembly_in_the_past', 'This assembly is scheduled in the past');
     const minDays = pack.complianceRules.assemblyInvitationMinDays;
     const late = days < minDays;
     if (late && !input.override) {
@@ -225,6 +227,17 @@ export async function cancelAssembly(db: Db, ctx: TenantContext, id: string, rea
  * held one — what the owners were summoned with outlives the meeting. A draft was never sent and a
  * cancelled one summons nobody, so neither has a document to serve.
  */
+/**
+ * The minutes as they were rendered when the assembly was held. The PDF is the document of record,
+ * but the row keeps the HTML it was made from, and evidence nothing can display is evidence of
+ * nothing — the more so since the minutes document is now undeletable (spec §4).
+ */
+export async function assemblyMinutesHtml(db: Db, ctx: TenantContext, id: string): Promise<string> {
+  const row = await getAssemblyRow(db, ctx, id); // 404 across tenants
+  if (row.status !== 'held' || !row.minutesHtml) throw conflict('not_held', 'This assembly has no minutes on file');
+  return row.minutesHtml;
+}
+
 export async function assemblyInvitationHtml(db: Db, ctx: TenantContext, id: string): Promise<string> {
   const row = await getAssemblyRow(db, ctx, id); // 404 across tenants
   const served = row.status === 'invited' || row.status === 'held';

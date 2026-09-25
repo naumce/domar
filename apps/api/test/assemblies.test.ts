@@ -302,6 +302,12 @@ describe('assemblies', () => {
     const late = await post(`/api/assemblies/${past.id}/invite`, { override: { reason: 'Сепак ја праќаме' } });
     expect(late.statusCode).toBe(400);
     expect(late.json().error.code).toBe('assembly_in_the_past');
+    // And an hour ago is as past as two days ago: the fifteen days are counted in civil days, but
+    // "has it happened yet" is a question about instants, so today is not a clean slate.
+    const earlier = await create({ scheduledAt: new Date(Date.now() - 3_600_000).toISOString() });
+    const today = await post(`/api/assemblies/${earlier.id}/invite`, { override: { reason: 'Сепак' } });
+    expect(today.statusCode).toBe(400);
+    expect(today.json().error.code).toBe('assembly_in_the_past');
   });
 
   it('invites the owner of two units once', async () => {
