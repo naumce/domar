@@ -21,8 +21,14 @@ export interface DrainResult { claimed: number; pushed: number; emailed: number;
 export const notificationRuntime = (app: FastifyInstance): NotificationRuntime => ({ pusher: app.pusher, mailer: app.mailer, log: app.log });
 
 const DEFAULT_LIMIT = 500;
-/** Small enough that a crash between chunks costs one chunk, not the whole run's queue. */
-const CHUNK_SIZE = 25;
+/**
+ * Small enough that a crash between chunks costs one chunk, not the whole run's queue, and small
+ * enough that one chunk's own worst case fits inside the deadline: a chunk is delivered
+ * concurrently, so it costs roughly one push timeout (10s) per subscription an owner has, not one
+ * per row. Twenty-five rows sent one after another would have taken eight minutes with every
+ * endpoint timing out — longer than the run's whole budget and longer than the cron's `curl -m 120`.
+ */
+const CHUNK_SIZE = 10;
 /** The cron's `curl -m 120` gives the response twice this long to arrive. */
 const DEFAULT_DEADLINE_MS = 60_000;
 
@@ -34,7 +40,8 @@ const DEFAULT_DEADLINE_MS = 60_000;
  *
  * `deadlineMs` bounds the wall-clock time of the run (checked between chunks, never inside one — a
  * chunk already has `delivered_at` stamped and there is no retry, so abandoning it partway would
- * strand those rows undelivered forever). A run that hits the deadline stops cleanly and returns
+ * strand those rows undelivered forever, which is also why a chunk is small and is delivered
+ * concurrently). A run that hits the deadline stops cleanly and returns
  * what it did; the caller can raise or lower the budget, but the cron's own timeout is the reason
  * for the default.
  */
@@ -50,14 +57,17 @@ export async function drainNotifications(db: Db, rt: NotificationRuntime, limit 
     if (chunk.length === 0) break;
     out.claimed += chunk.length;
 
-    for (const row of chunk) {
+    // Concurrently within the chunk: a dead push service costs the chunk one timeout, not one per
+    // row. The callbacks touch `out` and `failedByTenant` only after their own await, and JavaScript
+    // runs them one at a time, so the counters need no locking.
+    await Promise.all(chunk.map(async (row) => {
       // A staff row is an in-app bell and nothing else: no push, no email (plan addendum 12). It is
       // also what stops a failed delivery from recursing into another failed delivery.
-      if (!row.ownerAccountId) continue;
+      if (!row.ownerAccountId) return;
       try {
         const error = await deliverToOwner(db, rt, row);
-        if (error === null) { out.pushed += 1; continue; }
-        if (error === 'emailed') { out.emailed += 1; continue; }
+        if (error === null) { out.pushed += 1; return; }
+        if (error === 'emailed') { out.emailed += 1; return; }
         out.failed += 1;
         await recordDeliveryError(db, row, error);
         trackFailure(failedByTenant, row);
@@ -68,7 +78,7 @@ export async function drainNotifications(db: Db, rt: NotificationRuntime, limit 
         await recordDeliveryError(db, row, (err instanceof Error ? err.message : 'delivery_failed').slice(0, 500));
         trackFailure(failedByTenant, row);
       }
-    }
+    }));
   }
 
   await ringFailureBells(db, failedByTenant);
