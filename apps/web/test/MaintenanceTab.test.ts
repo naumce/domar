@@ -48,7 +48,7 @@ async function mountTab(responses: Response[], role: User['role'] = 'owner') {
   const fetchMock = vi.fn();
   for (const r of responses) fetchMock.mockResolvedValueOnce(r);
   vi.stubGlobal('fetch', fetchMock);
-  const w = mount(MaintenanceTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n] } });
+  const w = mount(MaintenanceTab, { props: { buildingId: 'b1' }, global: { plugins: [i18n], stubs: { teleport: true } } }); // MaintenancePanel's close-with-cost dialog teleports to body; the stub renders it inline so wrapper.get() can see it
   await vi.waitFor(() => expect(w.find('[data-test=maintenance-create]').exists() || w.find('[data-test=maintenance-column-new]').exists()).toBe(true));
   await flushPromises();
   return { w, fetchMock };

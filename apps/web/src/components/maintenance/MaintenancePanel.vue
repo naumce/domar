@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api, API_BASE } from '@/api/client';
 import type { Fund, MaintenanceRequest, MaintenanceVisibility, Supplier, User } from '@/api/types';
+import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppInput from '@/components/ui/AppInput.vue';
 import AppSelect from '@/components/ui/AppSelect.vue';
@@ -159,24 +160,16 @@ async function removePhoto(documentId: string) {
       </form>
     </section>
 
-    <!-- Not ModalDialog: it teleports to <body>, which a mount without a global teleport stub cannot
-         reach through the component wrapper. An inline overlay keeps the same look without that. -->
-    <div v-if="closing" class="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-16" @click.self="closing = false">
-      <div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl" role="dialog">
-        <div class="mb-4 flex items-center justify-between">
-          <h2 class="text-lg font-semibold">{{ t('maintenance.closeWithCost') }}</h2>
-          <button class="text-slate-500" @click="closing = false">✕</button>
-        </div>
-        <form class="space-y-3" @submit.prevent="submitClose">
-          <AppSelect v-model="close.fund" :label="t('maintenance.fund')" data-test="maintenance-close-fund"
-            :options="[{ value: 'reserve', label: t('maintenance.funds.reserve') }, { value: 'regular', label: t('maintenance.funds.regular') }]" />
-          <AppInput v-model="close.amount" :label="t('maintenance.cost')" placeholder="0,00" data-test="maintenance-close-amount" />
-          <AppSelect v-model="close.supplierId" :label="t('maintenance.supplier')" data-test="maintenance-close-supplier"
-            :options="[{ value: '', label: t('maintenance.noSupplier') }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]" />
-          <AppInput v-model="close.note" :label="t('maintenance.note')" data-test="maintenance-close-note" />
-          <AppButton type="button" :loading="busy === 'close'" data-test="maintenance-close-submit" @click="submitClose">{{ t('maintenance.close') }}</AppButton>
-        </form>
-      </div>
-    </div>
+    <ModalDialog :open="closing" :title="t('maintenance.closeWithCost')" @close="closing = false">
+      <form class="space-y-3" @submit.prevent="submitClose">
+        <AppSelect v-model="close.fund" :label="t('maintenance.fund')" data-test="maintenance-close-fund"
+          :options="[{ value: 'reserve', label: t('maintenance.funds.reserve') }, { value: 'regular', label: t('maintenance.funds.regular') }]" />
+        <AppInput v-model="close.amount" :label="t('maintenance.cost')" placeholder="0,00" data-test="maintenance-close-amount" />
+        <AppSelect v-model="close.supplierId" :label="t('maintenance.supplier')" data-test="maintenance-close-supplier"
+          :options="[{ value: '', label: t('maintenance.noSupplier') }, ...suppliers.map((s) => ({ value: s.id, label: s.name }))]" />
+        <AppInput v-model="close.note" :label="t('maintenance.note')" data-test="maintenance-close-note" />
+        <AppButton type="button" :loading="busy === 'close'" data-test="maintenance-close-submit" @click="submitClose">{{ t('maintenance.close') }}</AppButton>
+      </form>
+    </ModalDialog>
   </section>
 </template>

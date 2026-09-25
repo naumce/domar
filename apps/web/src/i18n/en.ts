@@ -193,6 +193,7 @@ export default {
       cost_decision_required: 'Choose whether closing books a cost or not.',
       cost_requires_write_role: 'Only an owner or an accountant may close a request with a cost.',
       too_many_photos: 'This request already holds the maximum number of photos.',
+      document_referenced: 'This document is attached to a contract or an expense and cannot be deleted.',
       unsupported_media_type: 'Only images are accepted (PNG or JPEG).',
       file_too_large: 'The photo is too large (8 MB at most).',
       file_required: 'Choose a photo.',
