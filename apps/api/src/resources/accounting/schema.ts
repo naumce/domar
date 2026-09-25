@@ -15,3 +15,23 @@ export const accountCodePut = z.object({
   isActive: z.boolean().optional(),
 });
 export type AccountCodePut = z.infer<typeof accountCodePut>;
+
+const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
+
+export const accountingWindowQuery = z.object({
+  from: dateOnly,
+  to: dateOnly,
+  buildingId: z.string().uuid().optional(),
+});
+
+export const trialBalanceRowOut = z.object({
+  code: z.string(), name: z.string(), debitMinor: z.number(), creditMinor: z.number(), differenceMinor: z.number(),
+});
+export const accountingPreviewOut = z.object({
+  from: z.string(), to: z.string(), buildingName: z.string().nullable(),
+  trialBalance: z.array(trialBalanceRowOut),
+  totals: z.object({ debitMinor: z.number(), creditMinor: z.number(), entryCount: z.number(), lineCount: z.number() }),
+  adjustmentCount: z.number(),
+  closedPeriods: z.array(z.string()),
+  balanced: z.boolean(),
+});

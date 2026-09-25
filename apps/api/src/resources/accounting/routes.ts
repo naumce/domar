@@ -1,7 +1,11 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { requireRole, WRITE_ROLES } from '../../auth/roles.js';
 import { loadChart, putAccountCode } from './chart.js';
-import { accountCodeListOut, accountCodeOut, accountCodePut, accountSlotParam } from './schema.js';
+import { buildJournalFor, type AccountingWindow } from './data.js';
+import {
+  accountCodeListOut, accountCodeOut, accountCodePut, accountSlotParam,
+  accountingPreviewOut, accountingWindowQuery,
+} from './schema.js';
 
 /**
  * /api/account-codes — the tenant's chart of accounts. A separate plugin from `accountingRoutes`
@@ -21,4 +25,24 @@ export const accountCodeRoutes: FastifyPluginAsyncZod = async (app) => {
     preHandler: requireRole(...WRITE_ROLES),
     schema: { params: accountSlotParam, body: accountCodePut, response: { 200: accountCodeOut } },
   }, async (req) => putAccountCode(req.db, req.ctx!, req.params.slot, req.body));
+};
+
+/** `to` is exclusive and both bounds are plain civil days, as every window in this product is. */
+const windowOf = (q: { from: string; to: string; buildingId?: string | undefined }): AccountingWindow =>
+  ({ from: new Date(`${q.from}T00:00:00.000Z`), to: new Date(`${q.to}T00:00:00.000Z`), ...(q.buildingId ? { buildingId: q.buildingId } : {}) });
+
+/** Everything under `/api/accounting`. Reads are open to every role; writing is Tasks 5 and 6. */
+export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
+  app.addHook('preHandler', app.requireAuth);
+
+  app.get('/preview', { schema: { querystring: accountingWindowQuery, response: { 200: accountingPreviewOut } } }, async (req) => {
+    const w = windowOf(req.query);
+    const { journal, buildingName } = await buildJournalFor(req.db, req.ctx!, w);
+    return {
+      from: req.query.from, to: req.query.to, buildingName,
+      trialBalance: journal.trialBalance, totals: journal.totals,
+      adjustmentCount: journal.adjustments.length, closedPeriods: journal.closedPeriods,
+      balanced: journal.totals.debitMinor === journal.totals.creditMinor,
+    };
+  });
 };
