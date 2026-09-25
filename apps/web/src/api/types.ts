@@ -130,7 +130,7 @@ export interface AssemblyDecision {
 }
 export interface AssemblyInvitation {
   id: string; contactId: string; contactName: string; email: string | null;
-  channel: 'email' | 'letter'; status: 'pending' | 'sent' | 'failed' | 'printed'; sentAt: string | null; error: string | null;
+  channel: 'email' | 'letter'; status: 'pending' | 'sent' | 'failed' | 'printed' | 'cancelled'; sentAt: string | null; error: string | null;
 }
 export interface AssemblyAttendee { contactId: string; contactName: string; present: boolean; proxyName: string | null; weightBp: number }
 export interface AssemblyVote { decisionId: string; contactId: string; choice: VoteChoice; via: 'portal' | 'paper'; castAt: string }

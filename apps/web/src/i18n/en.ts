@@ -144,7 +144,7 @@ export default {
     decisions: 'Proposed decisions', decisionTitle: 'Decision title', addDecision: 'Add decision',
     invite: 'Send invitations', invitations: 'Invitations', channel: 'Channel', markPrinted: 'Mark as printed',
     channels: { email: 'Email', letter: 'Letter' },
-    invitationStatuses: { pending: 'To print', sent: 'Sent', failed: 'Failed', printed: 'Printed' },
+    invitationStatuses: { pending: 'To print', sent: 'Sent', failed: 'Failed', printed: 'Printed', cancelled: 'Cancelled' },
     invitationPdf: 'Invitation (PDF)', minutes: 'Minutes (PDF)',
     late: 'Late invitation', lateReason: 'Reason', lateConfirm: 'Call it anyway',
     lateBody: 'The assembly is {days} days away and Art. 37 asks for at least 15. Enter a reason to continue.',

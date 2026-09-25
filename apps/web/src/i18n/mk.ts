@@ -144,7 +144,7 @@ export default {
     decisions: 'Предлог-одлуки', decisionTitle: 'Наслов на одлука', addDecision: 'Додади одлука',
     invite: 'Испрати покани', invitations: 'Покани', channel: 'Начин', markPrinted: 'Означи како испечатена',
     channels: { email: 'Е-пошта', letter: 'Писмо' },
-    invitationStatuses: { pending: 'Чека печатење', sent: 'Испратена', failed: 'Неуспешна', printed: 'Испечатена' },
+    invitationStatuses: { pending: 'Чека печатење', sent: 'Испратена', failed: 'Неуспешна', printed: 'Испечатена', cancelled: 'Откажана' },
     invitationPdf: 'Покана (PDF)', minutes: 'Записник (PDF)',
     late: 'Задоцнета покана', lateReason: 'Причина', lateConfirm: 'Свикај и покрај тоа',
     lateBody: 'До собирот има {days} дена, а член 37 бара најмалку 15. Внесете причина за да продолжите.',
