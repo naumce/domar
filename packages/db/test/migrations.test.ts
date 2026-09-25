@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDatabase } from '../src/test-db.js';
 
-const TENANT_SCOPED_EXEMPT = new Set(['tenants', 'sessions', 'owner_accounts', 'owner_sessions', '__drizzle_migrations']);
+const TENANT_SCOPED_EXEMPT = new Set(['tenants', 'sessions', 'owner_accounts', 'owner_sessions', 'push_subscriptions', '__drizzle_migrations']);
 
 describe('migrations', () => {
   let t: Awaited<ReturnType<typeof createTestDatabase>> | undefined;
@@ -415,6 +415,68 @@ describe('migrations', () => {
       select rc.delete_rule from information_schema.referential_constraints rc
       join information_schema.key_column_usage k on k.constraint_name = rc.constraint_name
       where k.table_name = 'maintenance_photos' and k.column_name = 'document_id'`;
+    expect(fk!.delete_rule).toBe('CASCADE');
+  });
+
+  it('creates the notification tables', async () => {
+    const rows = await t!.sql<{ table_name: string }[]>`
+      select table_name from information_schema.tables where table_schema = 'public' order by 1`;
+    const names = rows.map((r) => r.table_name);
+    for (const n of ['notifications', 'push_subscriptions']) expect(names).toContain(n);
+    const kinds = await t!.sql<{ enumlabel: string }[]>`
+      select enumlabel from pg_enum e join pg_type ty on ty.oid = e.enumtypid where ty.typname = 'notification_kind' order by e.enumsortorder`;
+    expect(kinds.map((k) => k.enumlabel)).toEqual([
+      'invoice_published', 'reminder_created', 'assembly_invited', 'assembly_voting_opened',
+      'maintenance_status', 'maintenance_request_created', 'delivery_failed']);
+  });
+
+  it('a notification has exactly one recipient and carries no amount column', async () => {
+    const cols = await t!.sql<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }[]>`
+      select column_name, data_type, is_nullable, column_default from information_schema.columns where table_name = 'notifications' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual([
+      'body', 'created_at', 'delivered_at', 'delivery_error', 'id', 'kind', 'link',
+      'owner_account_id', 'read_at', 'tenant_id', 'title', 'user_id']);
+    // Spec §11: nothing in this table is money, so nothing here can leak into a payload.
+    expect(cols.some((c) => c.column_name.endsWith('_minor'))).toBe(false);
+    const by = Object.fromEntries(cols.map((c) => [c.column_name, c]));
+    expect(by['owner_account_id']!.is_nullable).toBe('YES');
+    expect(by['user_id']!.is_nullable).toBe('YES');
+    expect(by['read_at']!.is_nullable).toBe('YES');
+    expect(by['delivered_at']!.is_nullable).toBe('YES');
+    expect(by['body']!.column_default).toContain("''");
+    expect(by['link']!.column_default).toContain("''");
+
+    const [tenant] = await t!.sql<{ id: string }[]>`
+      insert into tenants (slug, name, country_code, currency, locale)
+      values ('notif-chk', 'Notif', 'mk', 'MKD', 'mk-MK') returning id`;
+    const [user] = await t!.sql<{ id: string }[]>`
+      insert into users (tenant_id, email, password_hash, first_name, last_name, role)
+      values (${tenant!.id}, 'u@notif.mk', 'x', 'U', 'U', 'owner') returning id`;
+    const [account] = await t!.sql<{ id: string }[]>`
+      insert into owner_accounts (email, password_hash) values ('o@notif.mk', 'x') returning id`;
+    const insert = (userId: string | null, accountId: string | null) => t!.sql`
+      insert into notifications (tenant_id, user_id, owner_account_id, kind, title)
+      values (${tenant!.id}, ${userId}, ${accountId}, 'delivery_failed', 'T')`;
+    await expect(insert(null, null)).rejects.toThrow(/notifications_recipient_chk/);
+    await expect(insert(user!.id, account!.id)).rejects.toThrow(/notifications_recipient_chk/);
+    await expect(insert(user!.id, null)).resolves.toBeDefined();
+    await expect(insert(null, account!.id)).resolves.toBeDefined();
+    await t!.sql`delete from tenants where id = ${tenant!.id}`;
+    await t!.sql`delete from owner_accounts where id = ${account!.id}`;
+  });
+
+  it('a push subscription is one endpoint, once, and is not tenant-scoped', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'push_subscriptions' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual([
+      'auth', 'created_at', 'endpoint', 'id', 'last_seen_at', 'owner_account_id', 'p256dh', 'user_agent']);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'push_subscriptions'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(endpoint)'))).toBe(true);
+    expect(idx.some((i) => i.indexdef.includes('(owner_account_id)'))).toBe(true);
+    const [fk] = await t!.sql<{ delete_rule: string }[]>`
+      select rc.delete_rule from information_schema.referential_constraints rc
+      join information_schema.key_column_usage k on k.constraint_name = rc.constraint_name
+      where k.table_name = 'push_subscriptions' and k.column_name = 'owner_account_id'`;
     expect(fk!.delete_rule).toBe('CASCADE');
   });
 });
