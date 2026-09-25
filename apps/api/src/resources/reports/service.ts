@@ -156,6 +156,12 @@ export async function issueHandoverReport(db: Db, ctx: TenantContext, buildingId
           exportDocumentId: exportDocument.id,
           ownersCount: data.owners.length,
           totalDebtMinor: Number(data.fields.totalDebtMinor ?? 0),
+          // Both sides of the printed difference, so it is reproducible from the record alone: the
+          // bank as the manager read it, and the ledger as of the same day (plan addendum 10).
+          fundClosing: {
+            regular: data.reconciliation.find((r) => r.fund === 'regular')!.ledgerMinor,
+            reserve: data.reconciliation.find((r) => r.fund === 'reserve')!.ledgerMinor,
+          },
           bankBalances: { regularMinor: input.bankBalances.regularMinor, reserveMinor: input.bankBalances.reserveMinor },
         },
       });

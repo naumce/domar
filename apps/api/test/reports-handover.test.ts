@@ -176,6 +176,9 @@ describe('handover report and data export (Art. 30)', () => {
       exportDocumentId: body.exportDocumentId,
       ownersCount: 3,
       totalDebtMinor: R.invoices.O2.totalMinor + R.invoices.O3.totalMinor,
+      // The two ledger closings and the two bank readings: the printed difference is arithmetic on
+      // the event itself, years later, with nothing to re-derive from the ledger.
+      fundClosing: { regular: ledgerRegular, reserve: ledgerReserve },
       bankBalances: { regularMinor: ledgerRegular + 12_345, reserveMinor: ledgerReserve },
     });
 
