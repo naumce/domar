@@ -64,10 +64,14 @@ export const reportIssueOut = z.object({
   fields: fieldsOut,
 });
 
+/** The widest bank balance anybody can type, in minor units, shared by the body and the preview query. */
+const BANK_MINOR = 1_000_000_000_000;
 export const bankBalancesIn = z.object({
-  regularMinor: z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000),
-  reserveMinor: z.number().int().min(-1_000_000_000_000).max(1_000_000_000_000),
+  regularMinor: z.number().int().min(-BANK_MINOR).max(BANK_MINOR),
+  reserveMinor: z.number().int().min(-BANK_MINOR).max(BANK_MINOR),
 });
+/** `dateOnly` is a shape, not a calendar: 2026-02-31 matches it and is not a day anybody handed over on. */
+export const asOfDate = dateOnly.refine((v) => new Date(`${v}T00:00:00.000Z`).toISOString().slice(0, 10) === v, 'not a calendar date');
 export const openItemOut = z.object({
   invoiceId: z.string(), number: z.string().nullable(), contactId: z.string(), ownerName: z.string(),
   period: z.string(), dueAt: z.string().nullable(),
@@ -85,14 +89,14 @@ export const handoverDataOut = z.object({
 });
 /** Both bank numbers or neither: one of them alone would print a difference that means nothing. */
 export const handoverQuery = z.object({
-  asOf: dateOnly,
-  regularMinor: z.coerce.number().int().optional(),
-  reserveMinor: z.coerce.number().int().optional(),
+  asOf: asOfDate,
+  regularMinor: z.coerce.number().int().min(-BANK_MINOR).max(BANK_MINOR).optional(),
+  reserveMinor: z.coerce.number().int().min(-BANK_MINOR).max(BANK_MINOR).optional(),
 }).refine((v) => (v.regularMinor === undefined) === (v.reserveMinor === undefined), {
   message: 'give both bank balances or neither', path: ['reserveMinor'],
 });
 export const handoverIssueBody = z.object({
-  asOf: dateOnly,
+  asOf: asOfDate,
   bankBalances: bankBalancesIn,
   note: z.string().max(2000).nullable().optional(),
 });

@@ -4,7 +4,7 @@ import {
   type AnnualReportInput, type CountryCode, type CountryPack, type FundMovementIn, type HandoverReportData,
   type OpenItem, type ReportAssembly, type ReportExpense, type ReportFund, type ReportOwner, type ReportPostingKind,
 } from '@domar/domain';
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { badRequest } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { getBuilding } from '../buildings/repo.js';
@@ -216,7 +216,11 @@ async function managementContractEndsOn(db: Db, ctx: TenantContext, buildingId: 
   return row?.endsOn ?? null;
 }
 
-/** Published invoices still owed at the end of the window, oldest period first. */
+/**
+ * Invoices still owed at the end of the window, oldest period first. What is owed is arithmetic as of
+ * `to` — total against the payments booked before it — and never the invoice's *live* status: an
+ * invoice settled the day after a backdated handover was still unpaid on the day it covers.
+ */
 async function openInvoices(db: Db, ctx: TenantContext, buildingId: string, to: Date): Promise<OpenItem[]> {
   // "invoices"."id" is hard-coded for the same reason as in resources/invoices/repo.ts: an
   // unqualified `id` inside the correlated subquery would bind to the subquery's own row.
@@ -229,7 +233,8 @@ async function openInvoices(db: Db, ctx: TenantContext, buildingId: string, to: 
     .innerJoin(C, eq(C.id, INV.contactId))
     .where(and(
       eq(INV.tenantId, ctx.tenantId), eq(INV.buildingId, buildingId),
-      inArray(INV.status, ['published', 'partially_paid']), lt(INV.issuedAt, to),
+      // A cancelled invoice is owed by nobody; a draft has no `issued_at` and is excluded by the bound.
+      ne(INV.status, 'cancelled'), lt(INV.issuedAt, to),
     ))
     .orderBy(asc(BP.period), asc(INV.id));
   return rows

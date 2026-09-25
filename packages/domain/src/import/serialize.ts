@@ -11,14 +11,16 @@ export function emptyImportRow(): Record<ImportField, string> {
 /**
  * A cell's own line breaks are flattened to one space before quoting: `parseUnitImport` splits the
  * file into lines before it splits a line into cells, so a quoted newline would cut one unit in two.
+ * Exported because every `;` file this product writes — the units template and the Art. 30 data
+ * export — must quote a cell the same way.
  */
-function cell(value: string): string {
+export function csvCell(value: string): string {
   const flat = value.replace(/\r\n|[\r\n]/g, ' ');
   return /[;"]/.test(flat) ? `"${flat.replace(/"/g, '""')}"` : flat;
 }
 
 /** Mapped cells → the canonical `;` CSV the units import accepts. The inverse of `parseUnitImport`. */
 export function rowsToCanonicalCsv(rows: Record<ImportField, string>[]): string {
-  const lines = rows.map((r) => IMPORT_FIELDS.map((f) => cell(r[f] ?? '')).join(';'));
+  const lines = rows.map((r) => IMPORT_FIELDS.map((f) => csvCell(r[f] ?? '')).join(';'));
   return [CANONICAL_HEADER, ...lines, ''].join('\n');
 }

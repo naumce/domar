@@ -116,7 +116,7 @@ export async function issueAnnualReport(db: Db, ctx: TenantContext, buildingId: 
  */
 export async function issueHandoverReport(db: Db, ctx: TenantContext, buildingId: string, input: HandoverIssueBody, rt: ReportRuntime) {
   return db.transaction(async (tx) => {
-    const { building, tenant, pack, data } = await handoverReport(tx, ctx, buildingId, {
+    const { building, tenant, pack, to, data } = await handoverReport(tx, ctx, buildingId, {
       asOf: input.asOf, bankBalances: input.bankBalances, note: input.note ?? null,
     });
     const createdAt = new Date();
@@ -131,7 +131,7 @@ export async function issueHandoverReport(db: Db, ctx: TenantContext, buildingId
       rt.log.warn({ err, buildingId, asOf: input.asOf }, 'handover report pdf render failed; nothing is filed');
       throw new AppError(503, 'pdf_unavailable', 'PDF rendering is not available on this server');
     }
-    const zip = await buildHandoverExport(tx, ctx, buildingId, data);
+    const zip = await buildHandoverExport(tx, ctx, buildingId, data, { to, timeZone: tenant.timezone });
     const title = `${pack.labels.reports.handoverTitle} ${input.asOf}`;
     const filed: { id: string; storageKey: string }[] = [];
     try {
