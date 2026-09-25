@@ -117,3 +117,43 @@ export interface BuildingContract {
 }
 export type Distribution = 'share' | 'equal' | 'area';
 export interface ExtraordinaryCostResult { periodId: string; period: string; invoiceCount: number; totalMinor: number; invoiceIds: string[] }
+
+export type AssemblyStatus = 'draft' | 'invited' | 'held' | 'cancelled';
+export type QuorumBasis = 'share' | 'count';
+export type VoteChoice = 'for' | 'against' | 'abstain';
+export type DecisionResult = 'pending' | 'passed' | 'rejected' | 'no_quorum';
+export interface AgendaItem { id: string; title: string; text: string }
+export interface AssemblyDecision {
+  id: string; title: string; text: string | null; sortOrder: number;
+  forWeight: number; againstWeight: number; abstainWeight: number;
+  presentWeight: number; basisTotal: number; quorumReached: boolean; result: DecisionResult;
+}
+export interface AssemblyInvitation {
+  id: string; contactId: string; contactName: string; email: string | null;
+  channel: 'email' | 'letter'; status: 'pending' | 'sent' | 'failed' | 'printed'; sentAt: string | null; error: string | null;
+}
+export interface AssemblyAttendee { contactId: string; contactName: string; present: boolean; proxyName: string | null; weightBp: number }
+export interface AssemblyVote { decisionId: string; contactId: string; choice: VoteChoice; via: 'portal' | 'paper'; castAt: string }
+export interface AssemblyRow {
+  id: string; buildingId: string; scheduledAt: string; location: string; agenda: AgendaItem[];
+  status: AssemblyStatus; quorumBasis: QuorumBasis; invitedAt: string | null; heldAt: string | null;
+  cancelledAt: string | null; cancelReason: string | null; lateInvitation: boolean; lateReason: string | null;
+  minutesDocumentId: string | null; decisionCount: number; invitationCount: number; createdAt: string; updatedAt: string;
+}
+export interface Assembly extends AssemblyRow {
+  decisions: AssemblyDecision[]; invitations: AssemblyInvitation[]; attendance: AssemblyAttendee[]; votes: AssemblyVote[];
+}
+export interface AssemblyOwnerRow { contactId: string; contactName: string; email: string | null; weightBp: number }
+export interface AssemblyOwners { rows: AssemblyOwnerRow[]; basisTotal: number; quorumBasis: QuorumBasis }
+export interface PortalAssemblyRow {
+  id: string; buildingId: string; buildingName: string; scheduledAt: string; location: string;
+  status: 'invited' | 'held'; heldAt: string | null; minutesDocumentId: string | null; agendaCount: number;
+}
+export interface PortalAssemblyDecision {
+  id: string; title: string; text: string | null; myChoice: VoteChoice | null;
+  forWeight: number | null; againstWeight: number | null; abstainWeight: number | null;
+  presentWeight: number | null; basisTotal: number | null; quorumReached: boolean | null; result: DecisionResult | null;
+}
+export interface PortalAssembly extends Omit<PortalAssemblyRow, 'agendaCount'> {
+  agenda: AgendaItem[]; votingOpen: boolean; decisions: PortalAssemblyDecision[];
+}
