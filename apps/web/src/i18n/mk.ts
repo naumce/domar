@@ -58,6 +58,13 @@ export default {
     assemblies: 'Собири', assemblyPlace: 'Место', assemblyAgenda: 'Дневен ред', assemblyDecisions: 'Одлуки',
     assemblyVoted: 'Вашиот глас: {choice}', assemblyVotingClosed: 'Гласањето е затворено.',
     assemblyInvitation: 'Покана (PDF)', assemblyMinutes: 'Записник (PDF)',
+    maintenance: 'Одржување', maintenanceNew: 'Пријави проблем',
+    maintenanceIntro: 'Пријавете дефект или проблем во заедничките делови. Управителот го гледа барањето веднаш и го следите тука.',
+    maintenanceEmpty: 'Сè уште немате пријавено барање.',
+    maintenanceSubmit: 'Испрати барање', maintenancePhoto: 'Фотографија', maintenancePhotos: 'Фотографии',
+    maintenanceAddPhoto: 'Додади фотографија', maintenanceTimeline: 'Тек на барањето',
+    maintenanceNote: 'Порака до управителот', maintenanceAddNote: 'Испрати',
+    maintenanceClosed: 'Барањето е затворено.',
     assemblyChoices: { for: 'За', against: 'Против', abstain: 'Воздржан' },
     assemblyResults: { pending: 'Во тек', passed: 'Усвоена', rejected: 'Одбиена', no_quorum: 'Без кворум' },
     errors: {

@@ -58,6 +58,13 @@ export default {
     assemblies: 'Assemblies', assemblyPlace: 'Place', assemblyAgenda: 'Agenda', assemblyDecisions: 'Decisions',
     assemblyVoted: 'Your vote: {choice}', assemblyVotingClosed: 'Voting is closed.',
     assemblyInvitation: 'Invitation (PDF)', assemblyMinutes: 'Minutes (PDF)',
+    maintenance: 'Maintenance', maintenanceNew: 'Report a problem',
+    maintenanceIntro: 'Report a fault or a problem in the common parts. Your manager sees it immediately and you follow it here.',
+    maintenanceEmpty: 'You have not reported anything yet.',
+    maintenanceSubmit: 'Send request', maintenancePhoto: 'Photo', maintenancePhotos: 'Photos',
+    maintenanceAddPhoto: 'Add photo', maintenanceTimeline: 'Activity',
+    maintenanceNote: 'Message to the manager', maintenanceAddNote: 'Send',
+    maintenanceClosed: 'This request is closed.',
     assemblyChoices: { for: 'For', against: 'Against', abstain: 'Abstain' },
     assemblyResults: { pending: 'Open', passed: 'Passed', rejected: 'Rejected', no_quorum: 'No quorum' },
     errors: {

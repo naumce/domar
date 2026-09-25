@@ -40,6 +40,8 @@ export const router = createRouter({
         { path: 'fund', component: () => import('@/pages/portal/PortalFundPage.vue') },
         { path: 'assemblies', component: () => import('@/pages/portal/PortalAssembliesPage.vue') },
         { path: 'assemblies/:id', component: () => import('@/pages/portal/PortalAssemblyPage.vue'), props: true },
+        { path: 'maintenance', component: () => import('@/pages/portal/PortalMaintenancePage.vue') },
+        { path: 'maintenance/:id', component: () => import('@/pages/portal/PortalMaintenanceRequestPage.vue'), props: true },
         { path: 'settings', component: () => import('@/pages/portal/PortalSettingsPage.vue') },
       ],
     },
