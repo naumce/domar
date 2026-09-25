@@ -17,6 +17,9 @@ export interface Pusher {
 
 /** One day: a notification nobody's phone collected within a day is stale, and the app still has it. */
 const TTL_SECONDS = 86_400;
+/** Matches the mailer's connectionTimeout. The drain job (Task 5) awaits sends in a loop, so a
+ * stalled or black-holed push endpoint must not be able to hang the whole run. */
+const REQUEST_TIMEOUT_MS = 10_000;
 
 /**
  * Without `VAPID_PRIVATE_KEY` this is an explicit no-op: `send` answers
@@ -48,11 +51,12 @@ export function createPusher(config: Config): Pusher {
         await webpush.sendNotification(
           { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },
           JSON.stringify(payload),
-          { TTL: TTL_SECONDS },
+          { TTL: TTL_SECONDS, timeout: REQUEST_TIMEOUT_MS },
         );
         return { ok: true };
       } catch (err) {
-        // 404/410 are the standard's "this endpoint is gone for good"; everything else may recover,
+        // 404/410 are the standard's "this endpoint is gone for good"; everything else — including
+        // a socket timeout, which web-push raises as a plain Error with no statusCode — may recover,
         // so the subscription stays (plan addendum 6).
         const status = err instanceof WebPushError ? err.statusCode : 0;
         const error = (err instanceof Error ? err.message : 'push_failed').slice(0, 500);
