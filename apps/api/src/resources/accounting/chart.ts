@@ -1,8 +1,8 @@
 import { type Db, schema } from '@domar/db';
 import { type AccountSlot, type Chart, chartFrom, missingSlots } from '@domar/domain';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, ne } from 'drizzle-orm';
 import { writeAudit } from '../../audit.js';
-import { AppError, badRequest } from '../../errors.js';
+import { AppError, badRequest, conflict } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import type { AccountCodePut } from './schema.js';
 
@@ -49,9 +49,21 @@ export async function requireChart(db: Db, ctx: TenantContext): Promise<Chart> {
   return chart;
 }
 
-/** One row per slot per tenant: a second PUT rewrites the first rather than adding a rival code. */
+/**
+ * One row per slot per tenant: a second PUT rewrites the first rather than adding a rival code.
+ *
+ * Two slots may not share a code. `buildJournal` refuses one as well, because the chart it reads can
+ * come from rows written before this check existed — but refusing it here is what a user can act on:
+ * the two sides of an entry landing on one code net to nothing and the movement disappears from a
+ * file that still balances.
+ */
 export async function putAccountCode(db: Db, ctx: TenantContext, slot: AccountSlot, input: AccountCodePut): Promise<AccountCodeRow> {
   return db.transaction(async (tx) => {
+    const [taken] = await tx.select({ slot: AC.slot }).from(AC)
+      .where(and(eq(AC.tenantId, ctx.tenantId), eq(AC.code, input.code), ne(AC.slot, slot))).limit(1);
+    if (taken) {
+      throw conflict('duplicate_account_code', `account code ${input.code} is already mapped to ${taken.slot}`, { code: input.code, slot: taken.slot });
+    }
     const [before] = await tx.select().from(AC).where(and(eq(AC.tenantId, ctx.tenantId), eq(AC.slot, slot))).limit(1);
     const values = { code: input.code, name: input.name, ...(input.isActive === undefined ? {} : { isActive: input.isActive }) };
     // A unique index on (tenantId, slot) backs this: two concurrent PUTs to the same slot both

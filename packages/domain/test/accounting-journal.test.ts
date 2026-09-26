@@ -310,3 +310,20 @@ describe('buildJournal — a source that moves nothing produces no entry', () =>
     expect(j.totals).toEqual({ debitMinor: 0, creditMinor: 0, entryCount: 0, lineCount: 0 });
   });
 });
+
+describe('buildJournal — two slots may not share one account code', () => {
+  it('refuses a chart that maps one code twice, rather than netting an entry to nothing', () => {
+    // `cashLines` merges a payment's two postings by code: on one shared code they cancel, the entry
+    // is left with no lines and is skipped, and the file balances with the money gone.
+    const shared = chartFrom(ACCOUNT_SLOTS.map((slot) => ({
+      slot, code: slot === 'cash_regular' ? '120' : `${120 + ACCOUNT_SLOTS.indexOf(slot)}`, name: slot, isActive: true,
+    })));
+    expect(() => buildJournal(input({ chart: shared }))).toThrow(JournalError);
+    try {
+      buildJournal(input({ chart: shared }));
+    } catch (e) {
+      expect((e as JournalError).code).toBe('duplicate_account_code');
+      expect((e as JournalError).details).toEqual({ code: '120', slots: ['owner_receivable', 'cash_regular'] });
+    }
+  });
+});

@@ -276,6 +276,7 @@ export default {
     closeHint: 'Closing forbids nothing: a later payment for a closed month is recorded as before and comes back in the next export as an adjustment.',
     errors: {
       chart_incomplete: 'The chart of accounts is incomplete — map every account.',
+      duplicate_account_code: 'That account code is already used by another slot — every slot needs its own code.',
       unbalanced_entry: 'An entry does not balance; the export was stopped.',
       unbalanced_file: 'The export does not balance; nothing was saved.',
       unknown_source: 'The ledger holds a record the export does not recognise.',

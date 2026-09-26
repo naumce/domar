@@ -99,7 +99,7 @@ export interface Journal {
 /** The one error this module raises. Its `code` is the API's error code and the web's i18n key. */
 export class JournalError extends Error {
   constructor(
-    public readonly code: 'unbalanced_entry' | 'unbalanced_file' | 'unknown_source',
+    public readonly code: 'unbalanced_entry' | 'unbalanced_file' | 'unknown_source' | 'duplicate_account_code',
     message: string,
     public readonly details: Record<string, unknown>,
   ) {
@@ -231,6 +231,21 @@ function entryLines(input: JournalInput, group: JournalPostingIn[]): JournalLine
  * posted and is worse than no file at all (spec §2).
  */
 export function buildJournal(input: JournalInput): Journal {
+  // Nothing in the chart's own type requires the nine codes to be distinct, and two slots sharing
+  // one code is not a harmless preference: `cashLines` merges a group's postings by `account.code`
+  // and drops the zeros, so an entry whose two sides land on the same code nets to no lines at all
+  // and is skipped below — a file that balances with a real movement silently missing, which is the
+  // one failure this module exists to prevent. Refused here rather than netted.
+  const codeOwner = new Map<string, AccountSlot>();
+  for (const slot of ACCOUNT_SLOTS) {
+    const { code } = input.chart[slot];
+    const first = codeOwner.get(code);
+    if (first !== undefined) {
+      throw new JournalError('duplicate_account_code', `account code ${code} is mapped to both ${first} and ${slot}`,
+        { code, slots: [first, slot] });
+    }
+    codeOwner.set(code, slot);
+  }
   for (const p of input.postings) {
     if (!KNOWN.has(p.refType)) throw new JournalError('unknown_source', `unknown refType ${p.refType}`, { refType: p.refType, postingId: p.id });
   }

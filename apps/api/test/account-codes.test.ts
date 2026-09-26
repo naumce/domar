@@ -106,6 +106,25 @@ describe('a supplier names its own expense account', () => {
   });
 });
 
+describe('PUT /api/account-codes/:slot — one code, one slot', () => {
+  it('refuses a code another slot already uses, naming that slot', async () => {
+    const reg = await registerTenant(t.app, 'acct-chart-dupe');
+    const put = (slot: string, code: string) => t.app.inject({
+      method: 'PUT', url: `/api/account-codes/${slot}`, headers: { cookie: reg.cookie }, payload: { code, name: 'Конто' },
+    });
+    expect((await put('cash_regular', '1000')).statusCode).toBe(200);
+    // Two slots on one code net a payment's own two lines to zero, which drops the entry from the
+    // file entirely while the file still balances.
+    const clash = await put('cash_reserve', '1000');
+    expect(clash.statusCode).toBe(409);
+    expect(clash.json().error.code).toBe('duplicate_account_code');
+    expect(clash.json().error.details.slot).toBe('cash_regular');
+    // Rewriting a slot with its own code is not a clash.
+    expect((await put('cash_regular', '1000')).statusCode).toBe(200);
+    expect((await put('cash_reserve', '1001')).statusCode).toBe(200);
+  });
+});
+
 // R3: a slot that is configured but disabled must be told apart from one nobody has touched, or
 // the fix for "disabled" looks identical to the fix for "never mapped" and the caller re-enters a
 // code that is already there.
