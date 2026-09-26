@@ -171,8 +171,8 @@ async function reopenPeriod(p: string) {
           </tfoot>
         </table>
         <p class="mt-2 text-sm text-slate-600">
-          {{ t('accounting.entries') }}: {{ preview.totals.entryCount }} ·
-          {{ t('accounting.lines') }}: {{ preview.totals.lineCount }} ·
+          {{ t('accounting.entries') }}: {{ preview.entryCount }} ·
+          {{ t('accounting.lines') }}: {{ preview.lineCount }} ·
           {{ t('accounting.adjustments') }}: {{ preview.adjustmentCount }}
         </p>
         <div v-if="canWrite" class="mt-3 flex items-center gap-3">

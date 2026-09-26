@@ -63,7 +63,10 @@ describe('GET /api/accounting/preview', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.totals.debitMinor).toBe(body.totals.creditMinor);
-    expect(body.totals.entryCount).toBe(2);
+    // `Ставки`/`Редови` are `dnevnik.csv`'s own rows, the same numbers `README.txt` prints, with the
+    // corrections counted beside them rather than inside them (fix round 2, item 5).
+    expect(body.entryCount).toBe(2);
+    expect(body.adjustmentCount).toBe(0);
     const byCode = Object.fromEntries(body.trialBalance.map((r: { code: string; debitMinor: number; creditMinor: number }) => [r.code, r]));
     expect(byCode['1200']).toMatchObject({ debitMinor: 118000, creditMinor: 118000 });
     expect(byCode['7400']).toMatchObject({ debitMinor: 0, creditMinor: 100000 });
@@ -78,7 +81,8 @@ describe('GET /api/accounting/preview', () => {
     });
     const res = await t.app.inject({ method: 'GET', url: `/api/accounting/preview?from=2026-09-01&to=2026-10-01&buildingId=${other.json().id}`, headers: { cookie } });
     expect(res.statusCode).toBe(200);
-    expect(res.json().totals).toEqual({ debitMinor: 0, creditMinor: 0, entryCount: 0, lineCount: 0 });
+    expect(res.json().totals).toEqual({ debitMinor: 0, creditMinor: 0 });
+    expect(res.json()).toMatchObject({ entryCount: 0, lineCount: 0, adjustmentCount: 0, adjustmentLineCount: 0 });
   });
 
   it('404s on a building of another tenant, never 403', async () => {

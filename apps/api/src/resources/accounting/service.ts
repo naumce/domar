@@ -5,7 +5,7 @@ import type { DocumentStore } from '../../documents/store.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { createDocumentFromBuffer } from '../documents/repo.js';
 import { buildJournalFor } from './data.js';
-import { buildAccountingExport } from './export.js';
+import { buildAccountingExport, journalCounts } from './export.js';
 
 const AU = schema.auditLogs; const D = schema.documents;
 
@@ -33,6 +33,9 @@ export async function exportAccounting(db: Db, ctx: TenantContext, input: Accoun
     const { journal, buildingName, tenantName, chart, timeZone } = await buildJournalFor(tx, ctx, {
       from: input.from, to: input.to, ...(input.buildingId ? { buildingId: input.buildingId } : {}),
     }, rt.log);
+    // The file's own counts, so the response, the audit row, this export's line in `GET /exports`
+    // and `README.txt` all say `Ставки: n` about the same n (fix round 2, item 5).
+    const counts = journalCounts(journal);
     const createdAt = new Date();
     const zip = buildAccountingExport(journal, { tenantName, buildingName, from: input.from, to: input.to, createdAt, chart, timeZone });
     // The building id/name in both, so a tenant-wide and a per-building export of the same window
@@ -53,14 +56,14 @@ export async function exportAccounting(db: Db, ctx: TenantContext, input: Accoun
         action: 'accounting.export', entityType: 'document', entityId: document.id,
         after: {
           from: input.from, to: input.to, buildingId: input.buildingId ?? null, documentId: document.id,
-          entryCount: journal.totals.entryCount, adjustmentCount: journal.adjustments.length,
+          entryCount: counts.entryCount, adjustmentCount: counts.adjustmentCount,
           debitMinor: journal.totals.debitMinor, creditMinor: journal.totals.creditMinor,
           closedPeriods: journal.closedPeriods,
         },
       });
       return {
         documentId: document.id, fileName,
-        entryCount: journal.totals.entryCount, adjustmentCount: journal.adjustments.length,
+        entryCount: counts.entryCount, adjustmentCount: counts.adjustmentCount,
         debitMinor: journal.totals.debitMinor, creditMinor: journal.totals.creditMinor,
       };
     } catch (err) {

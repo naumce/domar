@@ -4,6 +4,7 @@ import { loadChart, putAccountCode } from './chart.js';
 import { buildJournalFor, type AccountingWindow } from './data.js';
 import { DOCUMENT_READ_ROLES } from '../documents/routes.js';
 import { closeAccountingPeriod, listAccountingPeriods, reopenAccountingPeriod } from './periods.js';
+import { journalCounts } from './export.js';
 import { exportAccounting, listAccountingExports } from './service.js';
 import {
   accountCodeListOut, accountCodeOut, accountCodePut, accountSlotParam,
@@ -56,8 +57,12 @@ export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
     const { journal, buildingName } = await buildJournalFor(req.db, req.ctx!, w, app.log);
     return {
       from: req.query.from, to: req.query.to, buildingName,
-      trialBalance: journal.trialBalance, totals: journal.totals,
-      adjustmentCount: journal.adjustments.length, closedPeriods: journal.closedPeriods,
+      trialBalance: journal.trialBalance,
+      // Debit and credit are the whole file's — they have to be, or the trial balance would not
+      // close — while the counts are the journal's own, the same ones `README.txt` prints.
+      totals: { debitMinor: journal.totals.debitMinor, creditMinor: journal.totals.creditMinor },
+      ...journalCounts(journal),
+      closedPeriods: journal.closedPeriods,
       balanced: journal.totals.debitMinor === journal.totals.creditMinor,
     };
   });

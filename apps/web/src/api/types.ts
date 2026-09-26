@@ -246,8 +246,11 @@ export interface TrialBalanceRow { code: string; name: string; debitMinor: numbe
 export interface AccountingPreview {
   from: string; to: string; buildingName: string | null;
   trialBalance: TrialBalanceRow[];
-  totals: { debitMinor: number; creditMinor: number; entryCount: number; lineCount: number };
-  adjustmentCount: number; closedPeriods: string[]; balanced: boolean;
+  /** The whole file's, so it closes; the counts beside it are the journal's own rows. */
+  totals: { debitMinor: number; creditMinor: number };
+  entryCount: number; lineCount: number;
+  adjustmentCount: number; adjustmentLineCount: number;
+  closedPeriods: string[]; balanced: boolean;
 }
 export interface AccountingExport {
   documentId: string; fileName: string; entryCount: number; adjustmentCount: number; debitMinor: number; creditMinor: number;

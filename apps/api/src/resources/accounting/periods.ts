@@ -6,6 +6,7 @@ import { badRequest, notFound } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { tenantPack } from '../reports/data.js';
 import { buildJournalFor } from './data.js';
+import { journalCounts } from './export.js';
 
 const AP = schema.accountingPeriods; const U = schema.users;
 export type AccountingPeriodRow = typeof AP.$inferSelect;
@@ -62,7 +63,9 @@ export async function closeAccountingPeriod(db: Db, ctx: TenantContext, period: 
     const values = {
       closedAt: new Date(), closedBy: ctx.userId,
       debitTotalMinor: journal.totals.debitMinor, creditTotalMinor: journal.totals.creditMinor,
-      entryCount: journal.totals.entryCount,
+      // The journal's own entries, not the corrections beside them — the column is labelled `Ставки`
+      // on the periods table and must mean what `README.txt` means by it (fix round 2, item 5).
+      entryCount: journalCounts(journal).entryCount,
     };
     // The unique index on (tenantId, period) makes this atomic: two concurrent closes of the same
     // period serialize on it rather than racing a read-then-insert into a duplicate row, and whichever

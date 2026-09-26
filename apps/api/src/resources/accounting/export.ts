@@ -47,6 +47,23 @@ export interface AccountingExportMeta {
   timeZone: string;
 }
 
+/**
+ * The counts the file itself prints, and therefore the only ones any screen may show for the same
+ * export (fix round 2, item 5). `journal.totals.entryCount`/`lineCount` are `buildJournal`'s combined
+ * figures over entries *and* adjustments — right for the trial balance's ВКУПНО row, wrong as a
+ * headline beside `Корекции: n`, which would then be counted inside `Ставки: n` as well. `Ставки` and
+ * `Редови` mean `dnevnik.csv`'s own rows here, in `README.txt`, in the preview, in the export
+ * response and in `accounting_periods.entry_count`.
+ */
+export function journalCounts(journal: Journal): { entryCount: number; lineCount: number; adjustmentCount: number; adjustmentLineCount: number } {
+  return {
+    entryCount: journal.entries.length,
+    lineCount: journal.entries.reduce((s, e) => s + e.lines.length, 0),
+    adjustmentCount: journal.adjustments.length,
+    adjustmentLineCount: journal.adjustments.reduce((s, e) => s + e.lines.length, 0),
+  };
+}
+
 const JOURNAL_HEADER = ['ставка', 'датум', 'период', 'конто', 'назив', 'должи', 'побарува', 'опис', 'зграда', 'партнер', 'извор', 'извор-ид'];
 
 function journalRows(entries: JournalEntry[]): (string | number)[][] {
@@ -62,12 +79,10 @@ function journalRows(entries: JournalEntry[]): (string | number)[][] {
  */
 export function buildAccountingExport(journal: Journal, meta: AccountingExportMeta): Buffer {
   const t = journal.totals;
-  // `t.entryCount`/`t.lineCount` are `buildJournal`'s combined count over entries *and* adjustments
-  // (journal.ts sums `[...entries, ...adjustments]`) — right for the trial balance's ВКУПНО row below,
-  // wrong for a headline count next to `dnevnik.csv`, which holds only `entries`. Counted separately
-  // so each printed number matches the rows of the file next to it (fix round 1, item 1).
-  const journalLineCount = journal.entries.reduce((s, e) => s + e.lines.length, 0);
-  const adjustmentLineCount = journal.adjustments.reduce((s, e) => s + e.lines.length, 0);
+  // Entries and adjustments counted apart, so each printed number matches the rows of the file next
+  // to it (fix round 1, item 1); `t.debitMinor`/`t.creditMinor` stay the whole file's, which is what
+  // the trial balance's ВКУПНО row below is.
+  const counts = journalCounts(journal);
   const day = dayIn(meta.timeZone);
   const files: Record<string, Uint8Array> = {
     'dnevnik.csv': strToU8(csv(JOURNAL_HEADER, journalRows(journal.entries))),
@@ -85,13 +100,13 @@ export function buildAccountingExport(journal: Journal, meta: AccountingExportMe
       // A civil day in the tenant's own zone, like every other date in this file — not a bare UTC
       // instant (fix round 1, item 8).
       `Изготвено: ${day(meta.createdAt)}`,
-      `Ставки: ${journal.entries.length}`,
-      `Редови: ${journalLineCount}`,
+      `Ставки: ${counts.entryCount}`,
+      `Редови: ${counts.lineCount}`,
       `Должи: ${money(t.debitMinor)}`,
       `Побарува: ${money(t.creditMinor)}`,
       `Разлика: ${money(t.debitMinor - t.creditMinor)}`,
-      `Корекции од претходни периоди: ${journal.adjustments.length}`,
-      `Редови на корекции: ${adjustmentLineCount}`,
+      `Корекции од претходни периоди: ${counts.adjustmentCount}`,
+      `Редови на корекции: ${counts.adjustmentLineCount}`,
       `Затворени периоди во овој извоз: ${journal.closedPeriods.length ? journal.closedPeriods.join(', ') : 'нема'}`,
       '',
       // Slot by slot, so a chart that changed between two runs of the same window is visible here

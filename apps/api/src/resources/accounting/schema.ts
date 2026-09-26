@@ -40,11 +40,15 @@ export const accountingWindowQuery = z.object({
 export const trialBalanceRowOut = z.object({
   code: z.string(), name: z.string(), debitMinor: z.number(), creditMinor: z.number(), differenceMinor: z.number(),
 });
+// `entryCount`/`lineCount` are the journal's own rows and `adjustmentCount`/`adjustmentLineCount`
+// the corrections', never one inside the other — the same four numbers `README.txt` prints, so a
+// screen and the file it describes cannot disagree about the same export (fix round 2, item 5).
 export const accountingPreviewOut = z.object({
   from: z.string(), to: z.string(), buildingName: z.string().nullable(),
   trialBalance: z.array(trialBalanceRowOut),
-  totals: z.object({ debitMinor: z.number(), creditMinor: z.number(), entryCount: z.number(), lineCount: z.number() }),
-  adjustmentCount: z.number(),
+  totals: z.object({ debitMinor: z.number(), creditMinor: z.number() }),
+  entryCount: z.number(), lineCount: z.number(),
+  adjustmentCount: z.number(), adjustmentLineCount: z.number(),
   closedPeriods: z.array(z.string()),
   balanced: z.boolean(),
 });

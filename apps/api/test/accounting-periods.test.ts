@@ -103,16 +103,20 @@ describe('closing a period', () => {
     const res = await t.app.inject({ method: 'GET', url: `/api/accounting/preview?from=${CLOSED_PERIOD}-01&to=2026-09-01`, headers: { cookie } });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.totals.entryCount).toBe(2);
+    // One entry in the journal and one correction beside it — never one counted inside the other,
+    // which is what `README.txt` prints for the same window (fix round 2, item 5). The totals stay
+    // the whole file's, or the trial balance would not close.
+    expect(body.entryCount).toBe(1);
+    expect(body.adjustmentCount).toBe(1);
     expect(body.totals.debitMinor).toBe(body.totals.creditMinor);
     expect(body.totals.debitMinor).toBe(25000);
-    expect(body.adjustmentCount).toBe(1);
   });
 
   it('re-closing rewrites the totals rather than adding a second row', async () => {
     const again = await t.app.inject({ method: 'POST', url: `/api/accounting/periods/${CLOSED_PERIOD}/close`, headers: { cookie } });
     expect(again.statusCode).toBe(200);
-    expect(again.json().entryCount).toBe(2);
+    // The stored count is the journal's own entries; the late payment is a correction, not an entry.
+    expect(again.json().entryCount).toBe(1);
     expect(again.json().debitTotalMinor).toBe(25000);
     const list = await t.app.inject({ method: 'GET', url: '/api/accounting/periods', headers: { cookie } });
     expect(list.json().rows).toHaveLength(1);

@@ -21,8 +21,9 @@ const PREVIEW = {
     { code: '7400', name: 'Приходи', debitMinor: 0, creditMinor: 100000, differenceMinor: -100000 },
     { code: '4700', name: 'ДДВ', debitMinor: 0, creditMinor: 18000, differenceMinor: -18000 },
   ],
-  totals: { debitMinor: 118000, creditMinor: 118000, entryCount: 1, lineCount: 3 },
-  adjustmentCount: 0, closedPeriods: [], balanced: true,
+  totals: { debitMinor: 118000, creditMinor: 118000 },
+  entryCount: 1, lineCount: 3, adjustmentCount: 0, adjustmentLineCount: 0,
+  closedPeriods: [], balanced: true,
 };
 
 beforeEach(() => {
