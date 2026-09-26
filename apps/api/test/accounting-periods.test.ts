@@ -69,6 +69,13 @@ describe('closing a period', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  // The read gate on the list is the documents one, which keeps `readonly` (spec §7) and drops only
+  // the technician — the role the Accounting page is already hidden from.
+  it('but the list itself is readable by a readonly user', async () => {
+    const res = await t.app.inject({ method: 'GET', url: '/api/accounting/periods', headers: { cookie: readonlyCookie } });
+    expect(res.statusCode).toBe(200);
+  });
+
   it('records the totals, who closed it and when', async () => {
     const res = await t.app.inject({ method: 'POST', url: `/api/accounting/periods/${CLOSED_PERIOD}/close`, headers: { cookie } });
     expect(res.statusCode).toBe(200);

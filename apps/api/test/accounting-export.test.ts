@@ -109,6 +109,15 @@ describe('POST /api/accounting/export', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  // The preview is strictly more than the exports list — every account's debit and credit for any
+  // window — and the period list is every closed month's stored totals, so both carry the same gate.
+  it('refuses a technician the trial balance and the closed periods too', async () => {
+    const preview = await t.app.inject({ method: 'GET', url: `/api/accounting/preview?from=${WINDOW.from}&to=${WINDOW.to}`, headers: { cookie: technicianCookie } });
+    expect(preview.statusCode).toBe(403);
+    const periods = await t.app.inject({ method: 'GET', url: '/api/accounting/periods', headers: { cookie: technicianCookie } });
+    expect(periods.statusCode).toBe(403);
+  });
+
   it('puts a late-booked prior-period posting in korekcii.csv, with its own README counts', async () => {
     const res0 = await t.app.inject({
       method: 'POST', url: `/api/buildings/${buildingId}/reserve-fund/expenses`, headers: { cookie },

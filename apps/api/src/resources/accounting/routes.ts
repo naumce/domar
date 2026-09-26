@@ -36,11 +36,22 @@ export const accountCodeRoutes: FastifyPluginAsyncZod = async (app) => {
 const windowOf = (q: { from: string; to: string; buildingId?: string | undefined }): AccountingWindow =>
   ({ from: q.from, to: q.to, ...(q.buildingId ? { buildingId: q.buildingId } : {}) });
 
-/** Everything under `/api/accounting`. `/preview` is open to every role; the rest, Tasks 5 and 6. */
+/**
+ * Everything under `/api/accounting`. Every read here is the tenant's own financial position — a
+ * trial balance, the totals of a closed month, the zips already filed — so all three carry the same
+ * gate the documents they describe carry (`DOCUMENT_READ_ROLES`): `readonly` reads them, as spec §7
+ * requires, and a technician does not. Hiding the nav entry from a technician while leaving the
+ * numbers one `curl` away was the weaker half of that pair.
+ *
+ * `/preview` and `/export` derive up to 366 days of the whole ledger in memory, so they are capped
+ * at the same rate as `POST /reports/*`, which is limited on the same argument.
+ */
 export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requireAuth);
+  const read = { preHandler: requireRole(...DOCUMENT_READ_ROLES) };
+  const heavy = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
 
-  app.get('/preview', { schema: { querystring: accountingWindowQuery, response: { 200: accountingPreviewOut } } }, async (req) => {
+  app.get('/preview', { ...read, ...heavy, schema: { querystring: accountingWindowQuery, response: { 200: accountingPreviewOut } } }, async (req) => {
     const w = windowOf(req.query);
     const { journal, buildingName } = await buildJournalFor(req.db, req.ctx!, w, app.log);
     return {
@@ -53,20 +64,19 @@ export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
 
   // Same read gate as the documents it lists (fix round 1, item 6): a technician may not list or
   // stream a document, and an accounting export is one, window and totals included.
-  app.get('/exports', {
-    preHandler: requireRole(...DOCUMENT_READ_ROLES),
-    schema: { response: { 200: accountingExportListOut } },
-  }, async (req) => listAccountingExports(req.db, req.ctx!));
+  app.get('/exports', { ...read, schema: { response: { 200: accountingExportListOut } } },
+    async (req) => listAccountingExports(req.db, req.ctx!));
 
   app.post('/export', {
-    preHandler: requireRole(...WRITE_ROLES),
+    preHandler: requireRole(...WRITE_ROLES), ...heavy,
     schema: { body: accountingExportBody, response: { 201: accountingExportOut } },
   }, async (req, reply) => reply.status(201).send(await exportAccounting(req.db, req.ctx!, req.body, {
     documents: app.documents, log: app.log,
   })));
 
-  // Reading the list is open to every role, same as the other reads under /accounting.
-  app.get('/periods', { schema: { response: { 200: accountingPeriodListOut } } }, async (req) =>
+  // A closed period's stored totals are the same financial reading as the preview above, so it
+  // carries the same gate.
+  app.get('/periods', { ...read, schema: { response: { 200: accountingPeriodListOut } } }, async (req) =>
     listAccountingPeriods(req.db, req.ctx!));
 
   app.post('/periods/:period/close', {
