@@ -12,7 +12,7 @@ export default defineConfig({
   // the 200 below, and the login-heavy specs run back into the ceiling this override exists to lift.
   // Run `pnpm e2e` with no separate `pnpm dev` API listening on 3001.
   webServer: [
-    { command: 'pnpm --filter @domar/api dev', url: 'http://localhost:3001/api/health', reuseExistingServer: true, cwd: '..', timeout: 120_000, env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://domar:domar@localhost:54329/domar', NODE_ENV: 'development', CORS_ORIGINS: 'http://localhost:5180', SMTP_URL: 'json', AUTH_RATE_MAX: '200', JOB_TOKEN: 'e2e-job-token-not-a-secret' } },
+    { command: 'pnpm --filter @domar/api dev', url: 'http://localhost:3001/api/health', reuseExistingServer: true, cwd: '..', timeout: 120_000, env: { ...process.env, DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://domar:domar@localhost:54329/domar', NODE_ENV: 'development', CORS_ORIGINS: 'http://localhost:5180', SMTP_URL: 'json', AUTH_RATE_MAX: '200', ACCOUNTING_RATE_MAX: '200', JOB_TOKEN: 'e2e-job-token-not-a-secret' } },
     // Port 5180, not 5173: 5173 is often already taken by other local dev servers.
     // `exec vite --port` (not `pnpm --filter @domar/web dev -- --port`): pnpm forwards `--` literally
     // to the `dev` script, so `exec` is needed to pass `--port`/`--strictPort` straight to the vite binary.

@@ -61,6 +61,9 @@ const filedBuilding = (id: string | null) => (id ? buildings.value.find((b) => b
 function clearMessages() { error.value = ''; defect.value = ''; }
 
 function fail(e: unknown) {
+  // A 429 carries no useful code of its own, and "try again" is the one advice that will not work:
+  // say to wait instead. These two reads derive up to a year of ledger, so the ceiling is low.
+  if (e instanceof ApiError && e.status === 429) { defect.value = ''; error.value = t('accounting.errors.rate_limited'); return; }
   const code = e instanceof ApiError ? e.code : (e as { code?: string }).code ?? 'generic';
   if (DEFECT_CODES.includes(code)) { defect.value = code; error.value = ''; return; }
   defect.value = '';

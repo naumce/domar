@@ -141,3 +141,32 @@ describe('closing a period', () => {
     expect((await t.app.inject({ method: 'POST', url: '/api/accounting/periods/2026-13/close', headers: { cookie } })).statusCode).toBe(400);
   });
 });
+
+/**
+ * The two reads that derive up to a year of ledger in memory are capped per IP. The ceiling is
+ * configuration, not a constant, so a test file that happens to make one call too many is a test
+ * budget problem rather than a rate-limit bug — `createTestApp` raises it and this one lowers it
+ * back on purpose, the same arrangement `AUTH_RATE_MAX` already has.
+ */
+describe('the accounting read ceiling', () => {
+  it('refuses the eleventh preview in a minute when the ceiling is ten', async () => {
+    const low = await createTestApp({ ACCOUNTING_RATE_MAX: '10' });
+    try {
+      const reg = await registerTenant(low.app, 'acct-rate');
+      const url = '/api/accounting/preview?from=2026-01-01&to=2026-02-01';
+      const codes: number[] = [];
+      for (let i = 0; i < 11; i += 1) {
+        codes.push((await low.app.inject({ method: 'GET', url, headers: { cookie: reg.cookie } })).statusCode);
+      }
+      expect(codes.slice(0, 10).every((c) => c !== 429)).toBe(true);
+      expect(codes[10]).toBe(429);
+    } finally {
+      await low.close();
+    }
+  });
+
+  it('lets a readonly user read the preview, not only the period list', async () => {
+    const res = await t.app.inject({ method: 'GET', url: '/api/accounting/preview?from=2026-01-01&to=2026-02-01', headers: { cookie: readonlyCookie } });
+    expect(res.statusCode).not.toBe(403);
+  });
+});

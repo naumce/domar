@@ -13,7 +13,7 @@ export async function createTestApp(env: Record<string, string> = {}): Promise<{
   // `AUTH_RATE_MAX` before the `process.env` spread would be beaten by it: `rate-limit.test.ts`
   // counts eleven logins to a 429, so the harness pins the ceiling rather than inheriting whatever
   // the person running the suite happens to export. A caller's own `env` still wins.
-  const config = loadConfig({ ...process.env, DATABASE_URL: t.url, NODE_ENV: 'test', DATA_DIR: dataDir, AUTH_RATE_MAX: '10', ...env });
+  const config = loadConfig({ ...process.env, DATABASE_URL: t.url, NODE_ENV: 'test', DATA_DIR: dataDir, AUTH_RATE_MAX: '10', ACCOUNTING_RATE_MAX: '200', ...env });
   const app = await buildApp({ db: t.db, sql: t.sql, config });
   await app.ready();
   return {

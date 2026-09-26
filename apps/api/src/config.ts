@@ -24,6 +24,10 @@ const schema = z.object({
   /** Per-IP ceiling on the auth routes each minute. Ten is right for a real deployment; a test
    * harness registering a tenant per spec from one address needs headroom. */
   AUTH_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
+  /** Per-IP ceiling each minute on the accounting reads that derive up to a year of ledger in
+   * memory. Ten is right for a deployment; a test file that makes eleven calls is not a rate-limit
+   * bug, so the harness raises it rather than every test counting its own requests. */
+  ACCOUNTING_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
   // Empty means "unset", like SMTP_URL: .env.example ships the key blank and a blank must not crash.
   PUBLIC_WEB_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
 }).superRefine((v, ctx) => {
@@ -61,6 +65,7 @@ export interface Config {
   /** `mailto:` or `https:` contact the push service may use to reach the operator. */
   vapidSubject: string;
   authRateMax: number;
+  accountingRateMax: number;
   /** Public origin of the web app, e.g. `https://domar.mk`; unset when nobody told the API its URL. */
   publicWebUrl: string | undefined;
 }
@@ -96,6 +101,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     vapidPrivateKey: parsed.VAPID_PRIVATE_KEY,
     vapidSubject: parsed.VAPID_SUBJECT || 'mailto:no-reply@localhost',
     authRateMax: parsed.AUTH_RATE_MAX,
+    accountingRateMax: parsed.ACCOUNTING_RATE_MAX,
     publicWebUrl: parsed.PUBLIC_WEB_URL?.replace(/\/$/, ''),
   };
 }

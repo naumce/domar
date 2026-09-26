@@ -50,7 +50,7 @@ const windowOf = (q: { from: string; to: string; buildingId?: string | undefined
 export const accountingRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('preHandler', app.requireAuth);
   const read = { preHandler: requireRole(...DOCUMENT_READ_ROLES) };
-  const heavy = { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } };
+  const heavy = { config: { rateLimit: { max: app.config.accountingRateMax, timeWindow: '1 minute' } } };
 
   app.get('/preview', { ...read, ...heavy, schema: { querystring: accountingWindowQuery, response: { 200: accountingPreviewOut } } }, async (req) => {
     const w = windowOf(req.query);

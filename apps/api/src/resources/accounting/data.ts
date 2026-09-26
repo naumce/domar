@@ -174,11 +174,13 @@ export async function buildJournalFor(
     return { journal: buildJournal(input), buildingName: building?.name ?? null, tenantName: tenant.name, chart, timeZone: tenant.timezone };
   } catch (err) {
     if (err instanceof JournalError) {
-      // `chart_incomplete` never reaches here — it's thrown earlier, before `buildJournal` runs, and
-      // it's a manager's problem (a slot they can map). These three codes mean the derivation's own
-      // double-entry invariant failed on data the app itself wrote; no UI action fixes that, so it's
-      // logged for an engineer to trace the posting. The client answer is unchanged: a 409.
-      log.error({ code: err.code, details: err.details }, err.message);
+      // `chart_incomplete` never reaches here — it's thrown earlier, before `buildJournal` runs.
+      // `duplicate_account_code` is the same kind of thing: a chart the manager can fix, and the
+      // write path refuses it too, so it is not an engineer's problem and is not logged as one.
+      // The other three mean the derivation's own double-entry invariant failed on data the app
+      // itself wrote; no UI action fixes that, so they are logged for an engineer to trace the
+      // posting. The client answer is the same either way: a 409 carrying the code.
+      if (err.code !== 'duplicate_account_code') log.error({ code: err.code, details: err.details }, err.message);
       throw new AppError(409, err.code, err.message, err.details);
     }
     throw err;
