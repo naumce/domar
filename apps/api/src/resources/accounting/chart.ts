@@ -9,35 +9,42 @@ import type { AccountCodePut } from './schema.js';
 const AC = schema.accountCodes;
 export type AccountCodeRow = typeof AC.$inferSelect;
 
-/** Why a slot in `requireChart`'s 409 can't be used yet: no row at all, a row switched off, or a row with a blank code. */
+/** Why a slot can't be used yet: no row at all, a row switched off, or a row with a blank code. */
 export type MissingReason = 'absent' | 'inactive' | 'blank_code';
 export interface MissingSlotDetail { slot: AccountSlot; reason: MissingReason }
 
-/** The tenant's chart, the slots it still has to map, and the derivation's view of it when complete. */
-export async function loadChart(db: Db, ctx: TenantContext): Promise<{ rows: AccountCodeRow[]; missing: AccountSlot[]; chart: Chart | null }> {
+/**
+ * The one classifier for "why is this slot unusable" — shared by the chart list (`GET
+ * /api/account-codes`) and the 409 `requireChart` throws, so the two never drift into disagreeing
+ * about the same slot. A mapping that is configured but disabled must not be reported the same way
+ * as one nobody has entered a code for, or the fix is to re-enter a code that is already there and
+ * the caller stays stuck.
+ */
+function classifyMissing(rows: AccountCodeRow[], missing: AccountSlot[]): MissingSlotDetail[] {
+  const bySlot = new Map(rows.map((r) => [r.slot, r]));
+  return missing.map((slot) => {
+    const row = bySlot.get(slot);
+    const reason: MissingReason = !row ? 'absent' : !row.isActive ? 'inactive' : 'blank_code';
+    return { slot, reason };
+  });
+}
+
+/** The tenant's chart, the slots it still has to map (with why), and the derivation's view of it
+ * when complete. */
+export async function loadChart(db: Db, ctx: TenantContext): Promise<{ rows: AccountCodeRow[]; missing: MissingSlotDetail[]; chart: Chart | null }> {
   const rows = await db.select().from(AC).where(eq(AC.tenantId, ctx.tenantId)).orderBy(asc(AC.slot));
-  const missing = missingSlots(rows);
-  return { rows, missing, chart: missing.length === 0 ? chartFrom(rows) : null };
+  const missingSlotList = missingSlots(rows);
+  return { rows, missing: classifyMissing(rows, missingSlotList), chart: missingSlotList.length === 0 ? chartFrom(rows) : null };
 }
 
 /**
  * Spec §3: the export refuses to run while a required slot is unmapped, and names every one of them.
  * 409 rather than 400 — the request is well formed, the organization is not ready to answer it.
- *
- * Each unusable slot also carries *why*: a mapping that is configured but disabled must not be
- * reported the same way as one nobody has entered a code for, or the fix is to re-enter a code
- * that is already there and the caller stays stuck.
  */
 export async function requireChart(db: Db, ctx: TenantContext): Promise<Chart> {
-  const { rows, missing, chart } = await loadChart(db, ctx);
+  const { missing, chart } = await loadChart(db, ctx);
   if (!chart) {
-    const bySlot = new Map(rows.map((r) => [r.slot, r]));
-    const details: MissingSlotDetail[] = missing.map((slot) => {
-      const row = bySlot.get(slot);
-      const reason: MissingReason = !row ? 'absent' : !row.isActive ? 'inactive' : 'blank_code';
-      return { slot, reason };
-    });
-    throw new AppError(409, 'chart_incomplete', `Unmapped account slots: ${missing.join(', ')}`, { missing: details });
+    throw new AppError(409, 'chart_incomplete', `Unmapped account slots: ${missing.map((m) => m.slot).join(', ')}`, { missing });
   }
   return chart;
 }

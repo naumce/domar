@@ -10,7 +10,9 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 const CHART = {
   rows: [{ id: 'a1', slot: 'owner_receivable', code: '1200', name: 'Побарувања', isActive: true }],
-  missing: ['revenue_service', 'vat_output'],
+  // The real shape (fix round 1, item 4): each missing slot carries why, reusing the same
+  // classifier the 409 `chart_incomplete` error already used.
+  missing: [{ slot: 'revenue_service', reason: 'absent' }, { slot: 'vat_output', reason: 'absent' }],
 };
 const PREVIEW = {
   from: '2026-09-01', to: '2026-10-01', buildingName: null,
@@ -61,7 +63,9 @@ describe('AccountingPage', () => {
     await w.get('[data-test=account-code-vat_output-name]').setValue('ДДВ на излез');
     await w.get('[data-test=account-code-vat_output-save]').trigger('click');
     await flush();
-    expect(put).toHaveBeenCalledWith('/api/account-codes/vat_output', { code: '4700', name: 'ДДВ на излез' });
+    // Always reactivates the slot (fix round 1, item 3): the same save fixes both an absent and an
+    // inactive slot, so the user is never told which of the two it was.
+    expect(put).toHaveBeenCalledWith('/api/account-codes/vat_output', { code: '4700', name: 'ДДВ на излез', isActive: true });
   });
 
   it('shows a balanced trial balance in minor-unit-faithful money', async () => {
@@ -85,6 +89,22 @@ describe('AccountingPage', () => {
     await flush();
     expect(w.find('[data-test=accounting-unbalanced]').exists()).toBe(true);
     expect(w.find('[data-test=accounting-export]').attributes('disabled')).toBeDefined();
+    // Fix round 1, item 7: the figure itself must look wrong, not just the banner beside it.
+    expect(w.get('[data-test=accounting-total-difference]').classes()).toContain('text-red-700');
+  });
+
+  it('never claims the chart is complete when it could not be read', async () => {
+    vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
+      if (path === '/api/account-codes') throw new Error('network down');
+      if (path === '/api/accounting/periods') return { rows: [] } as never;
+      if (path === '/api/buildings') return { rows: [] } as never;
+      throw new Error(`unexpected GET ${path}`);
+    });
+    const w = mount(AccountingPage, { global: { plugins: [i18n] } });
+    await flush();
+    expect(w.get('[data-test=page-error]').text()).toBe(messages.mk.accounting.errors.generic);
+    expect(w.find('[data-test=accounting-complete]').exists()).toBe(false);
+    expect(w.find('[data-test=accounting-missing]').exists()).toBe(false);
   });
 
   it('shows the chart_incomplete error in Macedonian', async () => {
@@ -107,5 +127,36 @@ describe('AccountingPage', () => {
     await w.get('[data-test=accounting-close]').trigger('click');
     await flush();
     expect(post).toHaveBeenCalledWith('/api/accounting/periods/2026-09/close');
+  });
+});
+
+// Fix round 1, item 6: the canWrite gating had no test of its own. Precedent: BuildingTabs.test.ts
+// asserts what each role does and does not see, rather than only exercising the write role.
+describe('AccountingPage by role', () => {
+  it('shows every write control to an owner', async () => {
+    const w = mountPage();
+    await flush();
+    expect(w.find('[data-test=account-code-vat_output-code]').exists()).toBe(true);
+    expect(w.find('[data-test=account-code-vat_output-save]').exists()).toBe(true);
+    expect(w.find('[data-test=accounting-period]').exists()).toBe(true);
+    expect(w.find('[data-test=accounting-close]').exists()).toBe(true);
+    await w.get('[data-test=accounting-preview]').trigger('click');
+    await flush();
+    expect(w.find('[data-test=accounting-export]').exists()).toBe(true);
+  });
+
+  it('hides every write control from a readonly user, who can still read', async () => {
+    const auth = useAuthStore();
+    auth.user = { id: 'me', email: 'ro@f.mk', firstName: 'Р', lastName: 'О', role: 'readonly', isActive: true };
+    const w = mountPage();
+    await flush();
+    expect(w.find('[data-test=account-code-vat_output-code]').exists()).toBe(false);
+    expect(w.find('[data-test=account-code-vat_output-save]').exists()).toBe(false);
+    expect(w.find('[data-test=accounting-period]').exists()).toBe(false);
+    expect(w.find('[data-test=accounting-close]').exists()).toBe(false);
+    expect(w.find('[data-test=accounting-missing]').exists()).toBe(true);
+    await w.get('[data-test=accounting-preview]').trigger('click');
+    await flush();
+    expect(w.find('[data-test=accounting-export]').exists()).toBe(false);
   });
 });

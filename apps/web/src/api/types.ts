@@ -239,7 +239,9 @@ export type AccountSlot =
   | 'owner_receivable' | 'revenue_service' | 'revenue_management_fee' | 'revenue_reserve_fund'
   | 'vat_output' | 'cash_regular' | 'cash_reserve' | 'expense_default' | 'opening_balance';
 export interface AccountCode { id: string; slot: AccountSlot; code: string; name: string; isActive: boolean }
-export interface AccountCodeList { rows: AccountCode[]; missing: AccountSlot[] }
+export type MissingReason = 'absent' | 'inactive' | 'blank_code';
+export interface MissingSlotDetail { slot: AccountSlot; reason: MissingReason }
+export interface AccountCodeList { rows: AccountCode[]; missing: MissingSlotDetail[] }
 export interface TrialBalanceRow { code: string; name: string; debitMinor: number; creditMinor: number; differenceMinor: number }
 export interface AccountingPreview {
   from: string; to: string; buildingName: string | null;

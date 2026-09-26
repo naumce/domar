@@ -33,7 +33,8 @@ describe('GET /api/account-codes', () => {
     expect(res.json().rows).toEqual([]);
     expect(res.json().missing).toEqual([
       'owner_receivable', 'revenue_service', 'revenue_management_fee', 'revenue_reserve_fund',
-      'vat_output', 'cash_regular', 'cash_reserve', 'expense_default', 'opening_balance']);
+      'vat_output', 'cash_regular', 'cash_reserve', 'expense_default', 'opening_balance',
+    ].map((slot) => ({ slot, reason: 'absent' })));
   });
 
   it('is readable by a readonly user', async () => {
@@ -59,7 +60,7 @@ describe('PUT /api/account-codes/:slot', () => {
     const list = await t.app.inject({ method: 'GET', url: '/api/account-codes', headers: { cookie: owner } });
     expect(list.json().rows).toHaveLength(1);
     expect(list.json().rows[0].code).toBe('1201');
-    expect(list.json().missing).not.toContain('owner_receivable');
+    expect(list.json().missing.some((m: { slot: string }) => m.slot === 'owner_receivable')).toBe(false);
   });
 
   it('rejects an unknown slot and an empty code', async () => {

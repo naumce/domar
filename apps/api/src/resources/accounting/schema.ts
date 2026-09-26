@@ -10,7 +10,12 @@ export const accountCodeOut = z.object({
   id: z.string(), slot: accountSlotEnum, code: z.string(), name: z.string(), isActive: z.boolean(),
   createdAt: z.date().or(z.string()), updatedAt: z.date().or(z.string()),
 });
-export const accountCodeListOut = z.object({ rows: z.array(accountCodeOut), missing: z.array(accountSlotEnum) });
+// Same shape the 409 `chart_incomplete` error already carries in `details.missing` (chart.ts):
+// "configured but switched off" and "never entered" need different actions from the user, so the
+// list route reports why a slot is unusable rather than only which slot.
+export const missingReasonEnum = z.enum(['absent', 'inactive', 'blank_code']);
+export const missingSlotDetailOut = z.object({ slot: accountSlotEnum, reason: missingReasonEnum });
+export const accountCodeListOut = z.object({ rows: z.array(accountCodeOut), missing: z.array(missingSlotDetailOut) });
 export const accountCodePut = z.object({
   code: z.string().trim().min(1).max(40),
   name: z.string().trim().min(1).max(200),

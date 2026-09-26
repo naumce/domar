@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api, API_BASE, ApiError } from '@/api/client';
 import type { AccountCode, AccountCodeList, AccountingExport, AccountingPeriod, AccountingPreview, AccountSlot, Building } from '@/api/types';
@@ -33,7 +33,13 @@ const period = ref('');
 const saved = ref('');
 const error = ref('');
 
-const missingNames = computed(() => chart.value.missing.map((s) => t(`accounting.slots.${s}`)).join(', '));
+// A slot's row also carries why it can't be used, but a single save always sends `isActive: true`
+// alongside a non-blank code — one action fixes all three reasons, so the reason itself is never
+// shown to the user (fix round 1, item 3).
+const missingNames = computed(() => chart.value.missing.map((m) => t(`accounting.slots.${m.slot}`)).join(', '));
+// Undefined until the chart has loaded at least once (as opposed to loaded-and-empty), so the page
+// never renders "complete" from a state it hasn't actually observed.
+const chartLoaded = ref(false);
 const downloadUrl = computed(() => (exported.value ? `${API_BASE}/api/documents/${exported.value.documentId}/download` : ''));
 
 function fail(e: unknown) {
@@ -42,8 +48,11 @@ function fail(e: unknown) {
 }
 
 async function loadChart() {
-  chart.value = await api.get<AccountCodeList>('/api/account-codes');
-  for (const row of chart.value.rows) draft.value[row.slot] = { code: row.code, name: row.name };
+  try {
+    chart.value = await api.get<AccountCodeList>('/api/account-codes');
+    for (const row of chart.value.rows) draft.value[row.slot] = { code: row.code, name: row.name };
+    chartLoaded.value = true;
+  } catch (e) { fail(e); }
 }
 async function loadPeriods() { periods.value = (await api.get<{ rows: AccountingPeriod[] }>('/api/accounting/periods')).rows; }
 
@@ -53,17 +62,22 @@ onMounted(() => {
   swallow(api.get<{ rows: Building[] }>('/api/buildings').then((r) => { buildings.value = r.rows; }));
 });
 
+// A stale download link must not sit next to a window it no longer describes (fix round 1, item 7).
+watch([from, to, buildingId], () => { exported.value = null; });
+
 async function saveSlot(slot: AccountSlot) {
   error.value = ''; saved.value = '';
   try {
-    const row = await api.put<AccountCode>(`/api/account-codes/${slot}`, { code: draft.value[slot]!.code, name: draft.value[slot]!.name });
+    // Always reactivates the slot: a code that is present but switched off, or one nobody entered
+    // yet, is fixed by the same single action — the user is never told which of the two it was.
+    const row = await api.put<AccountCode>(`/api/account-codes/${slot}`, { code: draft.value[slot]!.code, name: draft.value[slot]!.name, isActive: true });
     saved.value = row.slot;
     await loadChart();
   } catch (e) { fail(e); }
 }
 
 async function runPreview() {
-  error.value = ''; preview.value = null;
+  error.value = ''; preview.value = null; exported.value = null;
   try {
     preview.value = await api.get<AccountingPreview>('/api/accounting/preview', {
       from: from.value, to: to.value, ...(buildingId.value ? { buildingId: buildingId.value } : {}),
@@ -97,10 +111,10 @@ async function reopenPeriod(p: string) {
     <section>
       <h2 class="mb-2 text-lg font-semibold">{{ t('accounting.chart') }}</h2>
       <p class="mb-2 text-sm text-slate-600">{{ t('accounting.chartHint') }}</p>
-      <p v-if="chart.missing.length" class="mb-2 text-sm text-red-600" data-test="accounting-missing">
+      <p v-if="chartLoaded && chart.missing.length" class="mb-2 text-sm text-red-600" data-test="accounting-missing">
         {{ t('accounting.missing', { slots: missingNames }) }}
       </p>
-      <p v-else class="mb-2 text-sm text-green-700" data-test="accounting-complete">{{ t('accounting.complete') }}</p>
+      <p v-else-if="chartLoaded" class="mb-2 text-sm text-green-700" data-test="accounting-complete">{{ t('accounting.complete') }}</p>
       <div v-for="slot in SLOTS" :key="slot" class="mb-2 grid grid-cols-4 items-end gap-2">
         <span class="text-sm">{{ t(`accounting.slots.${slot}`) }}</span>
         <template v-if="canWrite">
@@ -118,6 +132,7 @@ async function reopenPeriod(p: string) {
 
     <section>
       <h2 class="mb-2 text-lg font-semibold">{{ t('accounting.window') }}</h2>
+      <p class="mb-2 text-sm text-slate-600">{{ t('accounting.windowHint') }}</p>
       <div class="mb-3 grid grid-cols-4 items-end gap-2">
         <AppInput v-model="from" type="date" :label="t('accounting.from')" data-test="accounting-from" />
         <AppInput v-model="to" type="date" :label="t('accounting.to')" data-test="accounting-to" />
@@ -151,7 +166,7 @@ async function reopenPeriod(p: string) {
               <td colspan="2">{{ t('accounting.total') }}</td>
               <td class="text-right" data-test="accounting-total-debit">{{ formatMoney(preview.totals.debitMinor) }}</td>
               <td class="text-right" data-test="accounting-total-credit">{{ formatMoney(preview.totals.creditMinor) }}</td>
-              <td class="text-right">{{ formatMoney(preview.totals.debitMinor - preview.totals.creditMinor) }}</td>
+              <td class="text-right" :class="{ 'text-red-700': !preview.balanced }" data-test="accounting-total-difference">{{ formatMoney(preview.totals.debitMinor - preview.totals.creditMinor) }}</td>
             </tr>
           </tfoot>
         </table>
