@@ -376,6 +376,7 @@ export default {
   suppliers: {
     title: 'Suppliers', add: 'Add supplier', name: 'Name', iban: 'Account',
     showInactive: 'Show inactive', activate: 'Activate', deactivate: 'Deactivate',
+    accountCode: 'Expense account', accountCodeDefault: '— the default expense account —',
     errors: { supplier_referenced: 'This supplier is used in a contract or an expense; deactivate it instead of deleting it.' },
   },
   contracts: {

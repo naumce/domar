@@ -376,6 +376,7 @@ export default {
   suppliers: {
     title: 'Добавувачи', add: 'Додади добавувач', name: 'Име', iban: 'Сметка',
     showInactive: 'Прикажи неактивни', activate: 'Активирај', deactivate: 'Деактивирај',
+    accountCode: 'Конто за трошоци', accountCodeDefault: '— основното конто за трошоци —',
     errors: { supplier_referenced: 'Добавувачот се користи во договор или трошок; деактивирајте го наместо да го бришете.' },
   },
   contracts: {

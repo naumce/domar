@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { Supplier } from '@/api/types';
+import { api } from '@/api/client';
+import type { AccountCode, AccountCodeList, Supplier } from '@/api/types';
 import DataTable from '@/components/DataTable.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
 import AppButton from '@/components/ui/AppButton.vue';
@@ -14,10 +15,17 @@ const open = ref(false);
 const editing = ref<Supplier | null>(null);
 const error = ref('');
 const showInactive = ref(false);
-const blank = () => ({ name: '', companyNumber: '', vatNumber: '', email: '', phone: '', iban: '' });
+// The organization's own chart (spec §3): a supplier's expenses book to the account picked here
+// instead of `expense_default`. Offered as the chart's own slots and codes rather than as an id the
+// manager would have to know — and only the usable rows, since an inactive code is not a mapping.
+const accountCodes = ref<AccountCode[]>([]);
+const blank = () => ({ name: '', companyNumber: '', vatNumber: '', email: '', phone: '', iban: '', accountCodeId: '' });
 const form = ref(blank());
 // Active suppliers only until the manager asks to see the rest.
-onMounted(() => swallow(suppliers.load()));
+onMounted(() => {
+  swallow(suppliers.load());
+  swallow(api.get<AccountCodeList>('/api/account-codes').then((r) => { accountCodes.value = (r.rows ?? []).filter((c) => c.isActive && c.code !== ''); }));
+});
 watch(showInactive, (v) => swallow(suppliers.load(v ? { includeInactive: 'true' } : undefined)));
 
 function fail(e: unknown) {
@@ -28,7 +36,10 @@ function fail(e: unknown) {
 function openNew() { editing.value = null; form.value = blank(); error.value = ''; open.value = true; }
 function openEdit(row: Supplier) {
   editing.value = row;
-  form.value = { name: row.name, companyNumber: row.companyNumber ?? '', vatNumber: row.vatNumber ?? '', email: row.email ?? '', phone: row.phone ?? '', iban: row.iban ?? '' };
+  form.value = {
+    name: row.name, companyNumber: row.companyNumber ?? '', vatNumber: row.vatNumber ?? '', email: row.email ?? '',
+    phone: row.phone ?? '', iban: row.iban ?? '', accountCodeId: row.accountCodeId ?? '',
+  };
   error.value = '';
   open.value = true;
 }
@@ -37,7 +48,7 @@ function openEdit(row: Supplier) {
 function diff(orig: Supplier, next: ReturnType<typeof blank>): Record<string, string | null> {
   const patch: Record<string, string | null> = {};
   if (next.name !== orig.name) patch.name = next.name;
-  for (const key of ['companyNumber', 'vatNumber', 'email', 'phone', 'iban'] as const) {
+  for (const key of ['companyNumber', 'vatNumber', 'email', 'phone', 'iban', 'accountCodeId'] as const) {
     const value = next[key] || null;
     if (value !== (orig[key] ?? null)) patch[key] = value;
   }
@@ -54,6 +65,7 @@ async function submit() {
       await suppliers.create({
         name: form.value.name, companyNumber: form.value.companyNumber || null, vatNumber: form.value.vatNumber || null,
         email: form.value.email || null, phone: form.value.phone || null, iban: form.value.iban || null,
+        accountCodeId: form.value.accountCodeId || null,
       });
     }
     open.value = false;
@@ -92,6 +104,12 @@ async function remove(id: string) {
         <AppInput v-model="form.email" :label="t('auth.email')" />
         <AppInput v-model="form.phone" :label="t('contacts.phone')" />
         <AppInput v-model="form.iban" :label="t('suppliers.iban')" class="col-span-2" />
+        <label class="col-span-2 text-sm">{{ t('suppliers.accountCode') }}
+          <select v-model="form.accountCodeId" class="mt-1 w-full rounded border p-2" data-test="supplier-account-code">
+            <option value="">{{ t('suppliers.accountCodeDefault') }}</option>
+            <option v-for="c in accountCodes" :key="c.id" :value="c.id">{{ c.code }} — {{ c.name }} ({{ t(`accounting.slots.${c.slot}`) }})</option>
+          </select>
+        </label>
         <div class="col-span-2 flex justify-end"><AppButton type="button" data-test="supplier-submit" @click="submit">{{ editing ? t('app.save') : t('app.create') }}</AppButton></div>
       </form>
     </ModalDialog>
