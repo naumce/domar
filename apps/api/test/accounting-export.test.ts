@@ -138,7 +138,7 @@ describe('POST /api/accounting/export', () => {
     expect([...korekciiBytes.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const [header, ...lines] = strFromU8(korekciiBytes.subarray(3)).trim().split('\n');
     expect(header).toBe('ставка;датум;период;конто;назив;должи;побарува;опис;зграда;партнер;извор;извор-ид;затворен-период');
-    // No period-close feature exists yet, so nothing this window covers is closed.
+    // This tenant closes no period, so nothing this window covers is marked closed.
     expect(lines.every((l) => l.endsWith(';не'))).toBe(true);
     expect(lines.some((l) => l.split(';')[3] === '4000')).toBe(true);
 

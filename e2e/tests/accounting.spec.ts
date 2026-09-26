@@ -4,13 +4,11 @@ const API = 'http://localhost:3001';
 const slug = `e2e-acct-${Date.now().toString(36)}`;
 const password = 'correct-horse-1';
 
-// The suite's clock reads 2026-09-26 or later. `2026-08` has genuinely ended by then and stays
-// ended forever after, unlike "this month", which `close` would refuse today and any test run
-// would refuse again on the first of its own month — so this is a fixed date, not `new Date()`.
 // Every date here is derived from today, never written down: a walk-through pinned to a calendar
-// year starts failing on its own, which is worse than no walk-through. The window runs from the
-// start of last month to the start of the month after next, so it always contains the charge that
-// books at publish time and always stays far inside the 366-day limit.
+// year starts failing on its own, which is worse than no walk-through. Last month is the period it
+// closes — it has genuinely ended whenever this runs, unlike "this month", which `close` refuses.
+// The window runs from the start of last month to the start of the month after next, so it always
+// contains the charge that books at publish time and always stays far inside the 366-day limit.
 const pad = (n: number) => String(n).padStart(2, '0');
 const monthStart = (offset: number): string => {
   const now = new Date();

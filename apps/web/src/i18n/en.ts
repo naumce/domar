@@ -249,7 +249,7 @@ export default {
     title: 'Accounting',
     chart: 'Chart of accounts',
     chartHint: 'Enter your own account codes. The export will not run while any of them is missing.',
-    slot: 'Slot', code: 'Code', name: 'Name', save: 'Save', saved: 'Saved.',
+    code: 'Code', name: 'Name', save: 'Save', saved: 'Saved.',
     missing: 'Unmapped accounts: {slots}',
     complete: 'The chart of accounts is complete.',
     slots: {
@@ -265,7 +265,7 @@ export default {
     },
     window: 'Export window', from: 'From', to: 'To (exclusive)', building: 'Building', allBuildings: 'All buildings',
     windowHint: 'The window cannot be longer than 366 days.',
-    preview: 'Calculate', trialBalance: 'Trial balance',
+    preview: 'Calculate',
     account: 'Account', debit: 'Debit', credit: 'Credit', difference: 'Difference', total: 'Total',
     entries: 'Entries', lines: 'Lines', adjustments: 'Prior-period adjustments',
     balanced: 'The trial balance closes.',
@@ -276,7 +276,7 @@ export default {
     defect: 'The export could not be derived — this is a defect, not a setting.',
     defectHint: 'Nothing was saved and no change on this page can fix it. Report it, with the window you used, so it can be traced in the ledger.',
     periods: 'Closed periods', period: 'Period', close: 'Close period', reopen: 'Reopen',
-    closedAt: 'Closed at', closedBy: 'Closed by', entryCount: 'Entries',
+    closedBy: 'Closed by', entryCount: 'Entries',
     closeHint: 'Closing forbids nothing: a later payment for a closed month is recorded as before and comes back in the next export as an adjustment. Re-exporting or re-closing that month restates the same movement, so post it from one of the two files only.',
     adjustmentHint: 'A correction belongs to the period in its own „период“ column of korekcii.csv, not to this window. The export of that period restates it whenever it is re-run, so post each correction from one file only.',
     errors: {

@@ -13,6 +13,11 @@ Operations and billing platform for licensed building managers. Phase 1 design:
 
 API http://localhost:3001/api/health, web http://localhost:5173, OpenAPI http://localhost:3001/api/docs
 
+Re-run `pnpm --filter @domar/db migrate` after pulling a branch that adds a migration. The API tests
+build a throwaway database per run and never notice a stale dev database; `pnpm e2e` runs against the
+long-lived one and fails in specs that have nothing to do with the new migration. (Production is
+unaffected: the API container migrates on every start, `docs/DEPLOY.md`.)
+
     pnpm e2e
 
 (needs Google Chrome; uses the dev database on port 5180 for the web server)

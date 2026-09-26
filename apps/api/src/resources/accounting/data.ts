@@ -40,7 +40,7 @@ export interface AccountingWindow {
 /**
  * Everything a window's derivation needs before it can touch `postings`: the chart (or a 409 naming
  * what's unmapped), the tenant (for its zone and name), and the building (or a 404 across tenants) —
- * fetched exactly once per request, whichever of `collectJournalInput`/`buildJournalFor` is called.
+ * fetched exactly once per request, by `buildJournalFor`, the one way into this module.
  */
 async function resolveWindow(db: Db, ctx: TenantContext, w: AccountingWindow): Promise<{ chart: Chart; tenant: TenantRow; building: BuildingRow | null }> {
   // Plain string comparison: `YYYY-MM-DD` sorts exactly like the dates it spells, so this needs
@@ -155,11 +155,6 @@ async function collectFrom(db: Db, ctx: TenantContext, w: AccountingWindow, char
   }
 
   return { chart, postings, invoices, expenses, closedPeriods: closedRows.map((r) => r.period) };
-}
-
-export async function collectJournalInput(db: Db, ctx: TenantContext, w: AccountingWindow): Promise<JournalInput> {
-  const { chart, tenant } = await resolveWindow(db, ctx, w);
-  return collectFrom(db, ctx, w, chart, tenant);
 }
 
 /**
