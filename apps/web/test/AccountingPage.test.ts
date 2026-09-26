@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '@/api/client';
+import { api, ApiError } from '@/api/client';
 import { i18n, messages } from '@/i18n';
 import AccountingPage from '@/pages/AccountingPage.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -13,6 +13,13 @@ const CHART = {
   // The real shape (fix round 1, item 4): each missing slot carries why, reusing the same
   // classifier the 409 `chart_incomplete` error already used.
   missing: [{ slot: 'revenue_service', reason: 'absent' }, { slot: 'vat_output', reason: 'absent' }],
+};
+const FILED = {
+  rows: [{
+    documentId: 'd1', fileName: 'smetkovodstvo-2026-09-01-2026-10-01.zip', createdAt: '2026-10-01T09:00:00.000Z',
+    from: '2026-09-01', to: '2026-10-01', buildingId: null,
+    entryCount: 2, adjustmentCount: 1, debitMinor: 118000, creditMinor: 118000, sizeBytes: 2048,
+  }],
 };
 const PREVIEW = {
   from: '2026-09-01', to: '2026-10-01', buildingName: null,
@@ -41,6 +48,7 @@ function mountPage() {
     if (path === '/api/account-codes') return CHART as never;
     if (path === '/api/accounting/periods') return { rows: [] } as never;
     if (path === '/api/accounting/preview') return PREVIEW as never;
+    if (path === '/api/accounting/exports') return FILED as never;
     if (path === '/api/buildings') return { rows: [{ id: 'b1', name: 'Партизанска 1' }] } as never;
     throw new Error(`unexpected GET ${path}`);
   });
@@ -82,22 +90,44 @@ describe('AccountingPage', () => {
     expect(w.find('[data-test=accounting-unbalanced]').exists()).toBe(false);
   });
 
-  it('turns red when the trial balance does not close', async () => {
+  // The fixture this replaces was `{ ...PREVIEW, balanced: false }`, which the API cannot produce:
+  // `buildJournal` throws `unbalanced_file` before a preview can return an unbalanced one, so the red
+  // banner and the disabled export button are belt and braces. The state that does reach a user is
+  // the 409 — and it has to be unmissable, because no setting on this page fixes it (fix round 2,
+  // item 6).
+  it('shouts when the derivation itself fails, and says it is a defect to report', async () => {
     const w = mountPage();
     await flush();
-    vi.spyOn(api, 'get').mockResolvedValue({ ...PREVIEW, totals: { ...PREVIEW.totals, creditMinor: 117000 }, balanced: false } as never);
+    vi.spyOn(api, 'get').mockRejectedValue(new ApiError(409, 'unbalanced_entry', 'entry 3 (payment p7) is out by 5 minor units'));
     await w.get('[data-test=accounting-preview]').trigger('click');
     await flush();
-    expect(w.find('[data-test=accounting-unbalanced]').exists()).toBe(true);
-    expect(w.find('[data-test=accounting-export]').attributes('disabled')).toBeDefined();
-    // Fix round 1, item 7: the figure itself must look wrong, not just the banner beside it.
-    expect(w.get('[data-test=accounting-total-difference]').classes()).toContain('text-red-700');
+    const banner = w.get('[data-test=accounting-defect]');
+    expect(banner.text()).toContain(messages.mk.accounting.defect);
+    expect(banner.text()).toContain(messages.mk.accounting.errors.unbalanced_entry);
+    expect(banner.text()).toContain(messages.mk.accounting.defectHint);
+    // Not also shown as one more ordinary red line, and no trial balance left standing beside it.
+    expect(w.find('[data-test=page-error]').exists()).toBe(false);
+    expect(w.findAll('[data-test=trial-row]')).toHaveLength(0);
+  });
+
+  it('lists what has already been filed, with a link that survives a window change', async () => {
+    const w = mountPage();
+    await flush();
+    const rows = w.findAll('[data-test=accounting-filed-row]');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.text()).toContain('2026-09-01');
+    expect(rows[0]!.text()).toContain(messages.mk.accounting.allBuildings);
+    expect(w.get('[data-test=accounting-filed-download]').attributes('href')).toContain('/api/documents/d1/download');
+    await w.get('[data-test=accounting-from]').setValue('2026-01-01');
+    await flush();
+    expect(w.find('[data-test=accounting-filed-download]').exists()).toBe(true);
   });
 
   it('never claims the chart is complete when it could not be read', async () => {
     vi.spyOn(api, 'get').mockImplementation(async (path: string) => {
       if (path === '/api/account-codes') throw new Error('network down');
       if (path === '/api/accounting/periods') return { rows: [] } as never;
+      if (path === '/api/accounting/exports') return { rows: [] } as never;
       if (path === '/api/buildings') return { rows: [] } as never;
       throw new Error(`unexpected GET ${path}`);
     });

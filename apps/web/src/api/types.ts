@@ -255,6 +255,12 @@ export interface AccountingPreview {
 export interface AccountingExport {
   documentId: string; fileName: string; entryCount: number; adjustmentCount: number; debitMinor: number; creditMinor: number;
 }
+/** One filed zip, from `GET /api/accounting/exports`: the audit row of the export, joined to its document. */
+export interface AccountingExportRow {
+  documentId: string; fileName: string; createdAt: string;
+  from: string; to: string; buildingId: string | null;
+  entryCount: number; adjustmentCount: number; debitMinor: number; creditMinor: number; sizeBytes: number;
+}
 export interface AccountingPeriod {
   id: string; period: string; closedAt: string; closedBy: string | null; closedByName: string | null;
   debitTotalMinor: number; creditTotalMinor: number; entryCount: number;

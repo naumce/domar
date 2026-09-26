@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { api, API_BASE, ApiError } from '@/api/client';
-import type { AccountCode, AccountCodeList, AccountingExport, AccountingPeriod, AccountingPreview, AccountSlot, Building } from '@/api/types';
+import type { AccountCode, AccountCodeList, AccountingExport, AccountingExportRow, AccountingPeriod, AccountingPreview, AccountSlot, Building } from '@/api/types';
 import DataTable from '@/components/DataTable.vue';
 import AppButton from '@/components/ui/AppButton.vue';
 import AppInput from '@/components/ui/AppInput.vue';
@@ -26,12 +26,25 @@ const buildings = ref<Building[]>([]);
 const periods = ref<AccountingPeriod[]>([]);
 const preview = ref<AccountingPreview | null>(null);
 const exported = ref<AccountingExport | null>(null);
+// Every zip this organization has filed. A tenant-wide export has no building to be listed under, and
+// the link beside the export button is cleared by the next window change, so without this table the
+// file a manager just filed can become unreachable from the app entirely.
+const filed = ref<AccountingExportRow[]>([]);
 const from = ref('');
 const to = ref('');
 const buildingId = ref('');
 const period = ref('');
 const saved = ref('');
 const error = ref('');
+/**
+ * A derivation failure, kept apart from the ordinary errors. These three 409s mean the double-entry
+ * invariant failed on data the app itself wrote: no window, no chart and no setting the user can
+ * reach makes them go away, so they are shown as a defect to report rather than as one more red line
+ * to try again around. (The trial balance's own "does not balance" banner below is belt and braces —
+ * `buildJournal` throws `unbalanced_file` before a preview can ever carry `balanced: false`.)
+ */
+const DEFECT_CODES = ['unbalanced_entry', 'unbalanced_file', 'unknown_source'];
+const defect = ref('');
 
 // A slot's row also carries why it can't be used, but a single save always sends `isActive: true`
 // alongside a non-blank code — one action fixes all three reasons, so the reason itself is never
@@ -40,10 +53,17 @@ const missingNames = computed(() => chart.value.missing.map((m) => t(`accounting
 // Undefined until the chart has loaded at least once (as opposed to loaded-and-empty), so the page
 // never renders "complete" from a state it hasn't actually observed.
 const chartLoaded = ref(false);
-const downloadUrl = computed(() => (exported.value ? `${API_BASE}/api/documents/${exported.value.documentId}/download` : ''));
+const documentUrl = (documentId: string) => `${API_BASE}/api/documents/${documentId}/download`;
+const downloadUrl = computed(() => (exported.value ? documentUrl(exported.value.documentId) : ''));
+const filedBuilding = (id: string | null) => (id ? buildings.value.find((b) => b.id === id)?.name ?? id : t('accounting.allBuildings'));
+
+/** Nothing is in flight and nothing has failed yet: both messages start every action cleared. */
+function clearMessages() { error.value = ''; defect.value = ''; }
 
 function fail(e: unknown) {
   const code = e instanceof ApiError ? e.code : (e as { code?: string }).code ?? 'generic';
+  if (DEFECT_CODES.includes(code)) { defect.value = code; error.value = ''; return; }
+  defect.value = '';
   error.value = te(`accounting.errors.${code}`) ? t(`accounting.errors.${code}`) : t('accounting.errors.generic');
 }
 
@@ -55,10 +75,12 @@ async function loadChart() {
   } catch (e) { fail(e); }
 }
 async function loadPeriods() { periods.value = (await api.get<{ rows: AccountingPeriod[] }>('/api/accounting/periods')).rows; }
+async function loadExports() { filed.value = (await api.get<{ rows: AccountingExportRow[] }>('/api/accounting/exports')).rows; }
 
 onMounted(() => {
   swallow(loadChart());
   swallow(loadPeriods());
+  swallow(loadExports());
   swallow(api.get<{ rows: Building[] }>('/api/buildings').then((r) => { buildings.value = r.rows; }));
 });
 
@@ -66,7 +88,7 @@ onMounted(() => {
 watch([from, to, buildingId], () => { exported.value = null; });
 
 async function saveSlot(slot: AccountSlot) {
-  error.value = ''; saved.value = '';
+  clearMessages(); saved.value = '';
   try {
     // Always reactivates the slot: a code that is present but switched off, or one nobody entered
     // yet, is fixed by the same single action — the user is never told which of the two it was.
@@ -77,7 +99,7 @@ async function saveSlot(slot: AccountSlot) {
 }
 
 async function runPreview() {
-  error.value = ''; preview.value = null; exported.value = null;
+  clearMessages(); preview.value = null; exported.value = null;
   try {
     preview.value = await api.get<AccountingPreview>('/api/accounting/preview', {
       from: from.value, to: to.value, ...(buildingId.value ? { buildingId: buildingId.value } : {}),
@@ -86,20 +108,22 @@ async function runPreview() {
 }
 
 async function runExport() {
-  error.value = ''; exported.value = null;
+  clearMessages(); exported.value = null;
   try {
     exported.value = await api.post<AccountingExport>('/api/accounting/export', {
       from: from.value, to: to.value, ...(buildingId.value ? { buildingId: buildingId.value } : {}),
     });
+    // The zip stays reachable after this link is gone, which is what the table below is for.
+    await loadExports();
   } catch (e) { fail(e); }
 }
 
 async function closePeriod() {
-  error.value = '';
+  clearMessages();
   try { await api.post<AccountingPeriod>(`/api/accounting/periods/${period.value}/close`); await loadPeriods(); } catch (e) { fail(e); }
 }
 async function reopenPeriod(p: string) {
-  error.value = '';
+  clearMessages();
   try { await api.del(`/api/accounting/periods/${p}`); await loadPeriods(); } catch (e) { fail(e); }
 }
 </script>
@@ -107,6 +131,11 @@ async function reopenPeriod(p: string) {
   <div class="space-y-6">
     <h1 class="text-2xl font-semibold">{{ t('accounting.title') }}</h1>
     <p v-if="error" class="text-sm text-red-600" data-test="page-error">{{ error }}</p>
+    <div v-if="defect" class="rounded-lg border-2 border-red-600 bg-red-50 p-4 text-red-800" role="alert" data-test="accounting-defect">
+      <p class="font-semibold">{{ t('accounting.defect') }}</p>
+      <p class="mt-1 text-sm">{{ t(`accounting.errors.${defect}`) }}</p>
+      <p class="mt-1 text-sm">{{ t('accounting.defectHint') }}</p>
+    </div>
 
     <section>
       <h2 class="mb-2 text-lg font-semibold">{{ t('accounting.chart') }}</h2>
@@ -183,6 +212,32 @@ async function reopenPeriod(p: string) {
           </template>
         </div>
       </template>
+    </section>
+
+    <section>
+      <h2 class="mb-2 text-lg font-semibold">{{ t('accounting.filed') }}</h2>
+      <p class="mb-2 text-sm text-slate-600">{{ t('accounting.filedHint') }}</p>
+      <table class="w-full text-sm">
+        <thead>
+          <tr><th class="text-left">{{ t('accounting.window') }}</th><th class="text-left">{{ t('accounting.building') }}</th>
+          <th class="text-right">{{ t('accounting.entries') }}</th><th class="text-right">{{ t('accounting.adjustments') }}</th>
+          <th class="text-right">{{ t('accounting.debit') }}</th><th class="text-right">{{ t('accounting.credit') }}</th>
+          <th class="text-left">{{ t('accounting.filedAt') }}</th><th /></tr>
+        </thead>
+        <tbody>
+          <tr v-if="filed.length === 0"><td colspan="8" class="py-3 text-slate-500">{{ t('app.empty') }}</td></tr>
+          <tr v-for="row in filed" :key="row.documentId" data-test="accounting-filed-row">
+            <td>{{ row.from }} — {{ row.to }}</td>
+            <td>{{ filedBuilding(row.buildingId) }}</td>
+            <td class="text-right">{{ row.entryCount }}</td>
+            <td class="text-right">{{ row.adjustmentCount }}</td>
+            <td class="text-right">{{ formatMoney(row.debitMinor) }}</td>
+            <td class="text-right">{{ formatMoney(row.creditMinor) }}</td>
+            <td>{{ formatDateTime(row.createdAt) }}</td>
+            <td class="text-right"><a class="underline" :href="documentUrl(row.documentId)" data-test="accounting-filed-download">{{ t('accounting.download') }}</a></td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <section>

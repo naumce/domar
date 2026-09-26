@@ -93,6 +93,12 @@ test('a manager maps the chart, sees a balanced trial balance, exports the zip a
   expect(zip.headers()['content-type']).toBe('application/zip');
   expect((await zip.body()).byteLength).toBeGreaterThan(200);
 
+  // The filed list is how that zip is reached once this link is gone: a whole-organization export is
+  // filed under no building, and changing the window clears the link beside the button.
+  await expect(page.getByTestId('accounting-filed-row')).toHaveCount(1);
+  const filedHref = await page.getByTestId('accounting-filed-download').getAttribute('href');
+  expect((await page.request.get(filedHref!)).status()).toBe(200);
+
   // Closing an already-ended month records it. It refuses nothing else: a payment booked into that
   // very month, entered only now (after the close), still records — the invariant closing exists to
   // not break.
