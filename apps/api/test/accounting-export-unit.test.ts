@@ -68,6 +68,16 @@ describe('buildAccountingExport', () => {
     expect(readme).toContain('Редови на корекции: 2');
   });
 
+  // The same posting is an adjustment in two files at once — this window's, and a re-run of its own
+  // closed period — and both balance, so only the text can tell the accountant which one to post.
+  it('says which period a correction belongs to and that a re-export restates it', () => {
+    const files = unzipSync(new Uint8Array(buildAccountingExport(journal, meta)));
+    const readme = strFromU8(files['README.txt']!);
+    expect(readme).toContain('За корекциите (korekcii.csv):');
+    expect(readme).toContain('повторен извоз или повторно затворање');
+    expect(readme).toContain('само еднаш');
+  });
+
   it('prints the chart it used, slot by slot', () => {
     const files = unzipSync(new Uint8Array(buildAccountingExport(journal, meta)));
     const readme = strFromU8(files['README.txt']!);

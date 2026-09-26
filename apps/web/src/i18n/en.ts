@@ -277,7 +277,8 @@ export default {
     defectHint: 'Nothing was saved and no change on this page can fix it. Report it, with the window you used, so it can be traced in the ledger.',
     periods: 'Closed periods', period: 'Period', close: 'Close period', reopen: 'Reopen',
     closedAt: 'Closed at', closedBy: 'Closed by', entryCount: 'Entries',
-    closeHint: 'Closing forbids nothing: a later payment for a closed month is recorded as before and comes back in the next export as an adjustment.',
+    closeHint: 'Closing forbids nothing: a later payment for a closed month is recorded as before and comes back in the next export as an adjustment. Re-exporting or re-closing that month restates the same movement, so post it from one of the two files only.',
+    adjustmentHint: 'A correction belongs to the period in its own „период“ column of korekcii.csv, not to this window. The export of that period restates it whenever it is re-run, so post each correction from one file only.',
     errors: {
       chart_incomplete: 'The chart of accounts is incomplete — map every account.',
       duplicate_account_code: 'That account code is already used by another slot — every slot needs its own code.',

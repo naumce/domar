@@ -204,6 +204,11 @@ async function reopenPeriod(p: string) {
           {{ t('accounting.lines') }}: {{ preview.lineCount }} ·
           {{ t('accounting.adjustments') }}: {{ preview.adjustmentCount }}
         </p>
+        <!-- The same movement is an adjustment in two files at once — this one and the export of its
+             own period, re-run. Both balance, so nothing in the numbers says so. -->
+        <p v-if="preview.adjustmentCount > 0" class="mt-1 text-sm text-slate-600" data-test="accounting-adjustment-hint">
+          {{ t('accounting.adjustmentHint') }}
+        </p>
         <div v-if="canWrite" class="mt-3 flex items-center gap-3">
           <AppButton :disabled="!preview.balanced" data-test="accounting-export" @click="runExport">{{ t('accounting.export') }}</AppButton>
           <template v-if="exported">

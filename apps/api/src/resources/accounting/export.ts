@@ -109,6 +109,17 @@ export function buildAccountingExport(journal: Journal, meta: AccountingExportMe
       `Редови на корекции: ${counts.adjustmentLineCount}`,
       `Затворени периоди во овој извоз: ${journal.closedPeriods.length ? journal.closedPeriods.join(', ') : 'нема'}`,
       '',
+      // The same posting is reported as an adjustment by two different files: the export of the
+      // window its `created_at` falls in, and any re-export or re-close of its own closed period.
+      // Both balance, so nothing in the numbers reveals the overlap — the accountant holding the two
+      // zips has to be told which one to post (fix round 2, item 4).
+      'За корекциите (korekcii.csv):',
+      '  Секоја корекција припаѓа на периодот запишан во нејзината колона „период“, а не на',
+      '  периодот на овој извоз. Истото движење се прикажува во два извоза: во овој, и во секој',
+      '  повторен извоз или повторно затворање на неговиот сопствен, веќе затворен период, кој ја',
+      '  прикажува состојбата на тој период повторно (рестатирана). Проведете го секое такво',
+      '  движење само еднаш — од едната или од другата датотека, не од двете.',
+      '',
       // Slot by slot, so a chart that changed between two runs of the same window is visible here
       // rather than only in the numbers it silently changed (controller ruling).
       'Контен план (употребен во овој извоз):',
