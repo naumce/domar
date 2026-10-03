@@ -29,13 +29,23 @@ beforeAll(async () => {
   await post(`/api/buildings/${buildingId}/periods/${period.id}/publish`);
   const invoices = (await t.app.inject({ method: 'GET', url: `/api/invoices?buildingId=${buildingId}`, headers: { cookie } })).json();
   invoiceId = invoices.rows[0].id;
-  // Pinned inside the 2026-09 window every assertion below targets, not "now": the invoice's own
-  // charge posting is booked when the period is published (above, at real test-run time) and this
-  // fixture only controls the payment's date, so pinning it is what keeps the trial-balance and
-  // entry-count assertions from drifting with the calendar.
-  await post(`/api/invoices/${invoiceId}/payments`, { amountMinor: 118000, method: 'bank_transfer', paidAt: '2026-09-15T10:00:00.000Z' });
+  // Booked now, deliberately. The invoice's charge posting is booked when the period is published,
+  // which is real test-run time and cannot be set from the API, so the only window that can ever
+  // contain both the charge and the payment is one that contains "now". Pinning the payment to a
+  // fixed month instead made these assertions pass only during that month: this file went red on
+  // the first of October for exactly that reason.
+  await post(`/api/invoices/${invoiceId}/payments`, { amountMinor: 118000, method: 'bank_transfer', paidAt: new Date().toISOString() });
 });
 afterAll(async () => { await t.close(); });
+
+/** The civil month that contains "now", in the tenant's own zone — the only window that can hold a
+ *  charge posting booked at publish time. `to` is exclusive, as every accounting window is. */
+const skopjeDay = (x: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Skopje', year: 'numeric', month: '2-digit', day: '2-digit' }).format(x);
+const thisMonth = (): { from: string; to: string } => {
+  const [y, m] = skopjeDay(new Date()).split('-').map(Number);
+  const next = new Date(Date.UTC(y!, m!, 1));
+  return { from: `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-01`, to: `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01` };
+};
 
 const mapChart = async () => {
   const slots: [string, string, string][] = [
@@ -59,7 +69,8 @@ describe('GET /api/accounting/preview', () => {
 
   it('returns a trial balance that balances once the chart is complete', async () => {
     await mapChart();
-    const res = await t.app.inject({ method: 'GET', url: '/api/accounting/preview?from=2026-09-01&to=2026-10-01', headers: { cookie } });
+    const w = thisMonth();
+    const res = await t.app.inject({ method: 'GET', url: `/api/accounting/preview?from=${w.from}&to=${w.to}`, headers: { cookie } });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.totals.debitMinor).toBe(body.totals.creditMinor);

@@ -30,13 +30,22 @@ const schema = z.object({
   ACCOUNTING_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
   // The domko bridge. Both optional and both empty by default: an unset SUPABASE_JWKS_URL means
   // "no bridge", exactly like an unset SMTP_URL means "no email" — bearer tokens are then ignored
-  // and nothing throws at boot. SUPABASE_ISSUER left empty skips the issuer check.
+  // and nothing throws at boot. Turning the bridge ON requires both: a key set with no issuer
+  // check would accept any token that key set happens to sign, so the pair is validated below.
   SUPABASE_JWKS_URL: z.string().default(''),
   SUPABASE_ISSUER: z.string().default(''),
   // Empty means "unset", like SMTP_URL: .env.example ships the key blank and a blank must not crash.
   PUBLIC_WEB_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
 }).superRefine((v, ctx) => {
   // Without it the reminder cron endpoint is permanently 503, i.e. reminders would silently stop.
+  // One without the other is a misconfiguration, not a weaker configuration: a JWKS URL with no
+  // issuer verifies the signature and then trusts whoever minted it.
+  if (v.SUPABASE_JWKS_URL && !v.SUPABASE_ISSUER) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['SUPABASE_ISSUER'], message: 'SUPABASE_ISSUER is required when SUPABASE_JWKS_URL is set' });
+  }
+  if (v.SUPABASE_ISSUER && !v.SUPABASE_JWKS_URL) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['SUPABASE_JWKS_URL'], message: 'SUPABASE_JWKS_URL is required when SUPABASE_ISSUER is set' });
+  }
   if (v.NODE_ENV === 'production' && !v.JOB_TOKEN) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['JOB_TOKEN'], message: 'JOB_TOKEN is required when NODE_ENV=production' });
   }
