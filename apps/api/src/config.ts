@@ -28,6 +28,11 @@ const schema = z.object({
    * memory. Ten is right for a deployment; a test file that makes eleven calls is not a rate-limit
    * bug, so the harness raises it rather than every test counting its own requests. */
   ACCOUNTING_RATE_MAX: z.coerce.number().int().min(1).max(1000).default(10),
+  // The domko bridge. Both optional and both empty by default: an unset SUPABASE_JWKS_URL means
+  // "no bridge", exactly like an unset SMTP_URL means "no email" — bearer tokens are then ignored
+  // and nothing throws at boot. SUPABASE_ISSUER left empty skips the issuer check.
+  SUPABASE_JWKS_URL: z.string().default(''),
+  SUPABASE_ISSUER: z.string().default(''),
   // Empty means "unset", like SMTP_URL: .env.example ships the key blank and a blank must not crash.
   PUBLIC_WEB_URL: z.preprocess((v) => (v === '' ? undefined : v), z.string().url().optional()),
 }).superRefine((v, ctx) => {
@@ -68,6 +73,10 @@ export interface Config {
   accountingRateMax: number;
   /** Public origin of the web app, e.g. `https://domar.mk`; unset when nobody told the API its URL. */
   publicWebUrl: string | undefined;
+  /** Supabase JWKS endpoint for the domko bridge. '' = the bridge is off and bearer tokens are ignored. */
+  supabaseJwksUrl: string;
+  /** Expected `iss` of a Supabase token, e.g. `https://<ref>.supabase.co/auth/v1`. '' = not checked. */
+  supabaseIssuer: string;
 }
 
 /** apps/web/dist, resolved from apps/api/src/config.ts, so it works in the repo and in the image. */
@@ -103,5 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     authRateMax: parsed.AUTH_RATE_MAX,
     accountingRateMax: parsed.ACCOUNTING_RATE_MAX,
     publicWebUrl: parsed.PUBLIC_WEB_URL?.replace(/\/$/, ''),
+    supabaseJwksUrl: parsed.SUPABASE_JWKS_URL,
+    supabaseIssuer: parsed.SUPABASE_ISSUER,
   };
 }

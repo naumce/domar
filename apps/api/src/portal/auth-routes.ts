@@ -1,7 +1,7 @@
 import type { FastifyReply } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { unauthorized } from '../errors.js';
-import { changePortalPassword, describeLinks, linkAnotherContact, loginPortalAccount, portalMe, registerPortalAccount } from './accounts.js';
+import { changePortalPassword, describeLinks, linkAnotherContact, loginPortalAccount, portalAccount, portalMe, redeemInviteForIdentity, registerPortalAccount } from './accounts.js';
 import { portalChangePasswordBody, portalLinkBody, portalLinkOut, portalLoginBody, portalMeOut, portalRegisterBody } from './schema.js';
 import { createOwnerSession, deleteOwnerSession, listLinks, OWNER_SESSION_COOKIE } from './session.js';
 
@@ -28,8 +28,21 @@ export const portalAuthRoutes: FastifyPluginAsyncZod = async (app) => {
     return reply.status(204).send();
   });
 
+  // `req.ownerSession` is null for a domko caller — a bearer token is not a domar session — so the
+  // account row is read back from the portal context instead of taken off the session.
   app.get('/me', { preHandler: app.requirePortal, schema: { response: { 200: portalMeOut } } }, async (req) =>
-    portalMe(req.db, req.portal!, req.ownerSession!.account));
+    portalMe(req.db, req.portal!, req.ownerSession?.account ?? await portalAccount(req.db, req.portal!)));
+
+  /**
+   * The domko bridge's one new route: a Supabase bearer token alone turns an invite code into a
+   * link. No portal context is required — on a first redeem there is no account to have one yet —
+   * so the token is verified here rather than relying on the `onRequest` hook.
+   */
+  app.post('/identity/redeem', { ...limited, schema: { body: portalLinkBody, response: { 201: portalMeOut } } }, async (req, reply) => {
+    const subject = await app.supabaseIdentity.subject(req.headers.authorization);
+    if (!subject) throw unauthorized();
+    return reply.status(201).send(await redeemInviteForIdentity(req.db, subject, req.body.code));
+  });
 
   app.post('/link', { ...limited, preHandler: app.requirePortal, schema: { body: portalLinkBody, response: { 201: portalLinkOut } } }, async (req, reply) =>
     reply.status(201).send(await linkAnotherContact(req.db, req.portal!, req.body.code)));

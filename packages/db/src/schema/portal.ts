@@ -11,7 +11,11 @@ import { tenants } from './tenant.js';
 export const ownerAccounts = pgTable('owner_accounts', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  // Nullable: an identity-backed account (see `owner_account_identities`) signs in with an
+  // external provider's token and has no domar password at all. A null here is "no password",
+  // never "any password" — every verify site falls back to DUMMY_PASSWORD_HASH, which matches
+  // nothing.
+  passwordHash: text('password_hash'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -62,4 +66,21 @@ export const portalInvites = pgTable('portal_invites', {
 }, (t) => [
   index('portal_invites_tenant_contact_idx').on(t.tenantId, t.contactId, t.createdAt),
   uniqueIndex('portal_invites_code_hash_idx').on(t.codeHash),
+]);
+
+/**
+ * An external identity that may sign in as an owner account: today `provider = 'supabase'` and
+ * `subject` = the Supabase JWT's `sub`. Deliberately not tenant-scoped, like `owner_sessions` and
+ * `owner_accounts` above: the account it points at is cross-tenant by design, and the only bridge
+ * to a manager's data stays `owner_contact_links`.
+ */
+export const ownerAccountIdentities = pgTable('owner_account_identities', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ownerAccountId: uuid('owner_account_id').notNull().references(() => ownerAccounts.id, { onDelete: 'cascade' }),
+  provider: text('provider').notNull(),
+  subject: text('subject').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex('owner_account_identities_provider_subject_idx').on(t.provider, t.subject),
+  index('owner_account_identities_account_idx').on(t.ownerAccountId),
 ]);

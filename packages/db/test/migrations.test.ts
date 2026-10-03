@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDatabase } from '../src/test-db.js';
 
-const TENANT_SCOPED_EXEMPT = new Set(['tenants', 'sessions', 'owner_accounts', 'owner_sessions', 'push_subscriptions', '__drizzle_migrations']);
+// `owner_account_identities` joins the list for the same reason `owner_sessions` is on it: it hangs
+// off a deliberately cross-tenant owner account (see packages/db/src/schema/portal.ts).
+const TENANT_SCOPED_EXEMPT = new Set(['tenants', 'sessions', 'owner_accounts', 'owner_sessions', 'owner_account_identities', 'push_subscriptions', '__drizzle_migrations']);
 
 describe('migrations', () => {
   let t: Awaited<ReturnType<typeof createTestDatabase>> | undefined;
@@ -19,7 +21,7 @@ describe('migrations', () => {
     for (const n of ['tenants', 'users', 'sessions', 'contacts', 'buildings', 'units', 'tax_rates', 'audit_logs',
       'services', 'building_services', 'reserve_fund_settings', 'expenses', 'billing_periods', 'period_lines', 'invoices', 'invoice_lines', 'postings', 'invoice_sequences',
       'payments', 'bank_statements', 'statement_lines', 'reminders', 'email_log',
-      'owner_accounts', 'owner_sessions', 'owner_contact_links', 'portal_invites'])
+      'owner_accounts', 'owner_sessions', 'owner_contact_links', 'portal_invites', 'owner_account_identities'])
       expect(names).toContain(n);
   });
 
@@ -104,6 +106,23 @@ describe('migrations', () => {
     const sess = await t!.sql<{ column_name: string }[]>`
       select column_name from information_schema.columns where table_name = 'owner_sessions' and column_name = 'tenant_id'`;
     expect(sess.length).toBe(0);
+    // Nullable since 0017: an identity-backed account signs in with an external token, not a password.
+    expect(cols.find((c) => c.column_name === 'password_hash')!.is_nullable).toBe('YES');
+  });
+
+  it('owner_account_identities map one external subject to one account, across tenants', async () => {
+    const cols = await t!.sql<{ column_name: string; is_nullable: string }[]>`
+      select column_name, is_nullable from information_schema.columns where table_name = 'owner_account_identities' order by 1`;
+    expect(cols.map((c) => c.column_name)).toEqual(['created_at', 'id', 'owner_account_id', 'provider', 'subject']);
+    expect(cols.every((c) => c.is_nullable === 'NO')).toBe(true);
+    const idx = await t!.sql<{ indexdef: string }[]>`select indexdef from pg_indexes where tablename = 'owner_account_identities'`;
+    expect(idx.some((i) => i.indexdef.includes('UNIQUE') && i.indexdef.includes('(provider, subject)'))).toBe(true);
+    expect(idx.some((i) => !i.indexdef.includes('UNIQUE') && i.indexdef.includes('(owner_account_id)'))).toBe(true);
+    const [fk] = await t!.sql<{ delete_rule: string }[]>`
+      select rc.delete_rule from information_schema.referential_constraints rc
+      join information_schema.table_constraints tc on tc.constraint_name = rc.constraint_name
+      where tc.table_name = 'owner_account_identities'`;
+    expect(fk!.delete_rule).toBe('CASCADE');
   });
 
   it('owner_contact_links bridge one account to one contact', async () => {

@@ -78,9 +78,11 @@ export async function buildApp(opts: { db: Db; sql: postgres.Sql; config: Config
   await app.register(swagger, { openapi: { info: { title: 'domar API', version: '0.0.1' } }, transform: jsonSchemaTransform });
   await app.register(swaggerUi, { routePrefix: '/api/docs' });
   await app.register(dbPlugin, { db: opts.db, sql: opts.sql });
+  // Before the auth plugins: `portalAuthPlugin` reads the Supabase settings off it to build the
+  // bridge's token verifier once, at registration, rather than per request.
+  app.decorate('config', opts.config);
   await app.register(authPlugin);
   await app.register(portalAuthPlugin);
-  app.decorate('config', opts.config);
   app.decorate('documents', new LocalDiskStore(opts.config.dataDir) as DocumentStore);
   const mailer = createMailer(opts.config);
   app.decorate('mailer', mailer);

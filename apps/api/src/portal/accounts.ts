@@ -2,14 +2,16 @@ import { type Db, schema } from '@domar/db';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import { writeAudit } from '../audit.js';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from '../auth/password.js';
-import { AppError, conflict, isUniqueViolation } from '../errors.js';
+import { AppError, conflict, isUniqueViolation, unauthorized } from '../errors.js';
 import { recordLegalEventOnce } from '../legal-events.js';
 import type { TenantContext } from '../tenant-context.js';
 import type { PortalContext } from './context.js';
 import { assertLiveInvite, claimInvite, countInviteFailure } from './invites.js';
 import { deleteOtherOwnerSessions, listLinks } from './session.js';
+import { SUPABASE_PROVIDER } from './supabase-identity.js';
 
 const OA = schema.ownerAccounts; const OCL = schema.ownerContactLinks; const C = schema.contacts;
+const OAI = schema.ownerAccountIdentities;
 const T = schema.tenants; const B = schema.buildings; const U = schema.units;
 
 type Account = typeof OA.$inferSelect;
@@ -103,6 +105,69 @@ export async function registerPortalAccount(db: Db, input: { code: string; email
   });
 }
 
+/**
+ * The owner account a verified external subject already signs in as, or null. The only read of
+ * `owner_account_identities` outside the redeem below.
+ */
+export async function accountForIdentity(db: Db, provider: string, subject: string): Promise<Account | null> {
+  const [row] = await db.select({ account: OA }).from(OAI)
+    .innerJoin(OA, eq(OA.id, OAI.ownerAccountId))
+    .where(and(eq(OAI.provider, provider), eq(OAI.subject, subject)))
+    .limit(1);
+  return row?.account ?? null;
+}
+
+/**
+ * The e-mail of an identity-backed account. `owner_accounts.email` is NOT NULL and unique, and the
+ * bridge deliberately does not trust the token's `email` claim: a domko user whose address already
+ * has a domar account would otherwise collide with it, or — worse — silently take it over. A
+ * reserved-TLD address derived from the subject is unique, cannot receive mail and cannot be
+ * registered through `/register`, where it would need this account's password and the password is
+ * null.
+ */
+function identityEmail(subject: string): string {
+  return `${SUPABASE_PROVIDER}-${subject}@identity.invalid`;
+}
+
+/**
+ * Redeems an invite code for a verified external subject — the domko half of `registerPortalAccount`
+ * and `linkAnotherContact`. There is no password here, so there is no oracle either: the 401-vs-201
+ * split that makes `registerPortalAccount` count failures per code does not exist, and like
+ * `linkAnotherContact` this path leans on `claimInvite` alone plus the route's rate limit.
+ *
+ * One transaction: the claiming UPDATE is still the atomic gate that spends the code exactly once,
+ * the account and its identity row are written under it, and `linkContact` writes the same
+ * `portal_link.create` audit row the cookie paths write.
+ */
+export async function redeemInviteForIdentity(db: Db, subject: string, code: string) {
+  const existing = await accountForIdentity(db, SUPABASE_PROVIDER, subject);
+  // Deactivated before the code is spent, not after: a disabled account must not burn a live code.
+  if (existing && !existing.isActive) throw unauthorized();
+
+  const account = await db.transaction(async (tx) => {
+    const invite = await claimInvite(tx, code); // 400 invalid_code, claim-first
+    if (existing) {
+      await linkContact(tx, existing.id, invite.tenantId, invite.contactId);
+      return existing;
+    }
+    let created: Account;
+    try {
+      const [inserted] = await tx.insert(OA).values({ email: identityEmail(subject), passwordHash: null }).returning();
+      created = inserted!;
+      await tx.insert(OAI).values({ ownerAccountId: created.id, provider: SUPABASE_PROVIDER, subject });
+    } catch (err) {
+      // A concurrent first redeem for the same subject won the race; it holds the account now, and
+      // this caller may simply try again against it.
+      if (isUniqueViolation(err)) throw conflict('identity_taken', 'This account is already being linked; try again');
+      throw err;
+    }
+    await linkContact(tx, created.id, invite.tenantId, invite.contactId);
+    return created;
+  });
+
+  return { account: publicAccount(account), links: await describeLinks(db, await listLinks(db, account.id)) };
+}
+
 export async function loginPortalAccount(db: Db, input: { email: string; password: string }): Promise<Account> {
   const account = (await db.query.ownerAccounts.findFirst({ where: eq(OA.email, input.email.toLowerCase()) })) ?? null;
   const ok = await verifyPassword(input.password, account?.passwordHash ?? DUMMY_PASSWORD_HASH);
@@ -125,7 +190,9 @@ export async function linkAnotherContact(db: Db, portal: PortalContext, code: st
 
 export async function changePortalPassword(db: Db, portal: PortalContext, currentPassword: string, newPassword: string, keepToken: string): Promise<void> {
   const account = await db.query.ownerAccounts.findFirst({ where: eq(OA.id, portal.ownerAccountId) });
-  if (!account || !(await verifyPassword(currentPassword, account.passwordHash))) throw new AppError(401, 'invalid_credentials', 'The current password is wrong');
+  // `?? DUMMY_PASSWORD_HASH`: an identity-backed account has no password at all, so there is no
+  // current password to prove and nothing it could be changed from.
+  if (!account || !(await verifyPassword(currentPassword, account.passwordHash ?? DUMMY_PASSWORD_HASH))) throw new AppError(401, 'invalid_credentials', 'The current password is wrong');
   const passwordHash = await hashPassword(newPassword);
   await db.transaction(async (tx) => {
     await tx.update(OA).set({ passwordHash, updatedAt: new Date() }).where(eq(OA.id, portal.ownerAccountId));
@@ -167,6 +234,16 @@ export async function describeLinks(db: Db, links: { tenantId: string; contactId
     contactName: `${contact.get(l.contactId)?.firstName ?? ''} ${contact.get(l.contactId)?.lastName ?? ''}`.trim(),
     buildings: buildings.filter((b) => b.tenantId === l.tenantId && b.contactId === l.contactId).map((b) => ({ id: b.id, name: b.name })),
   }));
+}
+
+/**
+ * The account row behind a portal context. The cookie branch already carries it on
+ * `req.ownerSession`; a bridge request has no session, so `/me` reads it back from the id.
+ */
+export async function portalAccount(db: Db, portal: PortalContext): Promise<Account> {
+  const account = await db.query.ownerAccounts.findFirst({ where: eq(OA.id, portal.ownerAccountId) });
+  if (!account) throw unauthorized();
+  return account;
 }
 
 export async function portalMe(db: Db, portal: PortalContext, account: Account) {
